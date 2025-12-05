@@ -1,70 +1,73 @@
-# dozilab-frontend
+# React + TypeScript + Vite
 
-## Overview
-dozilab-frontend is a React application designed to provide a seamless user experience. This project serves as the frontend for the dozilab application, utilizing modern web technologies and best practices.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## Getting Started
+Currently, two official plugins are available:
 
-### Prerequisites
-- Node.js (version 14 or higher)
-- npm (version 6 or higher)
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
 
-### Installation
-1. Clone the repository:
-   ```
-   git clone <repository-url>
-   ```
-2. Navigate to the project directory:
-   ```
-   cd dozilab-frontend
-   ```
-3. Install the dependencies:
-   ```
-   npm install
-   ```
+## React Compiler
 
-### Running the Application
-To start the development server, run:
-```
-npm start
-```
-This will launch the application in your default web browser at `http://localhost:3000`.
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-### Building for Production
-To create a production build of the application, run:
-```
-npm run build
-```
-The build artifacts will be stored in the `build` directory.
+## Expanding the ESLint configuration
 
-## Project Structure
-```
-dozilab-frontend
-├── public
-│   ├── index.html
-│   └── manifest.json
-├── src
-│   ├── index.tsx
-│   ├── App.tsx
-│   ├── components
-│   │   └── index.ts
-│   ├── hooks
-│   │   └── index.ts
-│   ├── pages
-│   │   └── index.ts
-│   ├── services
-│   │   └── api.ts
-│   ├── styles
-│   │   └── index.css
-│   └── types
-│       └── index.ts
-├── package.json
-├── tsconfig.json
-└── README.md
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+
+```js
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
+
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
 ```
 
-## Contributing
-Contributions are welcome! Please open an issue or submit a pull request for any enhancements or bug fixes.
+You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
-## License
-This project is licensed under the MIT License. See the LICENSE file for details.
+```js
+// eslint.config.js
+import reactX from 'eslint-plugin-react-x'
+import reactDom from 'eslint-plugin-react-dom'
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs['recommended-typescript'],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+```

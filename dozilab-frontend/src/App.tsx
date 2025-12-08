@@ -1,35 +1,86 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useState } from "react";
+import { Dashboard } from "./components/Dashboard";
+import { Courses } from "./components/Courses";
+import { AppStore } from "./components/AppStore";
+import { DeploymentWizard } from "./components/DeploymentWizard";
+import { OpenStackConfig } from "./components/OpenStackConfig";
+import { Sidebar } from "./components/Sidebar";
+import { Login } from "./components/Login";
+import logo from "figma:asset/5c87f57a05de8f8018669c9004318908d006dcd5.png";
 
-function App() {
-  const [count, setCount] = useState(0)
+type View =
+  | "dashboard"
+  | "courses"
+  | "appstore"
+  | "deployment"
+  | "config";
+
+export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentView, setCurrentView] =
+    useState<View>("dashboard");
+  const [deploymentActive, setDeploymentActive] =
+    useState(false);
+
+  const handleLogin = () => {
+    setIsAuthenticated(true);
+  };
+
+  const handleStartDeployment = () => {
+    setDeploymentActive(true);
+    setCurrentView("deployment");
+  };
+
+  const handleCancelDeployment = () => {
+    setDeploymentActive(false);
+    setCurrentView("appstore");
+  };
+
+  const handleCompleteDeployment = () => {
+    setDeploymentActive(false);
+    setCurrentView("dashboard");
+  };
+
+  const renderView = () => {
+    if (deploymentActive) {
+      return (
+        <DeploymentWizard
+          onCancel={handleCancelDeployment}
+          onComplete={handleCompleteDeployment}
+        />
+      );
+    }
+
+    switch (currentView) {
+      case "dashboard":
+        return <Dashboard />;
+      case "courses":
+        return <Courses />;
+      case "appstore":
+        return <AppStore onDeploy={handleStartDeployment} />;
+      case "config":
+        return <OpenStackConfig />;
+      default:
+        return <Dashboard />;
+    }
+  };
+
+  // Show login page if not authenticated
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} logo={logo} />;
+  }
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <div className="flex h-screen bg-slate-50">
+      <Sidebar
+        currentView={currentView}
+        onViewChange={setCurrentView}
+        logo={logo}
+        deploymentActive={deploymentActive}
+      />
+      <main className="flex-1 overflow-auto">
+        {renderView()}
+      </main>
+    </div>
+  );
 }
-
-export default App

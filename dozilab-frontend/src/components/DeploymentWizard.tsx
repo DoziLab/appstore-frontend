@@ -112,6 +112,57 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
       case 1:
         return (
           <div className="space-y-6">
+            {/* Resource Availability Overview */}
+            <div className="p-5 bg-gradient-to-br from-slate-50 to-blue-50 border border-slate-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-4">
+                <Server className="w-5 h-5 text-teal-600" />
+                <h4 className="text-slate-900">Verfügbare Ressourcen</h4>
+              </div>
+              <div className="space-y-4">
+                {/* CPU */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-slate-700">CPU-Kerne</span>
+                    <span className="text-sm text-slate-900">
+                      <span className="text-teal-600">12 verfügbar</span> / 16 gesamt
+                    </span>
+                  </div>
+                  <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-teal-500 rounded-full" style={{ width: '25%' }} />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">4 Kerne in Benutzung</p>
+                </div>
+
+                {/* RAM */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-slate-700">Arbeitsspeicher (RAM)</span>
+                    <span className="text-sm text-slate-900">
+                      <span className="text-teal-600">24 GB verfügbar</span> / 32 GB gesamt
+                    </span>
+                  </div>
+                  <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-teal-500 rounded-full" style={{ width: '25%' }} />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">8 GB in Benutzung</p>
+                </div>
+
+                {/* Storage */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-slate-700">Speicher</span>
+                    <span className="text-sm text-slate-900">
+                      <span className="text-teal-600">650 GB verfügbar</span> / 1000 GB gesamt
+                    </span>
+                  </div>
+                  <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-teal-500 rounded-full" style={{ width: '35%' }} />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">350 GB in Benutzung</p>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>CPU-Kerne</Label>

@@ -1,0 +1,141 @@
+name: Create Documentation Issue
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  create-doc-issue:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1 – Checkout repository
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # Step 2 – Set up Node (needed for GitHub Script)
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # Step 3 – Extract changed files and create issue
+      - name: Create issue with file changes
+        id: create_issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Get changed files from commit payload
+            const commits = context.payload.commits;
+            let changedFiles = [];
+
+            for (const commit of commits) {
+              changedFiles.push(
+                ...commit.added.map(f => `Added: ${f}`),
+                ...commit.modified.map(f => `Modified: ${f}`),
+                ...commit.removed.map(f => `Removed: ${f}`)
+              );
+            }
+
+            const fileList = changedFiles.length
+              ? changedFiles.map(f => `- ${f}`).join("\n")
+              : "No file changes detected.";
+
+            // Construct issue body
+            const body = `
+            Documentation required for recent changes.
+
+            **Changed Files:**
+            ${fileList}
+
+            **Commit Message:**  
+            ${commits.map(c => c.message).join("\n")}
+            `;
+
+            // Create issue
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: "Documentation Update Required",
+              body: body,
+              assignees: [context.actor],  // The user who pushed the commit
+              labels: ["documentation"]
+            });
+
+            core.setOutput("issue_id", issue.data.node_id);
+            core.setOutput("issue_number", issue.data.number);
+
+      # Step 4 – Add Issue to GitHub Project v2 (GraphQL)
+      - name: Add Issue to Project
+        id: add_to_project
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // GraphQL mutation to add item to project
+            const addToProjectMutation = `
+              mutation($projectId: ID!, $contentId: ID!) {
+                addProjectV2ItemById(input: {
+                  projectId: $projectId,
+                  contentId: $contentId
+                }) {
+                  item {
+                    id
+                  }
+                }
+              }
+            `;
+
+            const result = await github.graphql(addToProjectMutation, {
+              projectId: "PROJECT_ID",  // <-- REPLACE THIS
+              contentId: "${{ steps.create_issue.outputs.issue_id }}"
+            });
+
+            core.setOutput("project_item_id", result.addProjectV2ItemById.item.id);
+
+      # Step 5 – Set Start and End Dates in the Project
+      - name: Set Start & End Dates
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Get start date from push
+            const startDate = new Date().toISOString().split("T")[0];
+
+            // Calculate end date = start + 7 days
+            const endDateObj = new Date();
+            endDateObj.setDate(endDateObj.getDate() + 7);
+            const endDate = endDateObj.toISOString().split("T")[0];
+
+            const updateFieldMutation = `
+              mutation(
+                $projectId: ID!,
+                $itemId: ID!,
+                $startField: ID!,
+                $endField: ID!,
+                $start: Date!,
+                $end: Date!
+              ) {
+                startField: updateProjectV2ItemFieldValue(input: {
+                  projectId: $projectId,
+                  itemId: $itemId,
+                  fieldId: $startField,
+                  value: { date: $start }
+                }) { projectV2Item { id } }
+
+                endField: updateProjectV2ItemFieldValue(input: {
+                  projectId: $projectId,
+                  itemId: $itemId,
+                  fieldId: $endField,
+                  value: { date: $end }
+                }) { projectV2Item { id } }
+              }
+            `;
+
+            await github.graphql(updateFieldMutation, {
+              projectId: "PROJECT_ID",  // <-- REPLACE THIS
+              itemId: "${{ steps.add_to_project.outputs.project_item_id }}",
+              startField: "START_DATE_FIELD_ID",  // <-- REPLACE THIS
+              endField: "END_DATE_FIELD_ID",      // <-- REPLACE THIS
+              start: startDate,
+              end: endDate
+            });

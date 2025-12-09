@@ -238,22 +238,6 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
                 </div>
               </div>
             </div>
-
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-              <div>
-                <Label>Auto-Skalierung</Label>
-                <p className="text-xs text-slate-500 mt-1">Ressourcen automatisch basierend auf Last anpassen</p>
-              </div>
-              <Switch />
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-              <div>
-                <Label>Hochverfügbarkeit</Label>
-                <p className="text-xs text-slate-500 mt-1">Mit Redundanz deployen für erhöhte Verfügbarkeit</p>
-              </div>
-              <Switch />
-            </div>
           </div>
         );
 

@@ -536,8 +536,16 @@
     margin-top: calc(var(--spacing) * 6);
   }
 
+  .mt-8 {
+    margin-top: calc(var(--spacing) * 8);
+  }
+
   .mr-1 {
     margin-right: calc(var(--spacing) * 1);
+  }
+
+  .mr-1\.5 {
+    margin-right: calc(var(--spacing) * 1.5);
   }
 
   .mr-2 {
@@ -936,6 +944,10 @@
     overflow-y: auto;
   }
 
+  .rounded {
+    border-radius: .25rem;
+  }
+
   .rounded-2xl {
     border-radius: var(--radius-2xl);
   }
@@ -1015,6 +1027,10 @@
 
   .border-teal-200 {
     border-color: var(--color-teal-200);
+  }
+
+  .border-teal-300 {
+    border-color: var(--color-teal-300);
   }
 
   .border-transparent {
@@ -1129,6 +1145,16 @@
 
   .bg-white {
     background-color: var(--color-white);
+  }
+
+  .bg-white\/60 {
+    background-color: #fff9;
+  }
+
+  @supports (color: color-mix(in lab, red, red)) {
+    .bg-white\/60 {
+      background-color: color-mix(in oklab, var(--color-white) 60%, transparent);
+    }
   }
 
   .bg-gradient-to-br {

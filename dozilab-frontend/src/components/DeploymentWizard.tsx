@@ -476,15 +476,6 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
               />
             </div>
 
-            <div>
-              <Label>Firewall-Regeln</Label>
-              <Textarea 
-                placeholder="Benutzerdefinierte Firewall-Regeln"
-                className="mt-2"
-                rows={4}
-                defaultValue="Erlaube HTTP (80) von 10.0.0.0/8&#10;Erlaube HTTPS (443) von überall&#10;Erlaube Jupyter (8888) vom Campus-Netzwerk"
-              />
-            </div>
           </div>
         );
 

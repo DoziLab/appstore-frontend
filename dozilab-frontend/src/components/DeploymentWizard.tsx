@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, ChevronRight, ChevronLeft, Server, Settings, Users, Network, CheckCircle2 } from 'lucide-react';
+import { Check, ChevronRight, ChevronLeft, Server, Settings, Users, Network, CheckCircle2, Zap, Clock } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -19,11 +19,11 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
   const [isDeploying, setIsDeploying] = useState(false);
 
   const steps = [
-    { id: 0, name: 'Template', icon: Server, description: 'Select application template' },
-    { id: 1, name: 'Configuration', icon: Settings, description: 'Configure VM settings' },
-    { id: 2, name: 'Access', icon: Users, description: 'Set up user access' },
-    { id: 3, name: 'Network', icon: Network, description: 'Configure networking' },
-    { id: 4, name: 'Review', icon: CheckCircle2, description: 'Review and deploy' },
+    { id: 0, name: 'Template', icon: Server, description: 'Application-Template auswählen' },
+    { id: 1, name: 'Konfiguration', icon: Settings, description: 'VM-Einstellungen (pro VM) konfigurieren' },
+    { id: 2, name: 'Zugriff', icon: Users, description: 'Benutzerzugriff einrichten' },
+    { id: 3, name: 'Netzwerk', icon: Network, description: 'Netzwerk konfigurieren' },
+    { id: 4, name: 'Übersicht', icon: CheckCircle2, description: 'Überprüfen und deployen' },
   ];
 
   const handleNext = () => {
@@ -53,7 +53,7 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
         return (
           <div className="space-y-6">
             <div>
-              <Label>Application Template</Label>
+              <Label>Application-Template</Label>
               <Select defaultValue="jupyter">
                 <SelectTrigger className="mt-2">
                   <SelectValue />
@@ -75,36 +75,131 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="3.6">3.6 (Stable)</SelectItem>
-                  <SelectItem value="3.7">3.7 (Stable)</SelectItem>
-                  <SelectItem value="3.8">3.8 (Latest)</SelectItem>
+                  <SelectItem value="3.6">3.6 (Stabil)</SelectItem>
+                  <SelectItem value="3.7">3.7 (Stabil)</SelectItem>
+                  <SelectItem value="3.8">3.8 (Aktuell)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <Label>Course Assignment</Label>
+              <Label>Anzahl VMs</Label>
+              <Select defaultValue="4">
+                <SelectTrigger className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1</SelectItem>
+                  <SelectItem value="2">2</SelectItem>
+                  <SelectItem value="3">3</SelectItem>
+                  <SelectItem value="4">4</SelectItem>
+                  <SelectItem value="5">5</SelectItem>
+                  <SelectItem value="6">6</SelectItem>
+                  <SelectItem value="7">7</SelectItem>
+                  <SelectItem value="8">8</SelectItem>
+                  <SelectItem value="9">9</SelectItem>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="11">11</SelectItem>
+                  <SelectItem value="12">12</SelectItem>
+                  <SelectItem value="13">13</SelectItem>
+                  <SelectItem value="14">14</SelectItem>
+                  <SelectItem value="15">15</SelectItem>
+                  <SelectItem value="16">16</SelectItem>
+                  <SelectItem value="17">17</SelectItem>
+                  <SelectItem value="18">18</SelectItem>
+                  <SelectItem value="19">19</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="21">21</SelectItem>
+                  <SelectItem value="22">22</SelectItem>
+                  <SelectItem value="23">23</SelectItem>
+                  <SelectItem value="24">24</SelectItem>
+                  <SelectItem value="25">25</SelectItem>
+                  <SelectItem value="26">26</SelectItem>
+                  <SelectItem value="27">27</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Kurszuweisung</Label>
               <Select defaultValue="cs101">
                 <SelectTrigger className="mt-2">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cs101">CS101 - Computer Science 101</SelectItem>
+                  <SelectItem value="cs101">CS101 - Informatik 101</SelectItem>
                   <SelectItem value="cs202">CS202 - Software Engineering</SelectItem>
                   <SelectItem value="cs305">CS305 - Cloud Computing</SelectItem>
-                  <SelectItem value="cs410">CS410 - Cybersecurity</SelectItem>
+                  <SelectItem value="cs410">CS410 - Cybersicherheit</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <Label htmlFor="deployment-name">Deployment Name</Label>
+              <Label htmlFor="deployment-name">Deployment-Name</Label>
               <Input 
                 id="deployment-name"
-                placeholder="e.g., CS101-Jupyter-Fall2024"
+                placeholder="z.B. CS101-Jupyter-Herbst2024"
                 className="mt-2"
                 defaultValue="CS101-Jupyter-Fall2024"
               />
+            </div>
+
+            <div>
+              <Label>Laufzeit</Label>
+              <Select defaultValue="3">
+                <SelectTrigger className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 Monat</SelectItem>
+                  <SelectItem value="3">3 Monate</SelectItem>
+                  <SelectItem value="6">6 Monate</SelectItem>
+                  <SelectItem value="12">1 Jahr</SelectItem>
+                  <SelectItem value="24">2 Jahre</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                Nach Ablauf werden die Ressourcen automatisch freigegeben
+              </p>
+            </div>
+
+            {/* Instant Deployment Section */}
+            <div className="mt-8 p-5 bg-gradient-to-br from-teal-50 to-blue-50 border-2 border-teal-300 rounded-lg">
+              <div className="flex items-start gap-3 mb-4">
+                <Zap className="w-6 h-6 text-teal-600 mt-0.5" />
+                <div className="flex-1">
+                  <h4 className="text-slate-900 mb-1">Schnell-Deployment</h4>
+                  <p className="text-sm text-slate-600">
+                    Deployen Sie jetzt mit optimierten Standardeinstellungen basierend auf Ihrem Kurs, 
+                    oder konfigurieren Sie detaillierte Einstellungen über den "Weiter"-Button für erweiterte Optionen.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  onClick={handleDeploy}
+                  disabled={isDeploying}
+                  className="bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white shadow-md"
+                >
+                  {isDeploying ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      Wird deployed...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4 mr-2" />
+                      Jetzt deployen
+                    </>
+                  )}
+                </Button>
+                <div className="flex items-center text-xs text-slate-600 bg-white/60 px-3 py-2 rounded">
+                  <Settings className="w-3 h-3 mr-1.5" />
+                  Oder "Weiter" für erweiterte Einstellungen
+                </div>
+              </div>
             </div>
           </div>
         );
@@ -112,33 +207,108 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
       case 1:
         return (
           <div className="space-y-6">
+            {/* Resource Availability Overview */}
+            <div className="p-5 bg-gradient-to-br from-slate-50 to-blue-50 border border-slate-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-4">
+                <Server className="w-5 h-5 text-teal-600" />
+                <h4 className="text-slate-900">Verfügbare Ressourcen</h4>
+              </div>
+              <div className="space-y-4">
+                {/* CPU */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-slate-700">CPU-Kerne</span>
+                    <span className="text-sm text-slate-900">
+                      <span className="text-teal-600">12 verfügbar</span> / 16 gesamt
+                    </span>
+                  </div>
+                  <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-teal-500 rounded-full" style={{ width: '25%' }} />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">4 Kerne in Benutzung</p>
+                </div>
+
+                {/* RAM */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-slate-700">Arbeitsspeicher (RAM)</span>
+                    <span className="text-sm text-slate-900">
+                      <span className="text-teal-600">24 GB verfügbar</span> / 32 GB gesamt
+                    </span>
+                  </div>
+                  <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-teal-500 rounded-full" style={{ width: '25%' }} />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">8 GB in Benutzung</p>
+                </div>
+
+                {/* Storage */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-slate-700">Speicher</span>
+                    <span className="text-sm text-slate-900">
+                      <span className="text-teal-600">650 GB verfügbar</span> / 1000 GB gesamt
+                    </span>
+                  </div>
+                  <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-teal-500 rounded-full" style={{ width: '35%' }} />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">350 GB in Benutzung</p>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>CPU Cores</Label>
+                <Label>CPU-Kerne</Label>
                 <Select defaultValue="4">
                   <SelectTrigger className="mt-2">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="2">2 Cores</SelectItem>
-                    <SelectItem value="4">4 Cores</SelectItem>
-                    <SelectItem value="8">8 Cores</SelectItem>
-                    <SelectItem value="16">16 Cores</SelectItem>
+                    <SelectItem value="1">1 Kern</SelectItem>
+                    <SelectItem value="2">2 Kerne</SelectItem>
+                    <SelectItem value="3">3 Kerne</SelectItem>
+                    <SelectItem value="4">4 Kerne</SelectItem>
+                    <SelectItem value="5">5 Kerne</SelectItem>
+                    <SelectItem value="6">6 Kerne</SelectItem>
+                    <SelectItem value="7">7 Kerne</SelectItem>
+                    <SelectItem value="8">8 Kerne</SelectItem>
+                    <SelectItem value="9">9 Kerne</SelectItem>
+                    <SelectItem value="10">10 Kerne</SelectItem>
+                    <SelectItem value="11">11 Kerne</SelectItem>
+                    <SelectItem value="12">12 Kerne</SelectItem>
+                    <SelectItem value="13">13 Kerne</SelectItem>
+                    <SelectItem value="14">14 Kerne</SelectItem>
+                    <SelectItem value="15">15 Kerne</SelectItem>
+                    <SelectItem value="16">16 Kerne</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <Label>Memory (RAM)</Label>
+                <Label>Arbeitsspeicher (RAM)</Label>
                 <Select defaultValue="8">
                   <SelectTrigger className="mt-2">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="1">1 GB</SelectItem>
+                    <SelectItem value="2">2 GB</SelectItem>
+                    <SelectItem value="3">3 GB</SelectItem>
                     <SelectItem value="4">4 GB</SelectItem>
+                    <SelectItem value="5">5 GB</SelectItem>
+                    <SelectItem value="6">6 GB</SelectItem>
+                    <SelectItem value="7">7 GB</SelectItem>
                     <SelectItem value="8">8 GB</SelectItem>
+                    <SelectItem value="9">9 GB</SelectItem>
+                    <SelectItem value="10">10 GB</SelectItem>
+                    <SelectItem value="11">11 GB</SelectItem>
+                    <SelectItem value="12">12 GB</SelectItem>
+                    <SelectItem value="13">13 GB</SelectItem>
+                    <SelectItem value="14">14 GB</SelectItem>
+                    <SelectItem value="15">15 GB</SelectItem>
                     <SelectItem value="16">16 GB</SelectItem>
-                    <SelectItem value="32">32 GB</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -146,22 +316,38 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Storage</Label>
-                <Select defaultValue="100">
+                <Label>Speicher</Label>
+                <Select defaultValue="8">
                   <SelectTrigger className="mt-2">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="50">50 GB</SelectItem>
-                    <SelectItem value="100">100 GB</SelectItem>
-                    <SelectItem value="250">250 GB</SelectItem>
-                    <SelectItem value="500">500 GB</SelectItem>
+                    <SelectItem value="1">1 GB</SelectItem>
+                    <SelectItem value="2">2 GB</SelectItem>
+                    <SelectItem value="3">3 GB</SelectItem>
+                    <SelectItem value="4">4 GB</SelectItem>
+                    <SelectItem value="5">5 GB</SelectItem>
+                    <SelectItem value="6">6 GB</SelectItem>
+                    <SelectItem value="7">7 GB</SelectItem>
+                    <SelectItem value="8">8 GB</SelectItem>
+                    <SelectItem value="9">9 GB</SelectItem>
+                    <SelectItem value="10">10 GB</SelectItem>
+                    <SelectItem value="11">11 GB</SelectItem>
+                    <SelectItem value="12">12 GB</SelectItem>
+                    <SelectItem value="13">13 GB</SelectItem>
+                    <SelectItem value="14">14 GB</SelectItem>
+                    <SelectItem value="15">15 GB</SelectItem>
+                    <SelectItem value="16">16 GB</SelectItem>
+                    <SelectItem value="64">50 GB</SelectItem>
+                    <SelectItem value="128">100 GB</SelectItem>
+                    <SelectItem value="256">250 GB</SelectItem>
+                    <SelectItem value="512">500 GB</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <Label>Operating System</Label>
+                <Label>Betriebssystem</Label>
                 <Select defaultValue="ubuntu22">
                   <SelectTrigger className="mt-2">
                     <SelectValue />
@@ -170,7 +356,10 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
                     <SelectItem value="ubuntu20">Ubuntu 20.04 LTS</SelectItem>
                     <SelectItem value="ubuntu22">Ubuntu 22.04 LTS</SelectItem>
                     <SelectItem value="debian11">Debian 11</SelectItem>
-                    <SelectItem value="centos8">CentOS 8</SelectItem>
+                    <SelectItem value="opnsense">OpnSense 24.7</SelectItem>
+                    <SelectItem value="rocky">Rocky 9.3</SelectItem>
+                    <SelectItem value="pfsense">Pfsense 2.6</SelectItem>
+                    <SelectItem value="windows11">Windows 11 qcow</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -180,28 +369,12 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
               <div className="flex items-start gap-3">
                 <Settings className="w-5 h-5 text-blue-600 mt-0.5" />
                 <div>
-                  <p className="text-sm text-blue-900">Resource Estimate</p>
+                  <p className="text-sm text-blue-900">Ressourcenschätzung</p>
                   <p className="text-xs text-blue-700 mt-1">
-                    This configuration will use 4 CPU cores, 8GB RAM, and 100GB storage from your quota.
+                    Diese Konfiguration verwendet 4 CPU-Kerne, 8 GB RAM und 128 GB Speicher aus Ihrem Kontingent.
                   </p>
                 </div>
               </div>
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-              <div>
-                <Label>Auto-scaling</Label>
-                <p className="text-xs text-slate-500 mt-1">Automatically adjust resources based on load</p>
-              </div>
-              <Switch />
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-              <div>
-                <Label>High Availability</Label>
-                <p className="text-xs text-slate-500 mt-1">Deploy with redundancy for increased uptime</p>
-              </div>
-              <Switch />
             </div>
           </div>
         );
@@ -210,60 +383,41 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
         return (
           <div className="space-y-6">
             <div>
-              <Label>Authentication Method</Label>
-              <Select defaultValue="ldap">
+              <Label>Authentifizierungsmethode</Label>
+              <Select defaultValue="password">
                 <SelectTrigger className="mt-2">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ldap">University LDAP</SelectItem>
-                  <SelectItem value="ssh">SSH Keys</SelectItem>
-                  <SelectItem value="password">Password Authentication</SelectItem>
-                  <SelectItem value="oauth">OAuth 2.0</SelectItem>
+                  <SelectItem value="password">Passwort-Authentifizierung (Studenten erhalten Zugangdaten per Mail)</SelectItem>
+                  <SelectItem value="sso">Login über DHBW SSO</SelectItem>
+                  <SelectItem value="ssh">SSH-Keys</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <Label>LDAP Server</Label>
-              <Input 
-                placeholder="ldap://ldap.university.edu"
-                className="mt-2"
-                defaultValue="ldap://ldap.university.edu"
-              />
-            </div>
-
-            <div>
-              <Label>Base DN</Label>
-              <Input 
-                placeholder="dc=university,dc=edu"
-                className="mt-2"
-                defaultValue="dc=university,dc=edu"
-              />
-            </div>
-
-            <div>
-              <Label>Authorized User Groups</Label>
+              <Label>Autorisierte Benutzergruppen</Label>
               <Textarea 
-                placeholder="Enter user groups, one per line"
+                placeholder="Benutzergruppen eingeben, eine pro Zeile"
                 className="mt-2"
                 rows={4}
-                defaultValue="students-cs101&#10;instructors-cs101&#10;teaching-assistants"
+                defaultValue="students-cs101&#10;instructors-cs101&#10;"
               />
             </div>
 
             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
               <div>
-                <Label>Allow Guest Access</Label>
-                <p className="text-xs text-slate-500 mt-1">Permit temporary access without authentication</p>
+                <Label>Dozentenzugriff einrichten</Label>
+                <p className="text-xs text-slate-500 mt-1">Zugang einrichten mit dem der Dozent auf alle VMs zugreifen kann</p>
               </div>
               <Switch />
             </div>
 
             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
               <div>
-                <Label>Require Multi-Factor Authentication</Label>
-                <p className="text-xs text-slate-500 mt-1">Add an extra layer of security</p>
+                <Label>Starke Passwörter</Label>
+                <p className="text-xs text-slate-500 mt-1">Es werden standardmäßig starke Passwörter gesetzt, die von den Studierenden nicht geändert werden müssen</p>
               </div>
               <Switch defaultChecked />
             </div>
@@ -274,75 +428,54 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
         return (
           <div className="space-y-6">
             <div>
-              <Label>Network</Label>
-              <Select defaultValue="private">
+              <Label>Netzwerk</Label>
+              <Select defaultValue="dhbwnet">
                 <SelectTrigger className="mt-2">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="private">Private Network</SelectItem>
-                  <SelectItem value="public">Public Network</SelectItem>
-                  <SelectItem value="hybrid">Hybrid Network</SelectItem>
+                  <SelectItem value="dhbwnet">DHBW</SelectItem>
+                  <SelectItem value="nat">NAT</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <Label>Subnet Range</Label>
-              <Input 
-                placeholder="10.0.0.0/24"
-                className="mt-2"
-                defaultValue="10.0.0.0/24"
-              />
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-              <div>
-                <Label>Assign Public IP</Label>
-                <p className="text-xs text-slate-500 mt-1">Make deployment accessible from the internet</p>
-              </div>
-              <Switch defaultChecked />
+              <Label>Subnetz-Bereich</Label>
+              <Select defaultValue="ext">
+                <SelectTrigger className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ext">ext_subnet</SelectItem>
+                  <SelectItem value="ext2">ext_subnet2</SelectItem>
+                  <SelectItem value="extnat">ext_nat_subnet</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
-              <Label>Custom DNS Name</Label>
+              <Label>Benutzerdefinierter DNS-Name</Label>
               <div className="flex gap-2 mt-2">
                 <Input 
                   placeholder="cs101-jupyter"
                   defaultValue="cs101-jupyter"
                 />
                 <span className="flex items-center px-3 bg-slate-100 rounded-md text-sm text-slate-600">
-                  .lab.university.edu
+                  .lab.dhbw.cloud
                 </span>
               </div>
             </div>
 
             <div>
-              <Label>Open Ports</Label>
+              <Label>Offene Ports</Label>
               <Input 
-                placeholder="e.g., 80, 443, 8080"
+                placeholder="z.B. 80, 443, 8080"
                 className="mt-2"
                 defaultValue="80, 443, 8888"
               />
             </div>
 
-            <div>
-              <Label>Firewall Rules</Label>
-              <Textarea 
-                placeholder="Custom firewall rules"
-                className="mt-2"
-                rows={4}
-                defaultValue="Allow HTTP (80) from 10.0.0.0/8&#10;Allow HTTPS (443) from anywhere&#10;Allow Jupyter (8888) from campus network"
-              />
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-              <div>
-                <Label>Enable VPN Access</Label>
-                <p className="text-xs text-slate-500 mt-1">Allow secure remote access via university VPN</p>
-              </div>
-              <Switch defaultChecked />
-            </div>
           </div>
         );
 
@@ -350,15 +483,15 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
         return (
           <div className="space-y-6">
             <div className="p-6 bg-gradient-to-br from-teal-50 to-blue-50 border border-teal-200 rounded-lg">
-              <h3 className="text-slate-900 mb-4">Deployment Summary</h3>
+              <h3 className="text-slate-900 mb-4">Deployment-Zusammenfassung</h3>
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-sm text-slate-600">Template:</span>
                   <span className="text-sm text-slate-900">Jupyter Notebook 3.8</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-slate-600">Course:</span>
-                  <span className="text-sm text-slate-900">CS101 - Computer Science 101</span>
+                  <span className="text-sm text-slate-600">Kurs:</span>
+                  <span className="text-sm text-slate-900">CS101 - Informatik 101</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-slate-600">Name:</span>
@@ -369,23 +502,23 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
 
             <Card className="border-slate-200">
               <CardHeader>
-                <CardTitle className="text-base">Resource Configuration</CardTitle>
+                <CardTitle className="text-base">Ressourcen-Konfiguration</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">CPU Cores:</span>
-                  <Badge variant="secondary">4 cores</Badge>
+                  <span className="text-slate-600">CPU-Kerne:</span>
+                  <Badge variant="secondary">4 Kerne</Badge>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Memory:</span>
+                  <span className="text-slate-600">Arbeitsspeicher:</span>
                   <Badge variant="secondary">8 GB</Badge>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Storage:</span>
+                  <span className="text-slate-600">Speicher:</span>
                   <Badge variant="secondary">100 GB</Badge>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Operating System:</span>
+                  <span className="text-slate-600">Betriebssystem:</span>
                   <Badge variant="secondary">Ubuntu 22.04 LTS</Badge>
                 </div>
               </CardContent>
@@ -393,35 +526,31 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
 
             <Card className="border-slate-200">
               <CardHeader>
-                <CardTitle className="text-base">Access Configuration</CardTitle>
+                <CardTitle className="text-base">Zugriffs-Konfiguration</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Authentication:</span>
-                  <Badge variant="secondary">University LDAP</Badge>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Multi-Factor Auth:</span>
-                  <Badge className="bg-green-100 text-green-700">Enabled</Badge>
+                  <span className="text-slate-600">Authentifizierung:</span>
+                  <Badge variant="secondary">Passwort-Authentifizierung</Badge>
                 </div>
               </CardContent>
             </Card>
 
             <Card className="border-slate-200">
               <CardHeader>
-                <CardTitle className="text-base">Network Configuration</CardTitle>
+                <CardTitle className="text-base">Netzwerk-Konfiguration</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Network Type:</span>
-                  <Badge variant="secondary">Private Network</Badge>
+                  <span className="text-slate-600">Netzwerktyp:</span>
+                  <Badge variant="secondary">DHBW</Badge>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">DNS Name:</span>
+                  <span className="text-slate-600">DNS-Name:</span>
                   <span className="text-sm text-slate-900">cs101-jupyter.lab.university.edu</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Open Ports:</span>
+                  <span className="text-slate-600">Offene Ports:</span>
                   <span className="text-sm text-slate-900">80, 443, 8888</span>
                 </div>
               </CardContent>
@@ -431,9 +560,9 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="w-5 h-5 text-amber-600 mt-0.5" />
                 <div>
-                  <p className="text-sm text-amber-900">Ready to Deploy</p>
+                  <p className="text-sm text-amber-900">Bereit zum Deployen</p>
                   <p className="text-xs text-amber-700 mt-1">
-                    The deployment will take approximately 5-10 minutes. You will be notified when it's ready.
+                    Das Deployment dauert etwa 5-10 Minuten. Sie werden benachrichtigt, wenn es bereit ist.
                   </p>
                 </div>
               </div>
@@ -450,8 +579,8 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
     <div className="p-8 space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-slate-900 mb-2">Deploy Application</h1>
-        <p className="text-slate-600">Configure and deploy your application</p>
+        <h1 className="text-slate-900 mb-2">Application deployen</h1>
+        <p className="text-slate-600">Konfigurieren und deployen Sie Ihre Application</p>
       </div>
 
       {/* Progress Steps */}
@@ -503,7 +632,7 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
           disabled={isDeploying}
         >
           <ChevronLeft className="w-4 h-4 mr-2" />
-          {currentStep === 0 ? 'Cancel' : 'Previous'}
+          {currentStep === 0 ? 'Abbrechen' : 'Zurück'}
         </Button>
 
         {currentStep < steps.length - 1 ? (
@@ -511,7 +640,7 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
             onClick={handleNext}
             className="bg-teal-500 hover:bg-teal-600 text-white"
           >
-            Next
+            Weiter
             <ChevronRight className="w-4 h-4 ml-2" />
           </Button>
         ) : (
@@ -523,12 +652,12 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
             {isDeploying ? (
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                Deploying...
+                Wird deployed...
               </>
             ) : (
               <>
                 <CheckCircle2 className="w-4 h-4 mr-2" />
-                Deploy Application
+                Application deployen
               </>
             )}
           </Button>

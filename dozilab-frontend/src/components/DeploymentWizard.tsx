@@ -455,16 +455,16 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
             </div>
 
             <div>
-              <Label>Benutzerdefinierter DNS-Name</Label>
-              <div className="flex gap-2 mt-2">
-                <Input 
-                  placeholder="cs101-jupyter"
-                  defaultValue="cs101-jupyter"
-                />
-                <span className="flex items-center px-3 bg-slate-100 rounded-md text-sm text-slate-600">
-                  .lab.dhbw.cloud
-                </span>
-              </div>
+              <Label>Security-Policy</Label>
+              <Select defaultValue="basic">
+                <SelectTrigger className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="basic">Standard</SelectItem>
+                  <SelectItem value="adv">Erweitert</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
@@ -502,7 +502,7 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
 
             <Card className="border-slate-200">
               <CardHeader>
-                <CardTitle className="text-base">Ressourcen-Konfiguration</CardTitle>
+                <CardTitle className="text-base">Ressourcen-Konfiguration (kumulierte Werte)</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 <div className="flex justify-between text-sm">

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Dashboard } from "./components/Dashboard";
+import { Documents } from "./components/Documents";
 import { Courses } from "./components/Courses";
 import { AppStore } from "./components/AppStore";
 import { DeploymentWizard } from "./components/DeploymentWizard";
@@ -13,6 +14,7 @@ type View =
   | "courses"
   | "appstore"
   | "deployment"
+  | "documents"
   | "config";
 
 export default function App() {
@@ -54,6 +56,8 @@ export default function App() {
     switch (currentView) {
       case "dashboard":
         return <Dashboard />;
+        case "documents":
+        return <Documents />;
       case "courses":
         return <Courses />;
       case "appstore":

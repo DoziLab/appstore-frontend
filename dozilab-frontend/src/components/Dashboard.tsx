@@ -3,7 +3,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Progress } from './ui/progress';
 import { Badge } from './ui/badge';
 
-export function Dashboard() {
+interface DashboardProps {
+  onSelectDeployment?: (deploymentName: string) => void;
+}
+
+export function Dashboard({ onSelectDeployment }: DashboardProps) {
   const stats = [
     { label: 'Aktive Deployments', value: '12', icon: Server, color: 'text-teal-600', bgColor: 'bg-teal-50' },
     { label: 'Verwendete CPU-Kerne', value: '48/64', icon: Cpu, color: 'text-blue-600', bgColor: 'bg-blue-50' },
@@ -90,7 +94,11 @@ export function Dashboard() {
           <CardContent>
             <div className="space-y-4">
               {deployments.map((deployment, idx) => (
-                <div key={idx} className="flex items-center gap-4 p-4 rounded-lg bg-slate-50 border border-slate-100">
+                <div 
+                  key={idx} 
+                  onClick={() => onSelectDeployment?.(deployment.name)}
+                  className="flex items-center gap-4 p-4 rounded-lg bg-slate-50 border border-slate-100 hover:bg-slate-100 hover:border-slate-200 cursor-pointer transition-all"
+                >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-1">
                       <p className="text-slate-900 truncate">{deployment.name}</p>

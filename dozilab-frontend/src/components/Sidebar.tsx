@@ -1,8 +1,8 @@
-import { LayoutDashboard, BookOpen, Store, Settings, ChevronRight, LogOut, ScanEye } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Store, Settings, ChevronRight, LogOut, Shield } from 'lucide-react';
 
 interface SidebarProps {
   currentView: string;
-  onViewChange: (view: 'dashboard' | 'courses' | 'appstore' | 'config' | 'documents') => void;
+  onViewChange: (view: 'dashboard' | 'courses' | 'appstore' | 'config' | 'admin') => void;
   logo: string;
   deploymentActive: boolean;
 }
@@ -13,7 +13,7 @@ export function Sidebar({ currentView, onViewChange, logo, deploymentActive }: S
     { id: 'courses', label: 'Kurse', icon: BookOpen },
     { id: 'appstore', label: 'App Store', icon: Store },
     { id: 'config', label: 'Einstellungen', icon: Settings },
-    { id: 'documents', label: 'Dokumentation', icon: ScanEye },
+    { id: 'admin', label: 'Admin Monitoring', icon: Shield },
   ];
 
   return (

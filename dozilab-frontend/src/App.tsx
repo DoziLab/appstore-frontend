@@ -5,6 +5,7 @@ import { Courses } from "./components/Courses";
 import { AppStore } from "./components/AppStore";
 import { DeploymentWizard } from "./components/DeploymentWizard";
 import { OpenStackConfig } from "./components/OpenStackConfig";
+import { AdminMonitoring } from "./components/AdminMonitoring";
 import { Sidebar } from "./components/Sidebar";
 import { Login } from "./components/Login";
 import logo from "figma:asset/5c87f57a05de8f8018669c9004318908d006dcd5.png";
@@ -14,8 +15,8 @@ type View =
   | "courses"
   | "appstore"
   | "deployment"
-  | "documents"
-  | "config";
+  | "config"
+  | "admin";
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -64,6 +65,8 @@ export default function App() {
         return <AppStore onDeploy={handleStartDeployment} />;
       case "config":
         return <OpenStackConfig />;
+      case "admin":
+        return <AdminMonitoring />;
       default:
         return <Dashboard />;
     }

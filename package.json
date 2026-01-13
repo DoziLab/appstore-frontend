@@ -1,6 +1,6 @@
 
   {
-      "name": "DoziLab University Web App UI",
+      "name": "appstore-frontend",
       "version": "0.1.0",
       "private": true,
       "dependencies": {

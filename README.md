@@ -25,3 +25,5 @@ Note: Main-Folder can be named 'appstore-frontend' or differently.
 - Start Container in main folder: `docker run -p 3000:80 appstore-frontend`
 
 - Open: 'http://localhost:3000'
+
+- Close: ctrl + c

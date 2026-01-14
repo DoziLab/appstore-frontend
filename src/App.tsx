@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { useKeycloak } from "@react-keycloak/web";
+
 import { Dashboard } from "./components/Dashboard";
-import { Documents } from "./components/Documents";
 import { Courses } from "./components/Courses";
 import { AppStore } from "./components/AppStore";
 import { DeploymentWizard } from "./components/DeploymentWizard";
@@ -22,16 +23,11 @@ type View =
   | "deployment-details";
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentView, setCurrentView] =
-    useState<View>("dashboard");
-  const [deploymentActive, setDeploymentActive] =
-    useState(false);
-  const [selectedDeployment, setSelectedDeployment] = useState<string | null>(null);
+  const { keycloak, initialized } = useKeycloak();
 
-  const handleLogin = () => {
-    setIsAuthenticated(true);
-  };
+  const [currentView, setCurrentView] = useState<View>("dashboard");
+  const [deploymentActive, setDeploymentActive] = useState(false);
+  const [selectedDeployment, setSelectedDeployment] = useState<string | null>(null);
 
   const handleStartDeployment = () => {
     setDeploymentActive(true);
@@ -71,12 +67,7 @@ export default function App() {
     if (currentView === "deployment-details" && selectedDeployment) {
       const deployment = mockDeployments[selectedDeployment as keyof typeof mockDeployments];
       if (deployment) {
-        return (
-          <DeploymentDetails
-            deployment={deployment}
-            onBack={handleBackToDashboard}
-          />
-        );
+        return <DeploymentDetails deployment={deployment} onBack={handleBackToDashboard} />;
       }
     }
 
@@ -96,9 +87,19 @@ export default function App() {
     }
   };
 
-  // Show login page if not authenticated
-  if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} logo={logo} />;
+  // Keycloak initialisiert noch
+  if (!initialized) {
+    return <div className="p-6">Loading…</div>;
+  }
+
+  // Wenn nicht eingeloggt: deine Login-Seite anzeigen, Button triggert keycloak.login()
+  if (!keycloak.authenticated) {
+    return (
+      <Login
+        onLogin={() => keycloak.login()}
+        logo={logo}
+      />
+    );
   }
 
   return (
@@ -108,10 +109,10 @@ export default function App() {
         onViewChange={setCurrentView}
         logo={logo}
         deploymentActive={deploymentActive}
+
+        //onLogout={() => keycloak.logout()}
       />
-      <main className="flex-1 overflow-auto">
-        {renderView()}
-      </main>
+      <main className="flex-1 overflow-auto">{renderView()}</main>
     </div>
   );
 }

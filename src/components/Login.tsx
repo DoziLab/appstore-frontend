@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Mail, Lock, Beaker, AlertCircle } from 'lucide-react';
+import { useState } from "react";
+import { Mail, Lock, AlertCircle } from "lucide-react";
 
 interface LoginProps {
   onLogin: () => void;
@@ -14,26 +14,10 @@ export function Login({ onLogin, logo }: LoginProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    
-    // Basic validation
-    if (!email || !password) {
-      setError('Bitte füllen Sie alle Felder aus.');
-      return;
-    }
-    
-    if (!email.includes('@')) {
-      setError('Bitte geben Sie eine gültige E-Mail-Adresse ein.');
-      return;
-    }
-
     setLoading(true);
-    
-    // Simulate login
-    setTimeout(() => {
-      setLoading(false);
-      onLogin();
-    }, 800);
+
+    // Keycloak übernimmt Auth – wir redirecten nur
+    onLogin();
   };
 
   return (

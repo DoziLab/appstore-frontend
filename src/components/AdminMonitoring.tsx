@@ -457,13 +457,14 @@ export function AdminMonitoring() {
                           <Button variant="ghost" size="sm">
                             <Eye className="w-4 h-4" />
                           </Button>
-                          <Button
+                          
+                          {/* 123456 <Button
                             variant="ghost"
                             size="sm"
                             className="text-red-600 hover:text-red-700 hover:bg-red-50"
                           >
                             <Trash2 className="w-4 h-4" />
-                          </Button>
+                          </Button> */}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -506,6 +507,7 @@ export function AdminMonitoring() {
                     <TableHead>Ressource</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Dauer</TableHead>
+                    <TableHead className="text-right">Aktionen</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -544,6 +546,13 @@ export function AdminMonitoring() {
                       </TableCell>
                       <TableCell className="text-sm text-slate-600">
                         {log.dauer}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button variant="ghost" size="sm">
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -695,8 +704,8 @@ export function AdminMonitoring() {
                             size="sm"
                             onClick={() => setSelectedTemplate(template.id)}
                           >
-                            <Eye className="w-4 h-4 mr-2" />
-                            Details prüfen
+                            <X className="w-4 h-4 mr-2" />
+                            Ablehnen
                           </Button>
                           <Button
                             size="sm"
@@ -706,7 +715,7 @@ export function AdminMonitoring() {
                             }}
                           >
                             <FileCheck className="w-4 h-4 mr-2" />
-                            Schnell genehmigen
+                            Genehmigen
                           </Button>
                         </>
                       )}

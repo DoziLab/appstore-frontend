@@ -29,11 +29,12 @@ export function Sidebar({ currentView, onViewChange, logo, deploymentActive }: S
   const { keycloak, initialized } = useKeycloak();
 
   const navItems = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "courses", label: "Kurse", icon: BookOpen },
-    { id: "appstore", label: "App Store", icon: Store },
-    { id: "config", label: "Einstellungen", icon: Settings },
-    { id: "admin", label: "Admin Monitoring", icon: Shield },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'courses', label: 'Kurse', icon: BookOpen },
+    { id: 'appstore', label: 'App Store', icon: Store },
+    { id: 'config', label: 'Einstellungen', icon: Settings },
+    { id: 'documents', label: 'Dokumentation', icon: ScanEye },
+    { id: 'admin', label: 'Admin Monitoring', icon: Shield },
   ];
 
   // tokenParsed ist typisiert als unknown | KeycloakTokenParsed, daher casten wir vorsichtig

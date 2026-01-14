@@ -54,7 +54,7 @@ export function Sidebar({ currentView, onViewChange, logo, deploymentActive }: S
   const roleLabel = useMemo(() => {
     const roles: string[] = token?.realm_access?.roles ?? [];
     if (roles.includes("admin")) return "Admin";
-    if (roles.includes("dozent") || roles.includes("teacher")) return "Dozent";
+    if (roles.includes("lecturer") || roles.includes("teacher")) return "Dozent";
     if (roles.includes("student")) return "Student";
     return "Benutzer";
   }, [token]);

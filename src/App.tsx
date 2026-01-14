@@ -90,6 +90,8 @@ export default function App() {
         return <AppStore onDeploy={handleStartDeployment} />;
       case "config":
         return <OpenStackConfig />;
+        case "documents":
+        return <AdminMonitoring />;
       case "admin":
         return <AdminMonitoring />;
       default:

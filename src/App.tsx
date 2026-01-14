@@ -91,7 +91,7 @@ export default function App() {
       case "config":
         return <OpenStackConfig />;
         case "documents":
-        return <AdminMonitoring />;
+        return <Documents />;
       case "admin":
         return <AdminMonitoring />;
       default:

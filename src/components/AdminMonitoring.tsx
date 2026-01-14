@@ -384,10 +384,15 @@ export function AdminMonitoring() {
                     Übersicht über alle aktiven und inaktiven Projekte mit Ressourcenverbrauch
                   </CardDescription>
                 </div>
-                <Button variant="outline" size="sm">
-                  <TrendingUp className="w-4 h-4 mr-2" />
-                  Export CSV
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm">
+                    Filter
+                  </Button>
+                  <Button variant="outline" size="sm">
+                    <TrendingUp className="w-4 h-4 mr-2" />
+                    Export
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -570,7 +575,7 @@ export function AdminMonitoring() {
                 <div>
                   <CardTitle>Ausstehende Template-Freigaben</CardTitle>
                   <CardDescription>
-                    Überprüfen und Genehmigen von neuen Template-Anfragen (AC 2.3, AC 2.4)
+                    Überprüfen und Genehmigen von neuen Template-Anfragen
                   </CardDescription>
                 </div>
                 <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100">

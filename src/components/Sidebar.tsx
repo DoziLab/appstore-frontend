@@ -1,4 +1,4 @@
-import { LayoutDashboard, BookOpen, Store, Settings, ChevronRight, LogOut, Shield } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Store, Settings, ChevronRight, LogOut, Shield, ScanEye } from 'lucide-react';
 
 interface SidebarProps {
   currentView: string;

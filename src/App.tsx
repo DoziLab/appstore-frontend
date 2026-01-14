@@ -18,6 +18,7 @@ type View =
   | "appstore"
   | "deployment"
   | "config"
+  | "documents"
   | "admin"
   | "deployment-details";
 

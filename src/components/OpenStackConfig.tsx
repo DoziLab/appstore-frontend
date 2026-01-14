@@ -674,7 +674,7 @@ export function OpenStackConfig() {
                   Template-Genehmigungsworkflow
                 </CardTitle>
                 <CardDescription>
-                  Verwalten Sie den Prozess für die Freigabe neuer Templates (AC 2.3, AC 2.4)
+                  Verwalten Sie den Prozess für die Freigabe neuer Templates
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -769,7 +769,7 @@ export function OpenStackConfig() {
                   Sicherheit & Secrets-Verwaltung
                 </CardTitle>
                 <CardDescription>
-                  Konfiguration für verschlüsselte Speicherung und sichere API-Nutzung (AC 3.1, AC 3.2)
+                  Konfiguration für verschlüsselte Speicherung und sichere API-Nutzung
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -845,7 +845,7 @@ export function OpenStackConfig() {
                   Automatisierte Basis-Image-Erstellung
                 </CardTitle>
                 <CardDescription>
-                  Automatisierung für die Erstellung klonbarer VM-Templates (AC 2.5)
+                  Automatisierung für die Erstellung klonbarer VM-Templates
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">

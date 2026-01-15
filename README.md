@@ -18,12 +18,14 @@ Run `npm run dev` to start the development server.
 
 Note: Main-Folder can be named 'appstore-frontend' or differently.
 
-- Start Docker local.
+– Make sure a `.env` with `VITE_KEYCLOAK_URL`, `VITE_KEYCLOAK_REALM`, `VITE_KEYCLOAK_CLIENT_ID` exists in the project root (it is included in the image; do not add it back to `.dockerignore`).
 
-- Build Container: `docker build -t appstore-frontend .`
+– Start Docker local.
 
-- Start Container in main folder: `docker run -p 3000:80 appstore-frontend`
+– Build Container: `docker build -t appstore-frontend .`
 
-- Open: 'http://localhost:3000'
+– Start Container in main folder: `docker run -p 3000:80 appstore-frontend`
 
-- Close: ctrl + c
+– Open: 'http://localhost:3000'
+
+– Close: ctrl + c

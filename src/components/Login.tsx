@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Mail, Lock, AlertCircle } from "lucide-react";
+import { useState } from 'react';
+import { Mail, Lock, Beaker, AlertCircle } from 'lucide-react';
 
 interface LoginProps {
   onLogin: () => void;
@@ -14,10 +14,26 @@ export function Login({ onLogin, logo }: LoginProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setError('');
+    
+    // Basic validation
+    if (!email || !password) {
+      setError('Bitte füllen Sie alle Felder aus.');
+      return;
+    }
+    
+    if (!email.includes('@')) {
+      setError('Bitte geben Sie eine gültige E-Mail-Adresse ein.');
+      return;
+    }
 
-    // Keycloak übernimmt Auth – wir redirecten nur
-    onLogin();
+    setLoading(true);
+    
+    // Simulate login
+    setTimeout(() => {
+      setLoading(false);
+      onLogin();
+    }, 800);
   };
 
   return (
@@ -48,7 +64,7 @@ export function Login({ onLogin, logo }: LoginProps) {
 
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Email Field
+            {/* Email Field */}
             <div>
               <label htmlFor="email" className="block text-sm text-slate-700 mb-2">
                 E-Mail-Adresse
@@ -64,9 +80,9 @@ export function Login({ onLogin, logo }: LoginProps) {
                   className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all text-slate-900 placeholder:text-slate-400"
                 />
               </div>
-            </div> */}
+            </div>
 
-            {/* Password Field
+            {/* Password Field */}
             <div>
               <label htmlFor="password" className="block text-sm text-slate-700 mb-2">
                 Passwort
@@ -82,9 +98,9 @@ export function Login({ onLogin, logo }: LoginProps) {
                   className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all text-slate-900 placeholder:text-slate-400"
                 />
               </div>
-            </div> */}
+            </div>
 
-            {/* Forgot Password
+            {/* Forgot Password */}
             <div className="flex justify-end">
               <button
                 type="button"
@@ -92,7 +108,7 @@ export function Login({ onLogin, logo }: LoginProps) {
               >
                 Passwort vergessen?
               </button>
-            </div> */}
+            </div>
 
             {/* Login Button */}
             <button
@@ -100,11 +116,11 @@ export function Login({ onLogin, logo }: LoginProps) {
               disabled={loading}
               className="w-full bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white py-3 rounded-lg transition-all shadow-lg shadow-teal-200/50 hover:shadow-xl hover:shadow-teal-300/50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Anmeldung läuft...' : 'Anmelden mit Keycloak'}
+              {loading ? 'Anmeldung läuft...' : 'Anmelden'}
             </button>
           </form>
 
-          {/* Sign Up Link
+          {/* Sign Up Link */}
           <div className="mt-6 pt-6 border-t border-slate-200 text-center">
             <p className="text-sm text-slate-600">
               Noch kein Konto?{' '}
@@ -115,8 +131,8 @@ export function Login({ onLogin, logo }: LoginProps) {
                 Jetzt registrieren
               </button>
             </p>
-          </div> */}
-        </div> 
+          </div>
+        </div>
 
         {/* Footer */}
         <div className="mt-6 text-center">

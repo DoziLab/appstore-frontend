@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useKeycloak } from "@react-keycloak/web";
-
+import { Documents } from "./components/Documents";
 import { Dashboard } from "./components/Dashboard";
 import { Courses } from "./components/Courses";
 import { AppStore } from "./components/AppStore";

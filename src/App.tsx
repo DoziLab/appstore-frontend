@@ -19,6 +19,7 @@ type View =
   | "appstore"
   | "deployment"
   | "config"
+  | "documents"
   | "admin"
   | "deployment-details";
 
@@ -80,6 +81,8 @@ export default function App() {
         return <AppStore onDeploy={handleStartDeployment} />;
       case "config":
         return <OpenStackConfig />;
+        case "documents":
+        return <Documents />;
       case "admin":
         return <AdminMonitoring />;
       default:

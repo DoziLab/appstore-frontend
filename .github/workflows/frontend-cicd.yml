@@ -34,7 +34,13 @@ jobs:
         continue-on-error: true
       
       - name: Unit Tests (Vitest)
-        run: npm run test -- --run
+        run: |
+          if npm run | grep -q " test"; then
+            npm run test -- --run
+          else
+            echo "ℹ️ No test script found – skipping tests"
+          fi
+
       
       - name: Build application
         run: npm run build

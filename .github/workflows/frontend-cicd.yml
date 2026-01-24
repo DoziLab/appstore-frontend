@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    name: Lint, Format & Test
+    name: Lint, Format & Build
     runs-on: ubuntu-latest
 
     steps:
@@ -18,9 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-         node-version: '20'
-
-          
+          node-version: '20'
 
       - name: Install dependencies
         run: npm install
@@ -28,23 +26,21 @@ jobs:
       - name: ESLint (soft check)
         run: npm run lint
         continue-on-error: true
-      
+
       - name: Prettier (soft check)
         run: npm run format:check
         continue-on-error: true
-      
-      - name: Unit Tests (Vitest)
+
+      - name: Unit Tests (optional)
         run: |
           if npm run | grep -q " test"; then
             npm run test -- --run
           else
-            echo "ℹ️ No test script found – skipping tests"
+            echo "ℹ️ No unit tests available – skipping"
           fi
 
-      
       - name: Build application
         run: npm run build
-
 
   build-and-push:
     name: Build & Push Docker Image
@@ -88,5 +84,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-

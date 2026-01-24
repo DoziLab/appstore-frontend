@@ -23,8 +23,8 @@ RUN rm /etc/nginx/conf.d/default.conf
 # Eigene nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Vite Output (bei Vite: dist!)
-COPY --from=build /app/dist /usr/share/nginx/html
+# ✅ Vite Output liegt bei euch in "build/"
+COPY --from=build /app/build /usr/share/nginx/html
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

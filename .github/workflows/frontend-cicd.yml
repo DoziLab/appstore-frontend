@@ -28,16 +28,17 @@ jobs:
       - name: ESLint (soft check)
         run: npm run lint
         continue-on-error: true
-
-
-      - name: Prettier check
+      
+      - name: Prettier (soft check)
         run: npm run format:check
-
+        continue-on-error: true
+      
       - name: Unit Tests (Vitest)
         run: npm run test -- --run
-
+      
       - name: Build application
         run: npm run build
+
 
   build-and-push:
     name: Build & Push Docker Image

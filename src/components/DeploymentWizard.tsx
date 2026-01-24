@@ -83,23 +83,8 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
             </div>
 
             <div>
-              <Label>Kurszuweisung</Label>
-              <Select defaultValue="cs101">
-                <SelectTrigger className="mt-2">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cs101">CS101 - Informatik 101</SelectItem>
-                  <SelectItem value="cs202">CS202 - Software Engineering</SelectItem>
-                  <SelectItem value="cs305">CS305 - Cloud Computing</SelectItem>
-                  <SelectItem value="cs410">CS410 - Cybersicherheit</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
               <Label>Anzahl VMs</Label>
-              <Select defaultValue="20">
+              <Select defaultValue="4">
                 <SelectTrigger className="mt-2">
                   <SelectValue />
                 </SelectTrigger>
@@ -135,6 +120,20 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
               </Select>
             </div>
 
+            <div>
+              <Label>Kurszuweisung</Label>
+              <Select defaultValue="cs101">
+                <SelectTrigger className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cs101">CS101 - Informatik 101</SelectItem>
+                  <SelectItem value="cs202">CS202 - Software Engineering</SelectItem>
+                  <SelectItem value="cs305">CS305 - Cloud Computing</SelectItem>
+                  <SelectItem value="cs410">CS410 - Cybersicherheit</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
             <div>
               <Label htmlFor="deployment-name">Deployment-Name</Label>
@@ -339,11 +338,10 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
                     <SelectItem value="14">14 GB</SelectItem>
                     <SelectItem value="15">15 GB</SelectItem>
                     <SelectItem value="16">16 GB</SelectItem>
-                    <SelectItem value="32">32 GB</SelectItem>
-                    <SelectItem value="64">64 GB</SelectItem>
-                    <SelectItem value="128">128 GB</SelectItem>
-                    <SelectItem value="256">256 GB</SelectItem>
-                    <SelectItem value="512">512 GB</SelectItem>
+                    <SelectItem value="64">50 GB</SelectItem>
+                    <SelectItem value="128">100 GB</SelectItem>
+                    <SelectItem value="256">250 GB</SelectItem>
+                    <SelectItem value="512">500 GB</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -391,7 +389,7 @@ export function DeploymentWizard({ onCancel, onComplete }: DeploymentWizardProps
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="password">Passwort-Authentifizierung (Studenten erhalten Zugangsdaten per Mail)</SelectItem>
+                  <SelectItem value="password">Passwort-Authentifizierung (Studenten erhalten Zugangdaten per Mail)</SelectItem>
                   <SelectItem value="sso">Login über DHBW SSO</SelectItem>
                   <SelectItem value="ssh">SSH-Keys</SelectItem>
                 </SelectContent>

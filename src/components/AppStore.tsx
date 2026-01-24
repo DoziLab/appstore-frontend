@@ -1,9 +1,10 @@
-import { Server, Database, GitBranch, Container, Shield, Code, Laptop, Boxes, Search } from 'lucide-react';
+import { Server, Database, GitBranch, Container, Shield, Code, Laptop, Boxes, Search, Plus } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useState } from 'react';
+import { AddTemplateDialog } from './AddTemplateDialog';
 
 interface AppStoreProps {
   onDeploy: () => void;
@@ -11,6 +12,7 @@ interface AppStoreProps {
 
 export function AppStore({ onDeploy }: AppStoreProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [addTemplateOpen, setAddTemplateOpen] = useState(false);
 
   const templates = [
     {
@@ -139,9 +141,19 @@ export function AppStore({ onDeploy }: AppStoreProps) {
   return (
     <div className="p-8 space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-slate-900 mb-2">App Store</h1>
-        <p className="text-slate-600">Durchsuche und deploye Application-Templates</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-slate-900 mb-2">App Store</h1>
+          <p className="text-slate-600">Durchsuche und deploye Application-Templates</p>
+        </div>
+        <Button
+          variant="outline"
+          className="bg-teal-500 hover:bg-teal-600 text-white border-teal-500"
+          onClick={() => setAddTemplateOpen(true)}
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Template hinzufügen
+        </Button>
       </div>
 
       {/* Search and Filter */}
@@ -231,6 +243,12 @@ export function AppStore({ onDeploy }: AppStoreProps) {
           <p className="text-slate-600">Keine Templates gefunden, die deiner Suche entsprechen</p>
         </div>
       )}
+
+      {/* Add Template Dialog */}
+      <AddTemplateDialog
+        open={addTemplateOpen}
+        onOpenChange={setAddTemplateOpen}
+      />
     </div>
   );
 }

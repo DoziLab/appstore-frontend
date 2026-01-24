@@ -25,7 +25,7 @@ export type CoursesResponse = {
   request_id: string;
 };
 
-export async function getCourses(params?: {
+export async function getMyCourses(params?: {
   page?: number;
   page_size?: number;
   semester?: string;
@@ -40,5 +40,5 @@ export async function getCourses(params?: {
   if (params?.lecturer_id) sp.set("lecturer_id", params.lecturer_id);
 
   const qs = sp.toString();
-  return apiFetch<CoursesResponse>(`/api/v1/courses${qs ? `?${qs}` : ""}`);
+  return apiFetch<CoursesResponse>(`/api/v1/courses/my${qs ? `?${qs}` : ""}`);
 }

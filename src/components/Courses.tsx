@@ -3,7 +3,7 @@ import { BookOpen, Users, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { getCourses, CourseDto } from "../api/courses"; // Pfad ggf. anpassen
+import { getMyCourses, CourseDto } from "../api/courses"; // Pfad ggf. anpassen
 
 type CourseUi = {
   id: string;
@@ -26,7 +26,7 @@ export function Courses() {
         setLoading(true);
         setError(null);
 
-        const res = await getCourses({ page: 1, page_size: 10});
+        const res = await getMyCourses({ page: 1, page_size: 10});
         if (!alive) return;
 
         setItems(res.data || []);
@@ -104,10 +104,10 @@ export function Courses() {
                   </div>
 
                   {/* Students unbekannt -> Badge optional oder Placeholder */}
-                  <Badge variant="outline" className="border-slate-300">
+                  {/* <Badge variant="outline" className="border-slate-300">
                     <Users className="w-3 h-3 mr-1" />
                     UNKNOWN
-                  </Badge>
+                  </Badge> */}
                 </div>
               </CardHeader>
 
@@ -127,7 +127,8 @@ export function Courses() {
             </Card>
           ))}
         </div>
-      )}
+      )
+      }
     </div>
   );
 }

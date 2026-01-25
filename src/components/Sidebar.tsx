@@ -34,7 +34,6 @@ export function Sidebar({ currentView, onViewChange, logo, deploymentActive }: S
     { id: 'courses', label: 'Kurse', icon: BookOpen },
     { id: 'appstore', label: 'App Store', icon: Store },
     { id: 'config', label: 'Einstellungen', icon: Settings },
-    { id: 'documents', label: 'Dokumentation', icon: ScanEye },
     { id: 'admin', label: 'Admin Monitoring', icon: Shield },
   ];
 

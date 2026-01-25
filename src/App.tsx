@@ -29,19 +29,23 @@ export default function App() {
   const [currentView, setCurrentView] = useState<View>("dashboard");
   const [deploymentActive, setDeploymentActive] = useState(false);
   const [selectedDeployment, setSelectedDeployment] = useState<string | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
-  const handleStartDeployment = () => {
+  const handleStartDeployment = (templateId: string) => {
+    setSelectedTemplateId(templateId);
     setDeploymentActive(true);
     setCurrentView("deployment");
   };
 
   const handleCancelDeployment = () => {
     setDeploymentActive(false);
+    setSelectedTemplateId(null);
     setCurrentView("appstore");
   };
 
   const handleCompleteDeployment = () => {
     setDeploymentActive(false);
+    setSelectedTemplateId(null);
     setCurrentView("dashboard");
   };
 
@@ -56,9 +60,10 @@ export default function App() {
   };
 
   const renderView = () => {
-    if (deploymentActive) {
+    if (deploymentActive && selectedTemplateId) {
       return (
         <DeploymentWizard
+          templateId={selectedTemplateId}
           onCancel={handleCancelDeployment}
           onComplete={handleCompleteDeployment}
         />

@@ -9,7 +9,7 @@ import { getTemplates, type TemplateDto } from '../api/templates';
 import type { LucideIcon } from 'lucide-react';
 
 interface AppStoreProps {
-  onDeploy: () => void;
+  onDeploy: (templateId: string) => void;
 }
 
 // Helper function to get icon and color based on template name
@@ -55,6 +55,19 @@ function getTemplateStyle(name: string): { icon: LucideIcon; color: string } {
   }
   if (nameLower.includes('database') || nameLower.includes('db')) {
     return { icon: Database, color: 'from-blue-500 to-cyan-500' };
+  }
+
+  if (nameLower.includes("Ubuntu")) {
+    return { icon: Server, color: 'from-slate-500 to-slate-600' };
+  }
+  if (nameLower.includes("Debian")) {
+    return { icon: Server, color: 'from-slate-500 to-slate-600' };
+  }
+  if (nameLower.includes("CentOS")) {
+    return { icon: Server, color: 'from-slate-500 to-slate-600' };
+  }
+  if (nameLower.includes("Fedora")) {
+    return { icon: Server, color: 'from-slate-500 to-slate-600' };
   }
   
   // Default
@@ -225,7 +238,7 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                   )}
 
                   <Button 
-                    onClick={onDeploy}
+                    onClick={() => onDeploy(template.id)}
                     className="w-full bg-teal-500 hover:bg-teal-600 text-white mt-4"
                     disabled={activeVersions.length === 0}
                   >

@@ -1,5 +1,18 @@
 import { apiFetch } from "./http";
 
+export type TemplateParameter = {
+  name: string;
+  type: string;
+  default?: any;
+  label?: string;
+  description?: string;
+  required?: boolean;
+  secret?: boolean;
+  step?: string;
+  hidden?: boolean;
+  enum?: string[];
+};
+
 export type TemplateVersionDto = {
   id: string;
   template_id: string;
@@ -7,15 +20,7 @@ export type TemplateVersionDto = {
   git_commit_sha: string;
   is_active: boolean;
   created_at: string;
-  parameters?: Array<{
-    name: string;
-    type: string;
-    default?: any;
-    label?: string;
-    description?: string;
-    required?: boolean;
-    secret?: boolean;
-  }>;
+  parameters?: TemplateParameter[];
 };
 
 export type TemplateDto = {
@@ -76,4 +81,30 @@ export async function getTemplate(templateId: string) {
     timestamp: string;
     request_id: string;
   }>(`/api/v1/templates/${templateId}`);
+}
+
+export async function getTemplateVersion(versionId: string, includeParameters = true) {
+  const sp = new URLSearchParams();
+  sp.set("include_parameters", String(includeParameters));
+  return apiFetch<{
+    success: boolean;
+    message: string;
+    data: TemplateVersionDto;
+    errors: unknown;
+    timestamp: string;
+    request_id: string;
+  }>(`/api/v1/template-versions/${versionId}?${sp.toString()}`);
+}
+
+export async function getTemplateVersions(templateId: string, activeOnly = false) {
+  const sp = new URLSearchParams();
+  if (activeOnly) sp.set("active_only", "true");
+  return apiFetch<{
+    success: boolean;
+    message: string;
+    data: TemplateVersionDto[];
+    errors: unknown;
+    timestamp: string;
+    request_id: string;
+  }>(`/api/v1/template-versions/template/${templateId}${sp.toString() ? `?${sp.toString()}` : ""}`);
 }

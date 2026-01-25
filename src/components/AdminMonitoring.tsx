@@ -30,7 +30,11 @@ import {
   TableHeader,
   TableRow,
 } from './ui/table';
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from "react";
+import { getDeployments, DeploymentDto } from "../api/deployments";
+
+
+
 
 // Mock data für Dozenten-Projekte
 const dozentenProjekte = [
@@ -200,8 +204,49 @@ const pendingTemplates = [
 ];
 
 export function AdminMonitoring() {
+  // 🔹 Deployment-Overview State
+  const [deploymentRows, setDeploymentRows] =
+    useState<DeploymentOverviewDto[]>([]);
+  const [loadingDeployments, setLoadingDeployments] = useState(true);
+  const [deploymentError, setDeploymentError] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null);
   const [approvalComment, setApprovalComment] = useState('');
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        setLoadingDeployments(true);
+        setDeploymentError(null);
+
+        const res = await getDeployments({ page: 1, page_size: 1 });
+
+        if (!alive) return;
+
+        setDeploymentRows(res.data || []);
+      } catch (e) {
+        if (!alive) return;
+        setDeploymentError(
+          e instanceof Error ? e.message : "Unbekannter Fehler"
+        );
+      } finally {
+        if (!alive) return;
+        setLoadingDeployments(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const totalDeployments = useMemo(() => {
+    return deploymentRows.reduce(
+      (sum, row) => sum + (row.aktive_deployments ?? 0),
+      0
+    );
+  }, [deploymentRows]);
+
 
   const handleApprove = (templateId: number) => {
     console.log(`Template ${templateId} genehmigt mit Kommentar:`, approvalComment);
@@ -341,8 +386,13 @@ export function AdminMonitoring() {
               <div>
                 <p className="text-sm text-slate-500">Gesamte Deployments</p>
                 <p className="text-2xl text-slate-900">
-                  {dozentenProjekte.reduce((sum, d) => sum + d.aktiveDeployments, 0)}
+                  {loadingDeployments
+                    ? "…"
+                    : deploymentError
+                      ? "–"
+                      : totalDeployments}
                 </p>
+
               </div>
             </div>
           </CardContent>

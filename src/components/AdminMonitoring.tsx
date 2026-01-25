@@ -1,10 +1,10 @@
-import { 
-  Activity, 
-  Server, 
-  Users, 
-  TrendingUp, 
-  Cpu, 
-  HardDrive, 
+import {
+  Activity,
+  Server,
+  Users,
+  TrendingUp,
+  Cpu,
+  HardDrive,
   Database,
   AlertTriangle,
   CheckCircle2,
@@ -147,10 +147,10 @@ const apiLogs = [
 
 // Globale Ressourcenstatistiken
 const gesamtQuotas = {
-  vCPUs: { verwendet: 60, verfuegbar: 256, prozent: (60/256) * 100 },
-  ram: { verwendet: 120, verfuegbar: 512, prozent: (120/512) * 100 },
-  storage: { verwendet: 900, verfuegbar: 5120, prozent: (900/5120) * 100 },
-  vms: { verwendet: 15, verfuegbar: 100, prozent: (15/100) * 100 },
+  vCPUs: { verwendet: 60, verfuegbar: 256, prozent: (60 / 256) * 100 },
+  ram: { verwendet: 120, verfuegbar: 512, prozent: (120 / 512) * 100 },
+  storage: { verwendet: 900, verfuegbar: 5120, prozent: (900 / 5120) * 100 },
+  vms: { verwendet: 15, verfuegbar: 100, prozent: (15 / 100) * 100 },
 };
 
 // Mock data für ausstehende Template-Freigaben
@@ -401,7 +401,6 @@ export function AdminMonitoring() {
                     <TableHead>Storage (GB)</TableHead>
                     <TableHead>VMs</TableHead>
                     <TableHead>Letzte Aktivität</TableHead>
-                    <TableHead>Status</TableHead>
                     <TableHead className="text-right">Aktionen</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -427,42 +426,11 @@ export function AdminMonitoring() {
                           {projekt.letzteAktivitaet}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={
-                            projekt.status === 'aktiv'
-                              ? 'bg-green-100 text-green-700 hover:bg-green-100'
-                              : projekt.status === 'inaktiv'
-                              ? 'bg-slate-100 text-slate-700 hover:bg-slate-100'
-                              : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-100'
-                          }
-                        >
-                          {projekt.status === 'aktiv' ? (
-                            <>
-                              <CheckCircle2 className="w-3 h-3 mr-1" />
-                              Aktiv
-                            </>
-                          ) : projekt.status === 'inaktiv' ? (
-                            'Inaktiv'
-                          ) : (
-                            <>
-                              <AlertTriangle className="w-3 h-3 mr-1" />
-                              Warnung
-                            </>
-                          )}
-                        </Badge>
-                      </TableCell>
+
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
                           <Button variant="ghost" size="sm">
                             <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
                       </TableCell>
@@ -561,7 +529,7 @@ export function AdminMonitoring() {
                 <div>
                   <CardTitle>Ausstehende Template-Freigaben</CardTitle>
                   <CardDescription>
-                    Überprüfen und Genehmigen von neuen Template-Anfragen (AC 2.3, AC 2.4)
+                    Überprüfen und Genehmigen von neuen Template-Anfragen
                   </CardDescription>
                 </div>
                 <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100">
@@ -690,14 +658,7 @@ export function AdminMonitoring() {
                         </>
                       ) : (
                         <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSelectedTemplate(template.id)}
-                          >
-                            <Eye className="w-4 h-4 mr-2" />
-                            Details prüfen
-                          </Button>
+
                           <Button
                             size="sm"
                             className="bg-green-600 hover:bg-green-700 text-white"
@@ -706,7 +667,7 @@ export function AdminMonitoring() {
                             }}
                           >
                             <FileCheck className="w-4 h-4 mr-2" />
-                            Schnell genehmigen
+                            Antrag bearbeiten
                           </Button>
                         </>
                       )}

@@ -14,7 +14,7 @@ export function OpenStackConfig() {
   const [showPassword, setShowPassword] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'testing'>('connected');
   const [settingsMode, setSettingsMode] = useState<'general' | 'admin'>('general');
-  
+
   // Admin-Einstellungen States
   const [autoApproveTemplates, setAutoApproveTemplates] = useState(false);
   const [encryptSecrets, setEncryptSecrets] = useState(true);
@@ -52,21 +52,19 @@ export function OpenStackConfig() {
             <div className="flex items-center gap-3 bg-slate-100 rounded-lg p-1">
               <button
                 onClick={() => setSettingsMode('general')}
-                className={`px-6 py-2 rounded-md transition-all ${
-                  settingsMode === 'general'
-                    ? 'bg-white text-teal-600 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                className={`px-6 py-2 rounded-md transition-all ${settingsMode === 'general'
+                  ? 'bg-white text-teal-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+                  }`}
               >
                 Generell
               </button>
               <button
                 onClick={() => setSettingsMode('admin')}
-                className={`px-6 py-2 rounded-md transition-all ${
-                  settingsMode === 'admin'
-                    ? 'bg-white text-teal-600 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                className={`px-6 py-2 rounded-md transition-all ${settingsMode === 'admin'
+                  ? 'bg-white text-teal-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+                  }`}
               >
                 <Shield className="w-4 h-4 inline mr-2" />
                 Admin
@@ -86,7 +84,7 @@ export function OpenStackConfig() {
                 <div className="flex items-center gap-4">
                   <div className={`
                     w-12 h-12 rounded-full flex items-center justify-center
-                    ${connectionStatus === 'connected' ? 'bg-green-100' : 
+                    ${connectionStatus === 'connected' ? 'bg-green-100' :
                       connectionStatus === 'testing' ? 'bg-blue-100' : 'bg-red-100'}
                   `}>
                     {connectionStatus === 'connected' ? (
@@ -101,20 +99,20 @@ export function OpenStackConfig() {
                     <p className="text-slate-900">Verbindungsstatus</p>
                     <p className="text-sm text-slate-500">
                       {connectionStatus === 'connected' ? 'Mit OpenStack verbunden' :
-                       connectionStatus === 'testing' ? 'Verbindung wird getestet...' : 'Nicht verbunden'}
+                        connectionStatus === 'testing' ? 'Verbindung wird getestet...' : 'Nicht verbunden'}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Badge 
+                  <Badge
                     className={
                       connectionStatus === 'connected' ? 'bg-green-100 text-green-700 hover:bg-green-100' :
-                      connectionStatus === 'testing' ? 'bg-blue-100 text-blue-700 hover:bg-blue-100' :
-                      'bg-red-100 text-red-700 hover:bg-red-100'
+                        connectionStatus === 'testing' ? 'bg-blue-100 text-blue-700 hover:bg-blue-100' :
+                          'bg-red-100 text-red-700 hover:bg-red-100'
                     }
                   >
                     {connectionStatus === 'connected' ? 'Aktiv' :
-                     connectionStatus === 'testing' ? 'Testend' : 'Inaktiv'}
+                      connectionStatus === 'testing' ? 'Testend' : 'Inaktiv'}
                   </Badge>
                   <Button
                     variant="outline"
@@ -142,7 +140,7 @@ export function OpenStackConfig() {
               <CardContent className="space-y-4">
                 <div>
                   <Label htmlFor="auth-url">Authentifizierungs-URL</Label>
-                  <Input 
+                  <Input
                     id="auth-url"
                     className="mt-2"
                     defaultValue="https://openstack.university.edu:5000/v3"
@@ -151,7 +149,7 @@ export function OpenStackConfig() {
 
                 <div>
                   <Label htmlFor="project-name">Projektname</Label>
-                  <Input 
+                  <Input
                     id="project-name"
                     className="mt-2"
                     defaultValue="DoziLab-Production"
@@ -160,7 +158,7 @@ export function OpenStackConfig() {
 
                 <div>
                   <Label htmlFor="domain">Domain</Label>
-                  <Input 
+                  <Input
                     id="domain"
                     className="mt-2"
                     defaultValue="default"
@@ -169,7 +167,7 @@ export function OpenStackConfig() {
 
                 <div>
                   <Label htmlFor="username">Benutzername</Label>
-                  <Input 
+                  <Input
                     id="username"
                     className="mt-2"
                     defaultValue="admin"
@@ -179,7 +177,7 @@ export function OpenStackConfig() {
                 <div>
                   <Label htmlFor="password">Passwort</Label>
                   <div className="relative mt-2">
-                    <Input 
+                    <Input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
                       defaultValue="supersecretpassword"
@@ -197,7 +195,7 @@ export function OpenStackConfig() {
                 <div>
                   <Label htmlFor="api-key">API-Key (Optional)</Label>
                   <div className="relative mt-2">
-                    <Input 
+                    <Input
                       id="api-key"
                       type={showApiKey ? 'text' : 'password'}
                       placeholder="API-Key eingeben, falls Key-basierte Auth verwendet wird"
@@ -233,7 +231,7 @@ export function OpenStackConfig() {
                 <CardContent className="space-y-4">
                   <div>
                     <Label htmlFor="compute">Compute (Nova)</Label>
-                    <Input 
+                    <Input
                       id="compute"
                       className="mt-2"
                       defaultValue="https://openstack.university.edu:8774/v2.1"
@@ -242,7 +240,7 @@ export function OpenStackConfig() {
 
                   <div>
                     <Label htmlFor="network">Netzwerk (Neutron)</Label>
-                    <Input 
+                    <Input
                       id="network"
                       className="mt-2"
                       defaultValue="https://openstack.university.edu:9696"
@@ -251,7 +249,7 @@ export function OpenStackConfig() {
 
                   <div>
                     <Label htmlFor="storage">Block Storage (Cinder)</Label>
-                    <Input 
+                    <Input
                       id="storage"
                       className="mt-2"
                       defaultValue="https://openstack.university.edu:8776/v3"
@@ -260,7 +258,7 @@ export function OpenStackConfig() {
 
                   <div>
                     <Label htmlFor="image">Image (Glance)</Label>
-                    <Input 
+                    <Input
                       id="image"
                       className="mt-2"
                       defaultValue="https://openstack.university.edu:9292"
@@ -321,7 +319,7 @@ export function OpenStackConfig() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="region">Region</Label>
-                  <Input 
+                  <Input
                     id="region"
                     className="mt-2"
                     defaultValue="RegionOne"
@@ -330,7 +328,7 @@ export function OpenStackConfig() {
 
                 <div>
                   <Label htmlFor="availability-zone">Availability Zone</Label>
-                  <Input 
+                  <Input
                     id="availability-zone"
                     className="mt-2"
                     defaultValue="nova"
@@ -339,7 +337,7 @@ export function OpenStackConfig() {
 
                 <div>
                   <Label htmlFor="timeout">Verbindungszeitüberschreitung (Sekunden)</Label>
-                  <Input 
+                  <Input
                     id="timeout"
                     type="number"
                     className="mt-2"
@@ -349,7 +347,7 @@ export function OpenStackConfig() {
 
                 <div>
                   <Label htmlFor="retry">Wiederholversuche</Label>
-                  <Input 
+                  <Input
                     id="retry"
                     type="number"
                     className="mt-2"
@@ -381,7 +379,7 @@ export function OpenStackConfig() {
                 <div className="flex items-center gap-4">
                   <div className={`
                     w-12 h-12 rounded-full flex items-center justify-center
-                    ${connectionStatus === 'connected' ? 'bg-green-100' : 
+                    ${connectionStatus === 'connected' ? 'bg-green-100' :
                       connectionStatus === 'testing' ? 'bg-blue-100' : 'bg-red-100'}
                   `}>
                     {connectionStatus === 'connected' ? (
@@ -396,20 +394,20 @@ export function OpenStackConfig() {
                     <p className="text-slate-900">Verbindungsstatus</p>
                     <p className="text-sm text-slate-500">
                       {connectionStatus === 'connected' ? 'Mit OpenStack verbunden' :
-                       connectionStatus === 'testing' ? 'Verbindung wird getestet...' : 'Nicht verbunden'}
+                        connectionStatus === 'testing' ? 'Verbindung wird getestet...' : 'Nicht verbunden'}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Badge 
+                  <Badge
                     className={
                       connectionStatus === 'connected' ? 'bg-green-100 text-green-700 hover:bg-green-100' :
-                      connectionStatus === 'testing' ? 'bg-blue-100 text-blue-700 hover:bg-blue-100' :
-                      'bg-red-100 text-red-700 hover:bg-red-100'
+                        connectionStatus === 'testing' ? 'bg-blue-100 text-blue-700 hover:bg-blue-100' :
+                          'bg-red-100 text-red-700 hover:bg-red-100'
                     }
                   >
                     {connectionStatus === 'connected' ? 'Aktiv' :
-                     connectionStatus === 'testing' ? 'Testend' : 'Inaktiv'}
+                      connectionStatus === 'testing' ? 'Testend' : 'Inaktiv'}
                   </Badge>
                   <Button
                     variant="outline"
@@ -437,7 +435,7 @@ export function OpenStackConfig() {
               <CardContent className="space-y-4">
                 <div>
                   <Label htmlFor="auth-url">Authentifizierungs-URL</Label>
-                  <Input 
+                  <Input
                     id="auth-url"
                     className="mt-2"
                     defaultValue="https://openstack.university.edu:5000/v3"
@@ -446,7 +444,7 @@ export function OpenStackConfig() {
 
                 <div>
                   <Label htmlFor="project-name">Projektname</Label>
-                  <Input 
+                  <Input
                     id="project-name"
                     className="mt-2"
                     defaultValue="DoziLab-Production"
@@ -455,7 +453,7 @@ export function OpenStackConfig() {
 
                 <div>
                   <Label htmlFor="domain">Domain</Label>
-                  <Input 
+                  <Input
                     id="domain"
                     className="mt-2"
                     defaultValue="default"
@@ -464,7 +462,7 @@ export function OpenStackConfig() {
 
                 <div>
                   <Label htmlFor="username">Benutzername</Label>
-                  <Input 
+                  <Input
                     id="username"
                     className="mt-2"
                     defaultValue="admin"
@@ -474,7 +472,7 @@ export function OpenStackConfig() {
                 <div>
                   <Label htmlFor="password">Passwort</Label>
                   <div className="relative mt-2">
-                    <Input 
+                    <Input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
                       defaultValue="supersecretpassword"
@@ -492,7 +490,7 @@ export function OpenStackConfig() {
                 <div>
                   <Label htmlFor="api-key">API-Key (Optional)</Label>
                   <div className="relative mt-2">
-                    <Input 
+                    <Input
                       id="api-key"
                       type={showApiKey ? 'text' : 'password'}
                       placeholder="API-Key eingeben, falls Key-basierte Auth verwendet wird"
@@ -528,7 +526,7 @@ export function OpenStackConfig() {
                 <CardContent className="space-y-4">
                   <div>
                     <Label htmlFor="compute">Compute (Nova)</Label>
-                    <Input 
+                    <Input
                       id="compute"
                       className="mt-2"
                       defaultValue="https://openstack.university.edu:8774/v2.1"
@@ -537,7 +535,7 @@ export function OpenStackConfig() {
 
                   <div>
                     <Label htmlFor="network">Netzwerk (Neutron)</Label>
-                    <Input 
+                    <Input
                       id="network"
                       className="mt-2"
                       defaultValue="https://openstack.university.edu:9696"
@@ -546,7 +544,7 @@ export function OpenStackConfig() {
 
                   <div>
                     <Label htmlFor="storage">Block Storage (Cinder)</Label>
-                    <Input 
+                    <Input
                       id="storage"
                       className="mt-2"
                       defaultValue="https://openstack.university.edu:8776/v3"
@@ -555,7 +553,7 @@ export function OpenStackConfig() {
 
                   <div>
                     <Label htmlFor="image">Image (Glance)</Label>
-                    <Input 
+                    <Input
                       id="image"
                       className="mt-2"
                       defaultValue="https://openstack.university.edu:9292"
@@ -616,7 +614,7 @@ export function OpenStackConfig() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="region">Region</Label>
-                  <Input 
+                  <Input
                     id="region"
                     className="mt-2"
                     defaultValue="RegionOne"
@@ -625,7 +623,7 @@ export function OpenStackConfig() {
 
                 <div>
                   <Label htmlFor="availability-zone">Availability Zone</Label>
-                  <Input 
+                  <Input
                     id="availability-zone"
                     className="mt-2"
                     defaultValue="nova"
@@ -634,7 +632,7 @@ export function OpenStackConfig() {
 
                 <div>
                   <Label htmlFor="timeout">Verbindungszeitüberschreitung (Sekunden)</Label>
-                  <Input 
+                  <Input
                     id="timeout"
                     type="number"
                     className="mt-2"
@@ -644,7 +642,7 @@ export function OpenStackConfig() {
 
                 <div>
                   <Label htmlFor="retry">Wiederholversuche</Label>
-                  <Input 
+                  <Input
                     id="retry"
                     type="number"
                     className="mt-2"
@@ -674,7 +672,7 @@ export function OpenStackConfig() {
                   Template-Genehmigungsworkflow
                 </CardTitle>
                 <CardDescription>
-                  Verwalten Sie den Prozess für die Freigabe neuer Templates (AC 2.3, AC 2.4)
+                  Verwalten Sie den Prozess für die Freigabe neuer Templates
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -761,163 +759,6 @@ export function OpenStackConfig() {
               </CardContent>
             </Card>
 
-            {/* Security & Secrets Management */}
-            <Card className="border-slate-200 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Lock className="w-5 h-5" />
-                  Sicherheit & Secrets-Verwaltung
-                </CardTitle>
-                <CardDescription>
-                  Konfiguration für verschlüsselte Speicherung und sichere API-Nutzung (AC 3.1, AC 3.2)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                  <div className="flex-1">
-                    <p className="text-slate-900">Verschlüsselte Secrets-Speicherung</p>
-                    <p className="text-sm text-slate-500">
-                      Alle Zugangsdaten werden verschlüsselt gespeichert (kein Client-Side-Storage)
-                    </p>
-                  </div>
-                  <Switch
-                    checked={encryptSecrets}
-                    onCheckedChange={setEncryptSecrets}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                  <div className="flex-1">
-                    <p className="text-slate-900">Prinzip der minimalen Berechtigung</p>
-                    <p className="text-sm text-slate-500">
-                      OpenStack-APIs nur mit minimalen erforderlichen Rechten nutzen
-                    </p>
-                  </div>
-                  <Switch
-                    checked={enforceMinPrivilege}
-                    onCheckedChange={setEnforceMinPrivilege}
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="encryption-key">Verschlüsselungs-Algorithmus</Label>
-                  <Input
-                    id="encryption-key"
-                    className="mt-2"
-                    defaultValue="AES-256-GCM"
-                    disabled
-                  />
-                  <p className="text-sm text-slate-500 mt-1">
-                    Industriestandard-Verschlüsselung für maximale Sicherheit
-                  </p>
-                </div>
-
-                <div>
-                  <Label htmlFor="key-rotation">Schlüsselrotation (Tage)</Label>
-                  <Input
-                    id="key-rotation"
-                    type="number"
-                    className="mt-2"
-                    defaultValue="90"
-                    placeholder="Tage bis zur automatischen Rotation"
-                  />
-                </div>
-
-                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm text-green-900">Sicherheitsstatus</p>
-                      <p className="text-sm text-green-700 mt-1">
-                        Alle Secrets verschlüsselt · Kein Client-Side-Storage · OpenStack-Policies konform
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Automated Base Image Creation */}
-            <Card className="border-slate-200 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileCode className="w-5 h-5" />
-                  Automatisierte Basis-Image-Erstellung
-                </CardTitle>
-                <CardDescription>
-                  Automatisierung für die Erstellung klonbarer VM-Templates (AC 2.5)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                  <div className="flex-1">
-                    <p className="text-slate-900">Automatische Image-Erstellung aktivieren</p>
-                    <p className="text-sm text-slate-500">
-                      Basis-VMs werden automatisch als klonbare Templates gespeichert
-                    </p>
-                  </div>
-                  <Switch
-                    checked={autoImageCreation}
-                    onCheckedChange={setAutoImageCreation}
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="automation-script">Automatisierungsskript-Pfad</Label>
-                  <Input
-                    id="automation-script"
-                    className="mt-2"
-                    defaultValue="/opt/dozilab/scripts/create-base-image.sh"
-                    placeholder="Pfad zum Automatisierungsskript"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="base-image-template">Basis-Template-Konfiguration</Label>
-                  <Textarea
-                    id="base-image-template"
-                    className="mt-2 font-mono text-sm"
-                    rows={6}
-                    defaultValue={`# Base Image Automation Config
-image_format: qcow2
-snapshot_enabled: true
-clone_template: true
-auto_optimize: true
-cleanup_after_build: true`}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <Label htmlFor="image-retention" className="text-sm text-slate-600">
-                      Image-Aufbewahrung (Tage)
-                    </Label>
-                    <Input
-                      id="image-retention"
-                      type="number"
-                      className="mt-2"
-                      defaultValue="365"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="max-concurrent-builds" className="text-sm text-slate-600">
-                      Max. gleichzeitige Builds
-                    </Label>
-                    <Input
-                      id="max-concurrent-builds"
-                      type="number"
-                      className="mt-2"
-                      defaultValue="3"
-                    />
-                  </div>
-                </div>
-
-                <Button variant="outline" className="w-full">
-                  <FileCode className="w-4 h-4 mr-2" />
-                  Automatisierungsskript testen
-                </Button>
-              </CardContent>
-            </Card>
           </div>
 
           <div className="flex gap-3">

@@ -32,6 +32,11 @@ import {
 } from './ui/table';
 import { useState, useEffect, useMemo } from "react";
 import { getDeployments, DeploymentDto } from "../api/deployments";
+import {
+  getDeploymentLogs,
+  DeploymentLogDto,
+} from "../api/deployments";
+
 
 
 
@@ -213,7 +218,16 @@ export function AdminMonitoring() {
   const [approvalComment, setApprovalComment] = useState('');
   const [activeDeployments, setActiveDeployments] = useState<number>(0);
   const [inactiveDeployments, setInactiveDeployments] = useState<number>(0);
+  // Logs (Option A: pro Deployment)
+  const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
+  const [deploymentLogs, setDeploymentLogs] = useState<DeploymentLogDto[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [logsError, setLogsError] = useState<string | null>(null);
+  const [logsOpen, setLogsOpen] = useState(false);
 
+
+
+  // ---------- EFFECT 1: DEPLOYMENTS ----------
   useEffect(() => {
     let alive = true;
 
@@ -223,21 +237,15 @@ export function AdminMonitoring() {
         setDeploymentError(null);
 
         const res = await getDeployments({ page: 1, page_size: 1 });
-
         if (!alive) return;
-        const active = res.data?.filter(
-          d => d.status === "ACTIVE"
-        ).length ?? 0;
 
-        const inactive = res.data?.filter(
-          d => d.status !== "ACTIVE"
-        ).length ?? 0;
-
-        setInactiveDeployments(inactive);
-
+        const active =
+          res.data?.filter(d => d.status === "ACTIVE").length ?? 0;
+        const inactive =
+          res.data?.filter(d => d.status !== "ACTIVE").length ?? 0;
 
         setActiveDeployments(active);
-
+        setInactiveDeployments(inactive);
         setDeploymentRows(res.data || []);
       } catch (e) {
         if (!alive) return;
@@ -254,6 +262,39 @@ export function AdminMonitoring() {
       alive = false;
     };
   }, []);
+
+  // ---------- EFFECT 2: LOGS ----------
+  useEffect(() => {
+    if (!selectedDeploymentId) return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        setLoadingLogs(true);
+        setLogsError(null);
+
+        const res = await getDeploymentLogs(selectedDeploymentId);
+        if (!alive) return;
+
+        setDeploymentLogs(res.data || []);
+      } catch (e) {
+        if (!alive) return;
+        setLogsError(
+          e instanceof Error ? e.message : "Unbekannter Fehler"
+        );
+      } finally {
+        if (!alive) return;
+        setLoadingLogs(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [selectedDeploymentId]);
+
+
 
   const totalDeployments = useMemo(() => {
     return deploymentRows.reduce(
@@ -508,84 +549,74 @@ export function AdminMonitoring() {
           </Card>
         </TabsContent>
 
+
         {/* API-Logs Tab */}
         <TabsContent value="logs" className="space-y-4">
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>API-Aufrufe & Ressourcen-Allokation</CardTitle>
-                  <CardDescription>
-                    Logging und Monitoring aller OpenStack-API-Interaktionen
-                  </CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm">
-                    Filter
-                  </Button>
-                  <Button variant="outline" size="sm">
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    Export
-                  </Button>
-                </div>
-              </div>
+              <CardTitle>Deployment-Logs</CardTitle>
+              <CardDescription>
+                Logs sind immer einem konkreten Deployment zugeordnet.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Zeitstempel</TableHead>
-                    <TableHead>Benutzer</TableHead>
-                    <TableHead>Aktion</TableHead>
-                    <TableHead>Ressource</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Dauer</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {apiLogs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell className="text-sm text-slate-600">
-                        {log.timestamp}
-                      </TableCell>
-                      <TableCell className="text-sm">{log.user}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{log.action}</Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-slate-600">
-                        {log.resource}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={
-                            log.status === 'erfolg'
-                              ? 'bg-green-100 text-green-700 hover:bg-green-100'
-                              : 'bg-red-100 text-red-700 hover:bg-red-100'
-                          }
-                        >
-                          {log.status === 'erfolg' ? (
-                            <>
-                              <CheckCircle2 className="w-3 h-3 mr-1" />
-                              Erfolg
-                            </>
-                          ) : (
-                            <>
-                              <AlertTriangle className="w-3 h-3 mr-1" />
-                              Fehler
-                            </>
-                          )}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-slate-600">
-                        {log.dauer}
-                      </TableCell>
+
+            <CardContent className="space-y-4">
+              {/* Empty State: keine Deployments */}
+              {deploymentRows.length === 0 && (
+                <div className="p-6 text-center border border-slate-200 rounded-lg bg-slate-50">
+                  <p className="text-sm text-slate-600">
+                    Es sind aktuell keine Deployments vorhanden.
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Deployment-Logs stehen erst zur Verfügung, sobald ein Deployment existiert.
+                  </p>
+                </div>
+              )}
+
+              {/* Deployment-Liste */}
+              {deploymentRows.length > 0 && (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Erstellt</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+
+                  <TableBody>
+                    {deploymentRows.map((deployment) => (
+                      <TableRow
+                        key={deployment.id}
+                        className="cursor-pointer hover:bg-slate-50"
+                        onClick={() => {
+                          setSelectedDeploymentId(deployment.id);
+                          setLogsOpen(true);
+                        }}
+                      >
+                        <TableCell className="font-medium">
+                          {deployment.name ?? deployment.id}
+                        </TableCell>
+
+                        <TableCell>
+                          <Badge variant="outline">
+                            {deployment.status}
+                          </Badge>
+                        </TableCell>
+
+                        <TableCell className="text-sm text-slate-600">
+                          {new Date(deployment.created_at).toLocaleDateString("de-DE")}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
+
           </Card>
         </TabsContent>
+
 
         {/* Template-Freigaben Tab */}
         <TabsContent value="templates" className="space-y-4">

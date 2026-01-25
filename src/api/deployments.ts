@@ -1,11 +1,34 @@
 import { apiFetch } from "./http";
 
+export type DeploymentStatus =
+    | "ACTIVE"
+    | "CREATING"
+    | "FAILED"
+    | "DELETING"
+    | "DELETED"
+    | "ERROR";
+
 export type DeploymentDto = {
     id: string;
     name: string;
-    status: string;
+    status: DeploymentStatus;
     created_at: string;
     updated_at: string;
+};
+
+export type DeploymentLogDto = {
+    id: string;
+    timestamp: string;      // created_at o.ä.
+    level?: string;         // INFO / ERROR (optional)
+    message: string;
+};
+export type DeploymentLogsResponse = {
+    success: boolean;
+    message?: string;
+    data: DeploymentLogDto[];
+    errors?: unknown;
+    timestamp?: string;
+    request_id?: string;
 };
 
 export type DeploymentsResponse = {
@@ -38,3 +61,9 @@ export async function getDeployments(params?: {
         `/api/v1/deployments${qs ? `?${qs}` : ""}`
     );
 }
+export async function getDeploymentLogs(deploymentId: string) {
+    return apiFetch<DeploymentLogsResponse>(
+        `/api/v1/deployments/${deploymentId}/logs`
+    );
+}
+

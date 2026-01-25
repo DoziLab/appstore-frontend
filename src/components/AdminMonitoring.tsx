@@ -211,6 +211,9 @@ export function AdminMonitoring() {
   const [deploymentError, setDeploymentError] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null);
   const [approvalComment, setApprovalComment] = useState('');
+  const [activeDeployments, setActiveDeployments] = useState<number>(0);
+  const [inactiveDeployments, setInactiveDeployments] = useState<number>(0);
+
   useEffect(() => {
     let alive = true;
 
@@ -222,6 +225,18 @@ export function AdminMonitoring() {
         const res = await getDeployments({ page: 1, page_size: 1 });
 
         if (!alive) return;
+        const active = res.data?.filter(
+          d => d.status === "ACTIVE"
+        ).length ?? 0;
+
+        const inactive = res.data?.filter(
+          d => d.status !== "ACTIVE"
+        ).length ?? 0;
+
+        setInactiveDeployments(inactive);
+
+
+        setActiveDeployments(active);
 
         setDeploymentRows(res.data || []);
       } catch (e) {
@@ -407,8 +422,9 @@ export function AdminMonitoring() {
               <div>
                 <p className="text-sm text-slate-500">Inaktive Projekte</p>
                 <p className="text-2xl text-slate-900">
-                  {dozentenProjekte.filter(d => d.status === 'warnung' || d.status === 'inaktiv').length}
+                  {loadingDeployments ? "…" : inactiveDeployments}
                 </p>
+
               </div>
             </div>
           </CardContent>

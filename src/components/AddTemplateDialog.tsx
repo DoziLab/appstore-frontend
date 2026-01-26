@@ -7,7 +7,7 @@ import { Textarea } from './ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Alert, AlertDescription } from './ui/alert';
 import { AlertCircle, CheckCircle2, Github, FileText } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface AddTemplateDialogProps {
   open: boolean;
@@ -234,7 +234,7 @@ export function AddTemplateDialog({ open, onOpenChange }: AddTemplateDialogProps
   };
 
   return (
-    <Dialog open={open} onOpenChange={(open) => {
+    <Dialog open={open} onOpenChange={(open: boolean) => {
       if (!open) resetForm();
       onOpenChange(open);
     }}>

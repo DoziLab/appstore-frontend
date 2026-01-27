@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { BookOpen, Users, ChevronRight } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
-import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import { getMyCourses, CourseDto } from "../api/courses"; // Pfad ggf. anpassen
 
 type CourseUi = {

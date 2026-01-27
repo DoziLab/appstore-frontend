@@ -1,7 +1,7 @@
 import { Server, Cpu, HardDrive, Activity, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Progress } from './ui/progress';
-import { Badge } from './ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Progress } from '../components/ui/progress';
+import { Badge } from '../components/ui/badge';
 
 interface DashboardProps {
   onSelectDeployment?: (deploymentName: string) => void;

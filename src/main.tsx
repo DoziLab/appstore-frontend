@@ -6,6 +6,7 @@
 import React from "react";
 //import ReactDOM from "react-dom/client";
 import { ReactKeycloakProvider } from "@react-keycloak/web";
+import { BrowserRouter } from "react-router-dom";
 import keycloak from "./auth/keycloak";
 
 const onKeycloakEvent = (event: unknown, error?: unknown) => {
@@ -30,7 +31,9 @@ createRoot(document.getElementById("root")!).render(
   onEvent={onKeycloakEvent}
   onTokens={onKeycloakTokens}
 >
-  <App />
+  <BrowserRouter>
+    <App />
+  </BrowserRouter>
 </ReactKeycloakProvider>
 
   </React.StrictMode>

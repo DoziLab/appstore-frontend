@@ -5,8 +5,7 @@ import {
   Settings,
   ChevronRight,
   LogOut,
-  Shield,
-  ScanEye
+  Shield
 } from "lucide-react";
 import { useMemo } from "react";
 import { useKeycloak } from "@react-keycloak/web";

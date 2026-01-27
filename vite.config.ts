@@ -4,6 +4,15 @@
   import path from 'path';
 
   export default defineConfig({
+    optimizeDeps: {
+    include: [
+      'keycloak-js', 
+      '@react-keycloak/web',
+      'lucide-react',
+      'recharts',
+      'axios'
+    ],
+  },
     plugins: [react()],
     resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],

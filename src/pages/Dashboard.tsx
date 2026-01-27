@@ -1,33 +1,130 @@
+import { useEffect, useState } from 'react';
 import { Server, Cpu, HardDrive, Activity, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Progress } from '../components/ui/progress';
 import { Badge } from '../components/ui/badge';
+import { getQuotas, type QuotasResponse } from '../api/quotas';
+import { getAllDeployments, type DeploymentStackSummary } from '../api/deployments';
 
 interface DashboardProps {
   onSelectDeployment?: (deploymentName: string) => void;
 }
 
 export function Dashboard({ onSelectDeployment }: DashboardProps) {
-  const stats = [
-    { label: 'Aktive Deployments', value: '12', icon: Server, color: 'text-teal-600', bgColor: 'bg-teal-50' },
-    { label: 'Verwendete CPU-Kerne', value: '48/64', icon: Cpu, color: 'text-blue-600', bgColor: 'bg-blue-50' },
-    { label: 'Genutzter Speicher', value: '2.4TB', icon: HardDrive, color: 'text-purple-600', bgColor: 'bg-purple-50' },
-    { label: 'Aktive VMs', value: '18', icon: Activity, color: 'text-orange-600', bgColor: 'bg-orange-50' },
-  ];
+  const [quotas, setQuotas] = useState<QuotasResponse | null>(null);
+  const [quotasError, setQuotasError] = useState<string | null>(null);
+  const [quotasLoading, setQuotasLoading] = useState<boolean>(false);
+  const [activeDeployments, setActiveDeployments] = useState<number | null>(null);
+  const [deploymentsError, setDeploymentsError] = useState<string | null>(null);
+  const [deploymentsLoading, setDeploymentsLoading] = useState<boolean>(false);
+  const [recentDeployments, setRecentDeployments] = useState<Array<{ name: string; status: string; course?: string; updated: string }>>([]);
 
-  const deployments = [
-    { name: 'CS101 - Jupyter Notebook', status: 'running', course: 'Informatik 101', users: 45, updated: 'Vor 2 Stunden' },
-    { name: 'CS202 - GitLab Server', status: 'running', course: 'Software Engineering', users: 32, updated: 'Vor 5 Stunden' },
-    { name: 'CS305 - Kubernetes Cluster', status: 'deploying', course: 'Cloud Computing', users: 0, updated: 'Vor 10 Minuten' },
-    { name: 'CS410 - Pentest Lab', status: 'running', course: 'Cybersicherheit', users: 28, updated: 'Vor 1 Tag' },
-    { name: 'CS150 - Entwicklungs-VM', status: 'stopped', course: 'Einführung in die Programmierung', users: 0, updated: 'Vor 3 Tagen' },
-  ];
+  useEffect(() => {
+    let mounted = true;
+    setQuotasLoading(true);
+    getQuotas()
+      .then((data) => {
+        if (mounted) {
+          setQuotas(data);
+        }
+      })
+      .catch((err: unknown) => {
+        if (mounted) {
+          setQuotasError(err instanceof Error ? err.message : 'Fehler beim Laden der Kontingente');
+        }
+      })
+      .finally(() => {
+        if (mounted) setQuotasLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
-  const messages = [
-    { type: 'info', title: 'Geplante Wartung', message: 'OpenStack-Wartungsfenster: 25. Nov, 02:00 – 04:00 Uhr', time: 'Vor 1 Tag' },
-    { type: 'success', title: 'Kontingenterhöhung genehmigt', message: 'Ihre Anfrage für zusätzliche 16 CPU-Kerne wurde genehmigt', time: 'Vor 2 Tagen' },
-    { type: 'warning', title: 'Speicherlimit-Warnung', message: 'Sie nutzen 80% Ihres zugewiesenen Speicherkontingents', time: 'Vor 5 Tagen' },
-  ];
+  // Fetch deployments to compute active count (only with real deployment_id)
+  useEffect(() => {
+    let mounted = true;
+    // Show loading only if we don't already have data (e.g., after Fast Refresh)
+    setDeploymentsLoading(recentDeployments.length === 0);
+    getAllDeployments()
+      .then((items) => {
+        if (!mounted) return;
+        const count = items.filter((d) => !!d.deployment_id && d.deployment_status === 'running').length;
+        setActiveDeployments(count);
+
+        // Build recent deployments list: only those with a real deployment_id
+        const toDate = (iso?: string | null) => (iso ? new Date(iso) : null);
+        const getUpdated = (d: DeploymentStackSummary) => toDate(d.updated_time) || toDate(d.creation_time) || new Date(0);
+        const mapHeatStatus = (s?: string | null) => {
+          if (!s) return 'stopped';
+          const up = s.toUpperCase();
+          if (up.includes('IN_PROGRESS')) return 'deploying';
+          if (up.includes('COMPLETE')) return 'running';
+          return 'stopped';
+        };
+        const formatRelativeFromISO = (iso?: string | null) => {
+          const d = iso ? new Date(iso) : null;
+          if (!d) return 'Unbekannt';
+          const diffMs = Date.now() - d.getTime();
+          const diffMin = Math.floor(diffMs / 60000);
+          if (diffMin < 1) return 'Gerade eben';
+          if (diffMin < 60) return `Vor ${diffMin} Minuten`;
+          const diffH = Math.floor(diffMin / 60);
+          if (diffH < 24) return `Vor ${diffH} Stunden`;
+          const diffD = Math.floor(diffH / 24);
+          return `Vor ${diffD} Tagen`;
+        };
+
+        const filtered = items.filter((d) => !!d.deployment_id);
+        const sorted = filtered.sort((a, b) => (getUpdated(b)?.getTime() || 0) - (getUpdated(a)?.getTime() || 0));
+        const mapped = sorted.map((d) => ({
+          name: d.stack_name,
+          status: d.deployment_status ?? mapHeatStatus(d.status),
+          course: d.openstack_project_name || undefined,
+          updated: formatRelativeFromISO(d.updated_time || d.creation_time),
+        }));
+        setRecentDeployments(mapped);
+      })
+      .catch((err: unknown) => {
+        if (!mounted) return;
+        setDeploymentsError(err instanceof Error ? err.message : 'Fehler beim Laden der Deployments');
+      })
+      .finally(() => {
+        if (mounted) setDeploymentsLoading(false);
+      });
+    return () => { mounted = false; };
+  }, []);
+
+  const percent = (used?: number, limit?: number) => {
+    if (!used || !limit || limit === 0) return 0;
+    return Math.min(100, Math.max(0, Math.round((used / limit) * 100)));
+  };
+
+  const formatGB = (valueInGB?: number) => {
+    if (valueInGB == null) return '-';
+    if (valueInGB >= 1024) {
+      return `${(valueInGB / 1024).toFixed(1)} TB`;
+    }
+    return `${valueInGB} GB`;
+  };
+
+  const formatMBasGB = (valueInMB?: number) => {
+    if (valueInMB == null) return '-';
+    const gb = Math.round(valueInMB / 1024);
+    return `${gb} GB`;
+  };
+
+  const stats = (() => {
+    const qc = quotas?.compute?.cores;
+    const qram = quotas?.compute?.ram;
+    const qinst = quotas?.compute?.instances;
+    return [
+      { label: 'Aktive Deployments', value: activeDeployments == null ? 'Lädt...' : String(activeDeployments), icon: Server, color: 'text-teal-600', bgColor: 'bg-teal-50' },
+      { label: 'Verwendete CPU-Kerne', value: quotasLoading ? 'Lädt...' : (qc ? `${qc.used}/${qc.limit}` : '—'), icon: Cpu, color: 'text-blue-600', bgColor: 'bg-blue-50' },
+      { label: 'Genutzter Speicher', value: quotasLoading ? 'Lädt...' : (qram ? `${formatMBasGB(qram.used)} / ${formatMBasGB(qram.limit)}` : '—'), icon: HardDrive, color: 'text-purple-600', bgColor: 'bg-purple-50' },
+      { label: 'Aktive VMs', value: quotasLoading ? 'Lädt...' : (qinst ? `${qinst.used}/${qinst.limit}` : '—'), icon: Activity, color: 'text-orange-600', bgColor: 'bg-orange-50' },
+    ];
+  })();
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -39,17 +136,6 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
         return <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">Gestoppt</Badge>;
       default:
         return <Badge>{status}</Badge>;
-    }
-  };
-
-  const getMessageIcon = (type: string) => {
-    switch (type) {
-      case 'warning':
-        return <AlertCircle className="w-5 h-5 text-orange-500" />;
-      case 'success':
-        return <CheckCircle2 className="w-5 h-5 text-green-500" />;
-      default:
-        return <AlertCircle className="w-5 h-5 text-blue-500" />;
     }
   };
 
@@ -93,9 +179,15 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {deployments.map((deployment, idx) => (
-                <div 
-                  key={idx} 
+              {deploymentsError && (
+                <div className="text-sm text-red-600">{deploymentsError}</div>
+              )}
+              {deploymentsLoading && (
+                <div className="text-sm text-slate-500">Lädt...</div>
+              )}
+              {!deploymentsLoading && recentDeployments.map((deployment, idx) => (
+                <div
+                  key={idx}
                   onClick={() => onSelectDeployment?.(deployment.name)}
                   className="flex items-center gap-4 p-4 rounded-lg bg-slate-50 border border-slate-100 hover:bg-slate-100 hover:border-slate-200 cursor-pointer transition-all"
                 >
@@ -104,8 +196,8 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
                       <p className="text-slate-900 truncate">{deployment.name}</p>
                       {getStatusBadge(deployment.status)}
                     </div>
-                    <p className="text-sm text-slate-500">{deployment.course}</p>
-                    <p className="text-xs text-slate-400 mt-1">{deployment.users} aktive Nutzer · Aktualisiert {deployment.updated}</p>
+                    {deployment.course && <p className="text-sm text-slate-500">{deployment.course}</p>}
+                    <p className="text-xs text-slate-400 mt-1">Aktualisiert {deployment.updated}</p>
                   </div>
                 </div>
               ))}
@@ -122,56 +214,60 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
               <CardDescription>Ihre aktuellen Ressourcengrenzen</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-slate-600">CPU-Kerne</span>
-                  <span className="text-slate-900">48 / 64</span>
-                </div>
-                <Progress value={75} className="h-2" />
-              </div>
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-slate-600">Arbeitsspeicher</span>
-                  <span className="text-slate-900">128 / 192 GB</span>
-                </div>
-                <Progress value={66} className="h-2" />
-              </div>
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-slate-600">Speicher</span>
-                  <span className="text-slate-900">2.4 / 3.0 TB</span>
-                </div>
-                <Progress value={80} className="h-2" />
-              </div>
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-slate-600">VM-Instanzen</span>
-                  <span className="text-slate-900">18 / 25</span>
-                </div>
-                <Progress value={72} className="h-2" />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* System Messages */}
-          <Card className="border-slate-200 shadow-sm">
-            <CardHeader>
-              <CardTitle>Systemnachrichten</CardTitle>
-              <CardDescription>Wichtige Updates und Mitteilungen</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {messages.map((message, idx) => (
-                  <div key={idx} className="flex gap-3">
-                    {getMessageIcon(message.type)}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-slate-900 mb-1">{message.title}</p>
-                      <p className="text-xs text-slate-600 mb-1">{message.message}</p>
-                      <p className="text-xs text-slate-400">{message.time}</p>
-                    </div>
+                {quotasError && (
+                  <div className="text-sm text-red-600">{quotasError}</div>
+                )}
+                  {/* Precompute quota slices for safe access */}
+                  {(() => {
+                    const qc = quotas?.compute?.cores;
+                    const qram = quotas?.compute?.ram;
+                    const qvol = quotas?.volume?.gigabytes;
+                    const qinst = quotas?.compute?.instances;
+                    return (
+                      <>
+                <div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-slate-600">CPU-Kerne</span>
+                    <span className="text-slate-900">
+                      {quotasLoading && 'Lädt...'}
+                        {!quotasLoading && qc && `${qc.used} / ${qc.limit}`}
+                    </span>
                   </div>
-                ))}
-              </div>
+                    <Progress value={percent(qc?.used, qc?.limit)} className="h-2" />
+                </div>
+                <div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-slate-600">Arbeitsspeicher</span>
+                    <span className="text-slate-900">
+                      {quotasLoading && 'Lädt...'}
+                        {!quotasLoading && qram && `${formatMBasGB(qram.used)} / ${formatMBasGB(qram.limit)}`}
+                    </span>
+                  </div>
+                    <Progress value={percent(qram?.used, qram?.limit)} className="h-2" />
+                </div>
+                <div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-slate-600">Speicher (Volumes)</span>
+                    <span className="text-slate-900">
+                      {quotasLoading && 'Lädt...'}
+                        {!quotasLoading && qvol && `${formatGB(qvol.used)} / ${formatGB(qvol.limit)}`}
+                    </span>
+                  </div>
+                    <Progress value={percent(qvol?.used, qvol?.limit)} className="h-2" />
+                </div>
+                <div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-slate-600">VM-Instanzen</span>
+                    <span className="text-slate-900">
+                      {quotasLoading && 'Lädt...'}
+                        {!quotasLoading && qinst && `${qinst.used} / ${qinst.limit}`}
+                    </span>
+                  </div>
+                    <Progress value={percent(qinst?.used, qinst?.limit)} className="h-2" />
+                </div>
+                      </>
+                    );
+                  })()}
             </CardContent>
           </Card>
         </div>

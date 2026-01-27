@@ -1,11 +1,20 @@
 import { apiFetch } from "./http";
 
+export type CourseDeploymentSummary = {
+  id: string;
+  name: string;
+  template_version_id: string;
+  deployment_mode: string;
+  status: string;
+  created_at: string;
+};
+
 export type CourseDto = {
   id: string;
   name: string;
   semester: string;
   lecturer_id: string;
-  deployments: unknown[];
+  deployments: CourseDeploymentSummary[];
   created_at: string;
   updated_at: string;
 };

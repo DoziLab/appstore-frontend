@@ -31,13 +31,14 @@ import {
   TableRow,
 } from './ui/table';
 import { useState, useEffect, useMemo } from "react";
-import { getDeployments, DeploymentDto } from "../api/deployments";
+import { DeploymentStackDto } from "../api/deploymentsStack";
+import { getDeployments } from "../api/deploymentsStack";
 import {
+  DeploymentDto,
+  DeploymentState,   // 👈 WICHTIG
   getDeploymentLogs,
   DeploymentLogDto,
 } from "../api/deployments";
-
-
 
 
 
@@ -105,54 +106,7 @@ const dozentenProjekte = [
   },
 ];
 
-// Mock data für API-Logging
-const apiLogs = [
-  {
-    id: 1,
-    timestamp: '2025-12-30 14:32:15',
-    user: 'Prof. Dr. Schmidt',
-    action: 'VM erstellt',
-    resource: 'VM-Python-Course-01',
-    status: 'erfolg',
-    dauer: '2.3s'
-  },
-  {
-    id: 2,
-    timestamp: '2025-12-30 14:28:42',
-    user: 'Dr. Müller',
-    action: 'Ressourcen aktualisiert',
-    resource: 'VM-DataScience-03',
-    status: 'erfolg',
-    dauer: '0.8s'
-  },
-  {
-    id: 3,
-    timestamp: '2025-12-30 14:15:23',
-    user: 'Prof. Weber',
-    action: 'VM gelöscht',
-    resource: 'VM-WebDev-02',
-    status: 'erfolg',
-    dauer: '1.5s'
-  },
-  {
-    id: 4,
-    timestamp: '2025-12-30 13:45:11',
-    user: 'Dr. Fischer',
-    action: 'Snapshot erstellt',
-    resource: 'VM-MachineLearning-01',
-    status: 'erfolg',
-    dauer: '4.7s'
-  },
-  {
-    id: 5,
-    timestamp: '2025-12-30 13:22:05',
-    user: 'Prof. Becker',
-    action: 'VM erstellt',
-    resource: 'VM-Database-01',
-    status: 'fehler',
-    dauer: '0.2s'
-  },
-];
+
 
 // Globale Ressourcenstatistiken
 const gesamtQuotas = {
@@ -211,7 +165,7 @@ const pendingTemplates = [
 export function AdminMonitoring() {
   // 🔹 Deployment-Overview State
   const [deploymentRows, setDeploymentRows] =
-    useState<DeploymentOverviewDto[]>([]);
+    useState<DeploymentStackDto[]>([]);
   const [loadingDeployments, setLoadingDeployments] = useState(true);
   const [deploymentError, setDeploymentError] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null);
@@ -236,17 +190,36 @@ export function AdminMonitoring() {
         setLoadingDeployments(true);
         setDeploymentError(null);
 
-        const res = await getDeployments({ page: 1, page_size: 1 });
+        // 1️⃣ Rohdaten (Stacks)
+        const res = await getDeployments({ page: 1, page_size: 10 });
         if (!alive) return;
 
-        const active =
-          res.data?.filter(d => d.status === "ACTIVE").length ?? 0;
-        const inactive =
-          res.data?.filter(d => d.status !== "ACTIVE").length ?? 0;
+        const stacks: DeploymentStackDto[] = res.data ?? [];
 
+        // 2️⃣ Fachliche Deployments ableiten
+        const deployments: DeploymentDto[] = stacks
+          .filter(s => s.deployment_id !== null)
+          .map(s => ({
+            id: s.deployment_id!,
+            name: s.stack_name,
+            status: (s.deployment_status ?? "unknown") as DeploymentState,
+            created_at: s.creation_time,
+          }));
+
+        // 3️⃣ Kennzahlen
+        const active = deployments.filter(
+          d => d.status === "running"
+        ).length;
+
+        const inactive = deployments.filter(
+          d => d.status !== "running"
+        ).length;
+
+        // 4️⃣ State setzen
         setActiveDeployments(active);
         setInactiveDeployments(inactive);
-        setDeploymentRows(res.data || []);
+        setDeploymentRows(deployments);
+
       } catch (e) {
         if (!alive) return;
         setDeploymentError(
@@ -262,6 +235,7 @@ export function AdminMonitoring() {
       alive = false;
     };
   }, []);
+
 
   // ---------- EFFECT 2: LOGS ----------
   useEffect(() => {
@@ -297,11 +271,11 @@ export function AdminMonitoring() {
 
 
   const totalDeployments = useMemo(() => {
-    return deploymentRows.reduce(
-      (sum, row) => sum + (row.aktive_deployments ?? 0),
-      0
-    );
+    return deploymentRows.filter(
+      d => d.deployment_id !== null
+    ).length;
   }, [deploymentRows]);
+
 
 
   const handleApprove = (templateId: number) => {

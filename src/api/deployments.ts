@@ -1,27 +1,35 @@
 import { apiFetch } from "./http";
 
-export type DeploymentStatus =
-    | "ACTIVE"
-    | "CREATING"
-    | "FAILED"
-    | "DELETING"
-    | "DELETED"
-    | "ERROR";
-
+/**
+ * Fachliches Deployment (DoziLab)
+ * Existiert nur, wenn deployment_id !== null
+ */
 export type DeploymentDto = {
-    id: string;
-    name: string;
-    status: DeploymentStatus;
+    id: string;                 // deployment_id
+    name: string;               // abgeleitet (z.B. stack_name)
+    status: DeploymentState;    // running | stopped | error | unknown
     created_at: string;
-    updated_at: string;
 };
 
+/**
+ * Deployment-Status wie er im System wirklich existiert
+ */
+export type DeploymentState =
+    | "running"
+    | "stopped"
+    | "error"
+    | "unknown";
+
+/**
+ * Logs gehören IMMER zu einem Deployment
+ */
 export type DeploymentLogDto = {
     id: string;
-    timestamp: string;      // created_at o.ä.
-    level?: string;         // INFO / ERROR (optional)
+    timestamp: string;
+    level?: "INFO" | "WARN" | "ERROR";
     message: string;
 };
+
 export type DeploymentLogsResponse = {
     success: boolean;
     message?: string;
@@ -31,39 +39,11 @@ export type DeploymentLogsResponse = {
     request_id?: string;
 };
 
-export type DeploymentsResponse = {
-    success: boolean;
-    message: string;
-    data: DeploymentDto[];
-    pagination: {
-        page: number;
-        page_size: number;
-        total_items: number;
-        total_pages: number;
-    };
-    errors: unknown;
-    timestamp: string;
-    request_id: string;
-};
-
-export async function getDeployments(params?: {
-    page?: number;
-    page_size?: number;
-}) {
-    const sp = new URLSearchParams();
-
-    if (params?.page) sp.set("page", String(params.page));
-    if (params?.page_size) sp.set("page_size", String(params.page_size));
-
-    const qs = sp.toString();
-
-    return apiFetch<DeploymentsResponse>(
-        `/api/v1/deployments${qs ? `?${qs}` : ""}`
-    );
-}
+/**
+ * Logs für ein konkretes Deployment
+ */
 export async function getDeploymentLogs(deploymentId: string) {
     return apiFetch<DeploymentLogsResponse>(
         `/api/v1/deployments/${deploymentId}/logs`
     );
 }
-

@@ -38,6 +38,9 @@ function getTemplateStyle(name: string): { icon: LucideIcon; color: string } {
   if (nameLower.includes('pentest') || nameLower.includes('security')) {
     return { icon: Shield, color: 'from-purple-500 to-pink-600' };
   }
+  if (nameLower.includes('multi-user') || nameLower.includes('multi user')) {
+    return { icon: Laptop, color: 'from-teal-500 to-green-600' };
+  }
   if (nameLower.includes('vm') || nameLower.includes('virtual') || nameLower.includes('student')) {
     return { icon: Laptop, color: 'from-teal-500 to-green-600' };
   }
@@ -57,17 +60,17 @@ function getTemplateStyle(name: string): { icon: LucideIcon; color: string } {
     return { icon: Database, color: 'from-blue-500 to-cyan-500' };
   }
 
-  if (nameLower.includes("Ubuntu")) {
-    return { icon: Server, color: 'from-slate-500 to-slate-600' };
+  if (nameLower.includes("ubuntu")) {
+    return { icon: Server, color: 'from-orange-500 to-red-600' };
   }
-  if (nameLower.includes("Debian")) {
-    return { icon: Server, color: 'from-slate-500 to-slate-600' };
+  if (nameLower.includes("debian")) {
+    return { icon: Server, color: 'from-red-500 to-pink-600' };
   }
-  if (nameLower.includes("CentOS")) {
-    return { icon: Server, color: 'from-slate-500 to-slate-600' };
+  if (nameLower.includes("centos")) {
+    return { icon: Server, color: 'from-purple-500 to-indigo-600' };
   }
-  if (nameLower.includes("Fedora")) {
-    return { icon: Server, color: 'from-slate-500 to-slate-600' };
+  if (nameLower.includes("fedora")) {
+    return { icon: Server, color: 'from-blue-500 to-cyan-600' };
   }
   
   // Default
@@ -192,9 +195,17 @@ export function AppStore({ onDeploy }: AppStoreProps) {
             const Icon = style.icon;
             const activeVersions = template.versions?.filter(v => v.is_active) || [];
             
+            // Truncate description to max 120 characters
+            const maxDescLength = 120;
+            const description = template.description || 'Keine Beschreibung verfügbar';
+            const truncatedDesc = description.length > maxDescLength 
+              ? description.substring(0, maxDescLength) + '...' 
+              : description;
+            const showReadMore = description.length > maxDescLength;
+            
             return (
-              <Card key={template.id} className="border-slate-200 shadow-sm hover:shadow-md transition-all hover:border-teal-200">
-                <CardHeader>
+              <Card key={template.id} className="border-slate-200 shadow-sm hover:shadow-md transition-all hover:border-teal-200 flex flex-col h-full">
+                <CardHeader className="flex-shrink-0">
                   <div className="flex items-start justify-between mb-3">
                     <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${style.color} flex items-center justify-center text-white shadow-lg`}>
                       <Icon className="w-6 h-6" />
@@ -212,34 +223,47 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                       )}
                     </div>
                   </div>
-                  <CardTitle className="text-slate-900">{template.name}</CardTitle>
-                  <CardDescription className="text-slate-600">
-                    {template.description || 'Keine Beschreibung verfügbar'}
+                  <CardTitle className="text-slate-900 line-clamp-2 min-h-[3.5rem]">{template.name}</CardTitle>
+                  <CardDescription className="text-slate-600 min-h-[4.5rem]">
+                    {truncatedDesc}
+                    {showReadMore && (
+                      <button 
+                        className="text-teal-600 hover:text-teal-700 text-xs ml-1 font-medium"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Could open a modal or expand description
+                        }}
+                      >
+                        weiter lesen
+                      </button>
+                    )}
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  {activeVersions.length > 0 && (
-                    <div className="space-y-2">
-                      <span className="text-xs text-slate-500">Verfügbare Versionen:</span>
-                      <div className="flex flex-wrap gap-2">
-                        {activeVersions.map((version) => (
-                          <Badge key={version.id} variant="secondary" className="text-xs bg-slate-100 text-slate-700">
-                            {version.version}
-                          </Badge>
-                        ))}
+                <CardContent className="flex-grow flex flex-col justify-end space-y-4">
+                  <div className="min-h-[4rem]">
+                    {activeVersions.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="text-xs text-slate-500">Verfügbare Versionen:</span>
+                        <div className="flex flex-wrap gap-2">
+                          {activeVersions.map((version) => (
+                            <Badge key={version.id} variant="secondary" className="text-xs bg-slate-100 text-slate-700">
+                              {version.version}
+                            </Badge>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {activeVersions.length === 0 && (
-                    <div className="text-xs text-slate-500 italic">
-                      Keine aktiven Versionen verfügbar
-                    </div>
-                  )}
+                    {activeVersions.length === 0 && (
+                      <div className="text-xs text-slate-500 italic">
+                        Keine aktiven Versionen verfügbar
+                      </div>
+                    )}
+                  </div>
 
                   <Button 
                     onClick={() => onDeploy(template.id)}
-                    className="w-full bg-teal-500 hover:bg-teal-600 text-white mt-4"
+                    className="w-full bg-teal-500 hover:bg-teal-600 text-white"
                     disabled={activeVersions.length === 0}
                   >
                     Deploy

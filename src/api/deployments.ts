@@ -90,6 +90,17 @@ export async function getDeploymentLogs(deploymentId: string) {
   }>(`/api/v1/deployments/${deploymentId}/logs`);
 }
 
+export async function deleteDeployment(deploymentId: string) {
+  return apiFetch<{
+    success: boolean;
+    message: string;
+    data?: any;
+    errors: unknown;
+    timestamp: string;
+    request_id: string;
+  }>(`/api/v1/deployments/${deploymentId}` , { method: "DELETE" });
+}
+
 // List deployments (stacks) from OpenStack view
 type DeploymentsListEnvelope = {
   success: boolean;

@@ -3,16 +3,34 @@ import { useParams, useNavigate, Navigate } from "react-router-dom";
 import { Server } from "lucide-react";
 import { DeploymentDetails } from "./DeploymentDetails";
 import { mockDeployments } from "./mockDeployments";
-import { getDeployment, getDeploymentLogs } from "../api/deployments";
+import { getDeployment, getDeploymentLogs, deleteDeployment } from "../api/deployments";
 
 export function DeploymentDetailsPage() {
   const { deploymentId } = useParams<{ deploymentId: string }>();
   const navigate = useNavigate();
   const [deploymentData, setDeploymentData] = useState<any>(null);
   const [loadingDeployment, setLoadingDeployment] = useState(false);
+  const [deletingDeployment, setDeletingDeployment] = useState(false);
 
   const handleBackToDashboard = () => {
     navigate("/dashboard");
+  };
+
+  const handleDeleteDeployment = async (id: string) => {
+    try {
+      setDeletingDeployment(true);
+      const resp = await deleteDeployment(id);
+      if (resp && typeof resp === 'object' && 'success' in resp && (resp as any).success) {
+        navigate('/dashboard');
+      } else {
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      console.error('Failed to delete deployment', err);
+      navigate('/dashboard');
+    } finally {
+      setDeletingDeployment(false);
+    }
   };
 
   // Load deployment when deploymentId changes
@@ -142,5 +160,5 @@ export function DeploymentDetailsPage() {
     return <div className="p-6">Deployment nicht gefunden</div>;
   }
 
-  return <DeploymentDetails deployment={deploymentData} onBack={handleBackToDashboard} />;
+  return <DeploymentDetails deployment={deploymentData} onBack={handleBackToDashboard} onDelete={handleDeleteDeployment} />;
 }

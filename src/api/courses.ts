@@ -1,11 +1,20 @@
 import { apiFetch } from "./http";
 
+export type CourseDeploymentSummary = {
+  id: string;
+  name: string;
+  template_version_id: string;
+  deployment_mode: string;
+  status: string;
+  created_at: string;
+};
+
 export type CourseDto = {
   id: string;
   name: string;
   semester: string;
   lecturer_id: string;
-  deployments: unknown[];
+  deployments: CourseDeploymentSummary[];
   created_at: string;
   updated_at: string;
 };
@@ -52,14 +61,12 @@ export type CoursesResponse = {
 export async function getMyCourses(params?: {
   page?: number;
   page_size?: number;
-  semester?: string;
   search?: string;
   lecturer_id?: string;
 }) {
   const sp = new URLSearchParams();
   if (params?.page) sp.set("page", String(params.page));
   if (params?.page_size) sp.set("page_size", String(params.page_size));
-  if (params?.semester) sp.set("semester", params.semester);
   if (params?.search) sp.set("search", params.search);
   if (params?.lecturer_id) sp.set("lecturer_id", params.lecturer_id);
 

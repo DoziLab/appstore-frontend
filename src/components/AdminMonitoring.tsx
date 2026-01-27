@@ -585,31 +585,36 @@ export function AdminMonitoring() {
                   </TableHeader>
 
                   <TableBody>
-                    {deploymentRows.map((deployment) => (
-                      <TableRow
-                        key={deployment.id}
-                        className="cursor-pointer hover:bg-slate-50"
-                        onClick={() => {
-                          setSelectedDeploymentId(deployment.id);
-                          setLogsOpen(true);
-                        }}
-                      >
-                        <TableCell className="font-medium">
-                          {deployment.name ?? deployment.id}
-                        </TableCell>
+                    {deploymentRows
+                      .filter(d => d.deployment_id) // 🔑 NUR echte Deployments
+                      .map((deployment) => (
+                        <TableRow
+                          key={deployment.stack_id}
+                          className="cursor-pointer hover:bg-slate-50"
+                          onClick={() => {
+                            setSelectedDeploymentId(deployment.deployment_id!);
+                            setLogsOpen(true);
+                          }}
+                        >
+                          <TableCell className="font-medium">
+                            {deployment.stack_name}
+                          </TableCell>
 
-                        <TableCell>
-                          <Badge variant="outline">
-                            {deployment.status}
-                          </Badge>
-                        </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {deployment.deployment_status ?? "unbekannt"}
+                            </Badge>
+                          </TableCell>
 
-                        <TableCell className="text-sm text-slate-600">
-                          {new Date(deployment.created_at).toLocaleDateString("de-DE")}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          <TableCell className="text-sm text-slate-600">
+                            {deployment.creation_time
+                              ? new Date(deployment.creation_time).toLocaleString("de-DE")
+                              : "–"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
                   </TableBody>
+
                 </Table>
               )}
             </CardContent>

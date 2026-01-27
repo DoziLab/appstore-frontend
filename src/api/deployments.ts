@@ -89,3 +89,53 @@ export async function getDeploymentLogs(deploymentId: string) {
     request_id: string;
   }>(`/api/v1/deployments/${deploymentId}/logs`);
 }
+
+// List deployments (stacks) from OpenStack view
+export type DeploymentStackResource = {
+  resource_name: string;
+  resource_type: string;
+  physical_resource_id: string;
+  status: string;
+  status_reason: string;
+};
+
+export type DeploymentStackSummary = {
+  stack_id: string;
+  stack_name: string;
+  status: string;
+  status_reason: string;
+  creation_time: string;
+  updated_time: string | null;
+  openstack_project_id: string;
+  openstack_project_name: string;
+  owner_user_id: string;
+  deployment_id: string | null;
+  course_id: string | null;
+  deployment_mode: string | null;
+  deployment_status: string | null; // e.g., "running"
+  resources: DeploymentStackResource[];
+  outputs: Record<string, string>;
+};
+
+type DeploymentsListEnvelope = {
+  success: boolean;
+  message: string;
+  data: DeploymentStackSummary[];
+  pagination?: {
+    page: number;
+    page_size: number;
+    total_items: number;
+    total_pages: number;
+  };
+  errors: unknown;
+  timestamp: string;
+  request_id: string;
+};
+
+export async function getAllDeployments(): Promise<DeploymentStackSummary[]> {
+  const resp = await apiFetch<DeploymentsListEnvelope | DeploymentStackSummary[]>("/api/v1/deployments");
+  if (resp && typeof resp === "object" && "data" in resp) {
+    return (resp as DeploymentsListEnvelope).data || [];
+  }
+  return Array.isArray(resp) ? resp : [];
+}

@@ -10,7 +10,6 @@ type CourseUi = {
   code: string;
   name: string;
   semester: string;
-  students?: number; // unbekannt -> optional
 };
 
 export function Courses() {

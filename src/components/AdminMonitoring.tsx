@@ -434,7 +434,7 @@ export function AdminMonitoring() {
                 <AlertTriangle className="w-6 h-6 text-yellow-600" />
               </div>
               <div>
-                <p className="text-sm text-slate-500">Inaktive Projekte</p>
+                <p className="text-sm text-slate-500">Inaktive Deployments</p>
                 <p className="text-2xl text-slate-900">
                   {loadingDeployments ? "…" : inactiveDeployments}
                 </p>

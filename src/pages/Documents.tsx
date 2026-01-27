@@ -1,7 +1,7 @@
 // src/components/Documents.tsx
 import { FileText, FileImage, FileArchive, Download, Eye, Search } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Badge } from './ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Badge } from '../components/ui/badge';
 import React, { useEffect, useMemo, useState } from 'react';
 
 // gleiche Typisierung & Datenstil wie im Dashboard (nur Fachinhalt anders)

@@ -66,7 +66,7 @@
     server: {
       proxy: {
         "/api": {
-          target: "http://localhost:8000",
+          target: "http://141.72.176.109:8000",
           changeOrigin: true,
           secure: false,
         },

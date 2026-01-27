@@ -42,3 +42,24 @@ export async function getMyCourses(params?: {
   const qs = sp.toString();
   return apiFetch<CoursesResponse>(`/api/v1/courses/my${qs ? `?${qs}` : ""}`);
 }
+
+export type CreateCourseRequest = {
+  name: string;
+  courseCode: string;
+};
+
+export type CreateCourseResponse = {
+  success: boolean;
+  message: string;
+  data: CourseDto; // assuming it returns created course object
+  errors: unknown;
+  timestamp?: string;
+  request_id?: string;
+};
+
+export async function createCourse(payload: CreateCourseRequest) {
+  return apiFetch<CreateCourseResponse>("/api/v1/courses", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

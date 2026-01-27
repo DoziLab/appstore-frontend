@@ -535,7 +535,7 @@ export function AdminMonitoring() {
 
             <CardContent className="space-y-4">
               {/* Empty State: keine Deployments */}
-              {deploymentRows.length === 0 && (
+              {deployments.length === 0 && (
                 <div className="p-6 text-center border border-slate-200 rounded-lg bg-slate-50">
                   <p className="text-sm text-slate-600">
                     Es sind aktuell keine Deployments vorhanden.
@@ -547,7 +547,7 @@ export function AdminMonitoring() {
               )}
 
               {/* Deployment-Liste */}
-              {deploymentRows.length > 0 && (
+              {deployments.length > 0 && (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -558,38 +558,93 @@ export function AdminMonitoring() {
                   </TableHeader>
 
                   <TableBody>
-                    {deploymentRows
-                      .filter(d => d.deployment_id) // 🔑 NUR echte Deployments
-                      .map((deployment) => (
-                        <TableRow
-                          key={deployment.stack_id}
-                          className="cursor-pointer hover:bg-slate-50"
-                          onClick={() => {
-                            setSelectedDeploymentId(deployment.deployment_id!);
-                            setLogsOpen(true);
-                          }}
-                        >
-                          <TableCell className="font-medium">
-                            {deployment.stack_name}
-                          </TableCell>
+                    {deployments.map((deployment) => (
+                      <TableRow
+                        key={deployment.id}
+                        className="cursor-pointer hover:bg-slate-50"
+                        onClick={() => {
+                          setSelectedDeploymentId(deployment.id);
+                          setLogsOpen(true);
+                        }}
+                      >
+                        <TableCell className="font-medium">
+                          {deployment.name}
+                        </TableCell>
 
-                          <TableCell>
-                            <Badge variant="outline">
-                              {deployment.deployment_status ?? "unbekannt"}
-                            </Badge>
-                          </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {deployment.status}
+                          </Badge>
+                        </TableCell>
 
-                          <TableCell className="text-sm text-slate-600">
-                            {deployment.creation_time
-                              ? new Date(deployment.creation_time).toLocaleString("de-DE")
-                              : "–"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                        <TableCell className="text-sm text-slate-600">
+                          {new Date(deployment.created_at).toLocaleString("de-DE")}
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
-
                 </Table>
               )}
+              {logsOpen && (
+                <div className="mt-6 border-t pt-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium">
+                      Logs für Deployment
+                    </h3>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setLogsOpen(false);
+                        setSelectedDeploymentId(null);
+                        setDeploymentLogs([]);
+                      }}
+                    >
+                      Schließen
+                    </Button>
+                  </div>
+
+
+                  {loadingLogs && (
+                    <p className="text-sm text-slate-500">Logs werden geladen…</p>
+                  )}
+
+                  {!loadingLogs && deploymentLogs.length === 0 && (
+                    <p className="text-sm text-slate-500">
+                      Keine Logs für dieses Deployment vorhanden.
+                    </p>
+                  )}
+
+                  {!loadingLogs && deploymentLogs.length > 0 && (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Zeitstempel</TableHead>
+                          <TableHead>Level</TableHead>
+                          <TableHead>Nachricht</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {deploymentLogs.map(log => (
+                          <TableRow key={log.id}>
+                            <TableCell>
+                              {new Date(log.timestamp).toLocaleString("de-DE")}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{log.level ?? "INFO"}</Badge>
+                            </TableCell>
+                            <TableCell>{log.message}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+              )}
+
+
+
             </CardContent>
 
           </Card>

@@ -1,19 +1,71 @@
+import { useEffect, useState } from 'react';
 import { Server, Cpu, HardDrive, Activity, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Progress } from '../components/ui/progress';
 import { Badge } from '../components/ui/badge';
+import { getQuotas, type QuotasResponse } from '../api/quotas';
 
 interface DashboardProps {
   onSelectDeployment?: (deploymentName: string) => void;
 }
 
 export function Dashboard({ onSelectDeployment }: DashboardProps) {
-  const stats = [
-    { label: 'Aktive Deployments', value: '12', icon: Server, color: 'text-teal-600', bgColor: 'bg-teal-50' },
-    { label: 'Verwendete CPU-Kerne', value: '48/64', icon: Cpu, color: 'text-blue-600', bgColor: 'bg-blue-50' },
-    { label: 'Genutzter Speicher', value: '2.4TB', icon: HardDrive, color: 'text-purple-600', bgColor: 'bg-purple-50' },
-    { label: 'Aktive VMs', value: '18', icon: Activity, color: 'text-orange-600', bgColor: 'bg-orange-50' },
-  ];
+  const [quotas, setQuotas] = useState<QuotasResponse | null>(null);
+  const [quotasError, setQuotasError] = useState<string | null>(null);
+  const [quotasLoading, setQuotasLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    let mounted = true;
+    setQuotasLoading(true);
+    getQuotas()
+      .then((data) => {
+        if (mounted) {
+          setQuotas(data);
+        }
+      })
+      .catch((err: unknown) => {
+        if (mounted) {
+          setQuotasError(err instanceof Error ? err.message : 'Fehler beim Laden der Kontingente');
+        }
+      })
+      .finally(() => {
+        if (mounted) setQuotasLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const percent = (used?: number, limit?: number) => {
+    if (!used || !limit || limit === 0) return 0;
+    return Math.min(100, Math.max(0, Math.round((used / limit) * 100)));
+  };
+
+  const formatGB = (valueInGB?: number) => {
+    if (valueInGB == null) return '-';
+    if (valueInGB >= 1024) {
+      return `${(valueInGB / 1024).toFixed(1)} TB`;
+    }
+    return `${valueInGB} GB`;
+  };
+
+  const formatMBasGB = (valueInMB?: number) => {
+    if (valueInMB == null) return '-';
+    const gb = Math.round(valueInMB / 1024);
+    return `${gb} GB`;
+  };
+
+  const stats = (() => {
+    const qc = quotas?.compute?.cores;
+    const qram = quotas?.compute?.ram;
+    const qinst = quotas?.compute?.instances;
+    return [
+      { label: 'Aktive Deployments', value: '12', icon: Server, color: 'text-teal-600', bgColor: 'bg-teal-50' },
+      { label: 'Verwendete CPU-Kerne', value: quotasLoading ? 'Laden…' : (qc ? `${qc.used}/${qc.limit}` : '—'), icon: Cpu, color: 'text-blue-600', bgColor: 'bg-blue-50' },
+      { label: 'Genutzter Speicher', value: quotasLoading ? 'Laden…' : (qram ? `${formatMBasGB(qram.used)} / ${formatMBasGB(qram.limit)}` : '—'), icon: HardDrive, color: 'text-purple-600', bgColor: 'bg-purple-50' },
+      { label: 'Aktive VMs', value: quotasLoading ? 'Laden…' : (qinst ? `${qinst.used}/${qinst.limit}` : '—'), icon: Activity, color: 'text-orange-600', bgColor: 'bg-orange-50' },
+    ];
+  })();
 
   const deployments = [
     { name: 'CS101 - Jupyter Notebook', status: 'running', course: 'Informatik 101', users: 45, updated: 'Vor 2 Stunden' },
@@ -122,34 +174,60 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
               <CardDescription>Ihre aktuellen Ressourcengrenzen</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-slate-600">CPU-Kerne</span>
-                  <span className="text-slate-900">48 / 64</span>
+                {quotasError && (
+                  <div className="text-sm text-red-600">{quotasError}</div>
+                )}
+                  {/* Precompute quota slices for safe access */}
+                  {(() => {
+                    const qc = quotas?.compute?.cores;
+                    const qram = quotas?.compute?.ram;
+                    const qvol = quotas?.volume?.gigabytes;
+                    const qinst = quotas?.compute?.instances;
+                    return (
+                      <>
+                <div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-slate-600">CPU-Kerne</span>
+                    <span className="text-slate-900">
+                      {quotasLoading && 'Laden...'}
+                        {!quotasLoading && qc && `${qc.used} / ${qc.limit}`}
+                    </span>
+                  </div>
+                    <Progress value={percent(qc?.used, qc?.limit)} className="h-2" />
                 </div>
-                <Progress value={75} className="h-2" />
-              </div>
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-slate-600">Arbeitsspeicher</span>
-                  <span className="text-slate-900">128 / 192 GB</span>
+                <div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-slate-600">Arbeitsspeicher</span>
+                    <span className="text-slate-900">
+                      {quotasLoading && 'Laden...'}
+                        {!quotasLoading && qram && `${formatMBasGB(qram.used)} / ${formatMBasGB(qram.limit)}`}
+                    </span>
+                  </div>
+                    <Progress value={percent(qram?.used, qram?.limit)} className="h-2" />
                 </div>
-                <Progress value={66} className="h-2" />
-              </div>
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-slate-600">Speicher</span>
-                  <span className="text-slate-900">2.4 / 3.0 TB</span>
+                <div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-slate-600">Speicher (Volumes)</span>
+                    <span className="text-slate-900">
+                      {quotasLoading && 'Laden...'}
+                        {!quotasLoading && qvol && `${formatGB(qvol.used)} / ${formatGB(qvol.limit)}`}
+                    </span>
+                  </div>
+                    <Progress value={percent(qvol?.used, qvol?.limit)} className="h-2" />
                 </div>
-                <Progress value={80} className="h-2" />
-              </div>
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-slate-600">VM-Instanzen</span>
-                  <span className="text-slate-900">18 / 25</span>
+                <div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-slate-600">VM-Instanzen</span>
+                    <span className="text-slate-900">
+                      {quotasLoading && 'Laden...'}
+                        {!quotasLoading && qinst && `${qinst.used} / ${qinst.limit}`}
+                    </span>
+                  </div>
+                    <Progress value={percent(qinst?.used, qinst?.limit)} className="h-2" />
                 </div>
-                <Progress value={72} className="h-2" />
-              </div>
+                      </>
+                    );
+                  })()}
             </CardContent>
           </Card>
 

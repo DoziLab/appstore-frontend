@@ -117,6 +117,7 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
   const stats = (() => {
     const qc = quotas?.compute?.cores;
     const qram = quotas?.compute?.ram;
+    const qvol = quotas?.volume?.gigabytes;
     const qinst = quotas?.compute?.instances;
     return [
       {
@@ -129,7 +130,7 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
         bgColor: 'bg-teal-50'
       },
       { label: 'Verwendete CPU-Kerne', value: quotasLoading ? 'Lädt...' : (qc ? `${qc.used}/${qc.limit}` : '—'), icon: Cpu, color: 'text-blue-600', bgColor: 'bg-blue-50' },
-      { label: 'Genutzter Speicher', value: quotasLoading ? 'Lädt...' : (qram ? `${formatMBasGB(qram.used)} / ${formatMBasGB(qram.limit)}` : '—'), icon: HardDrive, color: 'text-purple-600', bgColor: 'bg-purple-50' },
+      { label: 'Genutzter Speicher', value: quotasLoading ? 'Lädt...' : (qvol ? `${formatGB(qvol.used)} / ${formatGB(qvol.limit)}` : '—'), icon: HardDrive, color: 'text-purple-600', bgColor: 'bg-purple-50' },
       { label: 'Aktive VMs', value: quotasLoading ? 'Lädt...' : (qinst ? `${qinst.used}/${qinst.limit}` : '—'), icon: Activity, color: 'text-orange-600', bgColor: 'bg-orange-50' },
     ];
   })();

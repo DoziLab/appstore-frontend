@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Progress } from '../components/ui/progress';
 import { Badge } from '../components/ui/badge';
 import { getQuotas, type QuotasResponse } from '../api/quotas';
-import { getAllDeployments, type DeploymentStackSummary } from '../api/deployments';
+import { getAllDeployments, type DeploymentDto } from '../api/deployments';
 
 interface DashboardProps {
   onSelectDeployment?: (deploymentName: string) => void;
@@ -41,7 +41,7 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
     };
   }, []);
 
-  // Fetch deployments to compute active count (only with real deployment_id)
+  // Fetch deployments to compute count based on new format (use data length)
   useEffect(() => {
     let mounted = true;
     // Show loading only if we don't already have data (e.g., after Fast Refresh)
@@ -49,19 +49,12 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
     getAllDeployments()
       .then((items) => {
         if (!mounted) return;
-        const count = items.filter((d) => !!d.deployment_id && d.deployment_status === 'running').length;
-        setActiveDeployments(count);
+        // Count all deployments using the length of the data
+        setActiveDeployments(items.length);
 
-        // Build recent deployments list: only those with a real deployment_id
+        // Build recent deployments list from new format (no filter necessary)
         const toDate = (iso?: string | null) => (iso ? new Date(iso) : null);
-        const getUpdated = (d: DeploymentStackSummary) => toDate(d.updated_time) || toDate(d.creation_time) || new Date(0);
-        const mapHeatStatus = (s?: string | null) => {
-          if (!s) return 'stopped';
-          const up = s.toUpperCase();
-          if (up.includes('IN_PROGRESS')) return 'deploying';
-          if (up.includes('COMPLETE')) return 'running';
-          return 'stopped';
-        };
+        const getUpdated = (d: DeploymentDto) => toDate(d.updated_at) || toDate(d.created_at) || new Date(0);
         const formatRelativeFromISO = (iso?: string | null) => {
           const d = iso ? new Date(iso) : null;
           if (!d) return 'Unbekannt';
@@ -75,13 +68,12 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
           return `Vor ${diffD} Tagen`;
         };
 
-        const filtered = items.filter((d) => !!d.deployment_id);
-        const sorted = filtered.sort((a, b) => (getUpdated(b)?.getTime() || 0) - (getUpdated(a)?.getTime() || 0));
+        const sorted = items.sort((a, b) => (getUpdated(b)?.getTime() || 0) - (getUpdated(a)?.getTime() || 0));
         const mapped = sorted.map((d) => ({
-          name: d.stack_name,
-          status: d.deployment_status ?? mapHeatStatus(d.status),
-          course: d.openstack_project_name || undefined,
-          updated: formatRelativeFromISO(d.updated_time || d.creation_time),
+          name: d.name,
+          status: d.status,
+          course: d.course?.name || undefined,
+          updated: formatRelativeFromISO(d.updated_at || d.created_at),
         }));
         setRecentDeployments(mapped);
       })

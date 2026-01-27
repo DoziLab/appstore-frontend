@@ -113,10 +113,6 @@ export function Courses() {
 
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm mb-3">
-                    <span className="text-slate-600">Semester</span>
-                    <span className="text-slate-900">{course.semester}</span>
-                  </div>
 
                   <Button variant="ghost" className="w-full mt-4 text-teal-600 hover:text-teal-700 hover:bg-teal-50">
                     Anwendungen verwalten

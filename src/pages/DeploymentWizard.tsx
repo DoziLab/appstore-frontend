@@ -5,12 +5,10 @@ import {
   ChevronLeft,
   Server,
   Settings,
-  Users,
   Network,
   CheckCircle2,
   Clock,
   AlertCircle,
-  Plus,
 } from "lucide-react";
 import {
   Card,
@@ -40,35 +38,29 @@ import {
   type TemplateParameter,
 } from "../api/templates";
 import {
-  getMyCourses,
-  getCourseGroups,
-  createCourseGroup,
-  getCourseMembers,
-  getGroupMembers,
-  addGroupMembers,
-  type CourseDto,
-  type CourseGroupDto,
-  type CourseMemberDto,
-  type GroupMemberDto,
-} from "../api/courses";
+  getKeycloakGroups,
+  getKeycloakGroupMembers,
+  type KeycloakGroup,
+  type KeycloakUser,
+} from "../api/keycloak";
 import {
   createDeployment,
   type DeploymentCreateRequest,
 } from "../api/deployments";
+import { GroupManager, type StudentGroup } from "../components/GroupManager";
+
+// GroupStackAssignment type (no UI component needed, auto-assignment in background)
+export interface GroupStackAssignment {
+  stackId: string;
+  stackName: string;
+  assignedGroups: StudentGroup[];
+}
 
 interface DeploymentWizardProps {
   templateId: string;
   onCancel: () => void;
   onComplete: (deploymentId: string) => void;
 }
-
-// Step mapping for icons
-const stepIcons: Record<string, any> = {
-  template: Server,
-  konfiguration: Settings,
-  zugriff: Users,
-  netzwerk: Network,
-};
 
 export function DeploymentWizard({
   templateId,
@@ -82,12 +74,14 @@ export function DeploymentWizard({
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDto | null>(
     null,
   );
-  const [courses, setCourses] = useState<CourseDto[]>([]);
-  const [courseGroups, setCourseGroups] = useState<CourseGroupDto[]>([]);
-  const [courseMembers, setCourseMembers] = useState<CourseMemberDto[]>([]);
-  const [groupMembersMap, setGroupMembersMap] = useState<
-    Record<string, GroupMemberDto[]>
-  >({});
+  const [keycloakGroups, setKeycloakGroups] = useState<KeycloakGroup[]>([]);
+  const [keycloakMembers, setKeycloakMembers] = useState<KeycloakUser[]>([]);
+  const [studentGroups, setStudentGroups] = useState<StudentGroup[]>([]);
+  const [groupStackAssignments, setGroupStackAssignments] = useState<
+    GroupStackAssignment[]
+  >([]);
+  const [numberOfStacks, setNumberOfStacks] = useState<number>(1);
+  const [numberOfGroups, setNumberOfGroups] = useState<number>(1);
   const [templateVersions, setTemplateVersions] = useState<
     TemplateVersionDto[]
   >([]);
@@ -95,55 +89,48 @@ export function DeploymentWizard({
     useState<TemplateVersionDto | null>(null);
   const [loading, setLoading] = useState({
     template: true,
-    courses: true,
+    groups: true,
     version: false,
-    groups: false,
     members: false,
   });
   const [error, setError] = useState<string | null>(null);
 
   // Selection states
   const [selectedVersionId, setSelectedVersionId] = useState<string>("");
-  const [selectedCourseId, setSelectedCourseId] = useState<string>("");
-  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [selectedKeycloakGroupId, setSelectedKeycloakGroupId] =
+    useState<string>("");
   const [deploymentName, setDeploymentName] = useState<string>("");
-  const [deploymentMode, setDeploymentMode] = useState<string>("per_student");
   const [runtime, setRuntime] = useState<string>("3");
-
-  // Group creation state
-  const [showCreateGroup, setShowCreateGroup] = useState(false);
-  const [newGroupName, setNewGroupName] = useState("");
-  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
-  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  const [deploymentMode, setDeploymentMode] = useState<
+    "per_group" | "per_student" | "per_course"
+  >("per_group");
 
   // Form values - stores all parameter values
   const [formValues, setFormValues] = useState<Record<string, any>>({});
 
-  // Load template and courses on mount
+  // Load template and Keycloak groups on mount
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading({
           template: true,
-          courses: true,
+          groups: true,
           version: false,
-          groups: false,
           members: false,
         });
         setError(null);
 
-        const [templateRes, coursesRes] = await Promise.all([
+        const [templateRes, groupsRes] = await Promise.all([
           getTemplate(templateId),
-          getMyCourses({ page_size: 100 }),
+          getKeycloakGroups(),
         ]);
 
         setSelectedTemplate(templateRes.data);
-        setCourses(coursesRes.data);
+        setKeycloakGroups(groupsRes.data);
         setLoading({
           template: false,
-          courses: false,
-          version: false,
           groups: false,
+          version: false,
           members: false,
         });
       } catch (err) {
@@ -153,9 +140,8 @@ export function DeploymentWizard({
         );
         setLoading({
           template: false,
-          courses: false,
-          version: false,
           groups: false,
+          version: false,
           members: false,
         });
       }
@@ -176,7 +162,7 @@ export function DeploymentWizard({
 
         // Auto-select the active version (or latest if no active)
         const activeVersion = res.data.find((v) => v.is_active);
-        const latestVersion = res.data.length > 0 ? res.data[0] : null; // Assuming sorted by newest first
+        const latestVersion = res.data.length > 0 ? res.data[0] : null;
         const versionToSelect = activeVersion || latestVersion;
 
         if (versionToSelect) {
@@ -198,98 +184,129 @@ export function DeploymentWizard({
     loadVersions();
   }, [templateId]);
 
-  // Function to load course groups
-  const loadCourseGroups = useCallback(async () => {
-    if (!selectedCourseId) return;
-
-    try {
-      setLoading((prev) => ({ ...prev, groups: true }));
-      const res = await getCourseGroups(selectedCourseId);
-      setCourseGroups(res.data);
-      setLoading((prev) => ({ ...prev, groups: false }));
-    } catch (err) {
-      console.error("Failed to load course groups:", err);
-      // Don't set error for 404 - endpoint might not be implemented yet
-      if (err instanceof Error && err.message.includes("404")) {
-        // Endpoint not implemented yet
-        setCourseGroups([]);
-      } else {
-        setError(
-          err instanceof Error ? err.message : "Fehler beim Laden der Gruppen",
-        );
-      }
-      setLoading((prev) => ({ ...prev, groups: false }));
-    }
-  }, [selectedCourseId]);
-
-  // Load course members when course is selected
-  const loadCourseMembers = useCallback(async () => {
-    if (!selectedCourseId) return;
+  // Function to load Keycloak group members
+  const loadKeycloakGroupMembers = useCallback(async () => {
+    if (!selectedKeycloakGroupId) return;
 
     try {
       setLoading((prev) => ({ ...prev, members: true }));
-      const res = await getCourseMembers(selectedCourseId);
-      setCourseMembers(res.data);
+      const res = await getKeycloakGroupMembers(selectedKeycloakGroupId);
+      setKeycloakMembers(res.data);
       setLoading((prev) => ({ ...prev, members: false }));
     } catch (err) {
-      console.error("Failed to load course members:", err);
+      console.error("Failed to load group members:", err);
       setError(
         err instanceof Error ? err.message : "Fehler beim Laden der Studenten",
       );
       setLoading((prev) => ({ ...prev, members: false }));
     }
-  }, [selectedCourseId]);
+  }, [selectedKeycloakGroupId]);
 
-  // Load course members when course is selected
+  // Load members when group is selected
   useEffect(() => {
-    if (!selectedCourseId) {
-      setCourseMembers([]);
+    if (!selectedKeycloakGroupId) {
+      setKeycloakMembers([]);
+      setStudentGroups([]);
+      setGroupStackAssignments([]);
       return;
     }
-    loadCourseMembers();
-  }, [selectedCourseId, loadCourseMembers]);
+    loadKeycloakGroupMembers();
+  }, [selectedKeycloakGroupId, loadKeycloakGroupMembers]);
 
-  // Load group members for each group
-  const loadGroupMembers = useCallback(
-    async (groupId: string) => {
-      if (!selectedCourseId) return;
+  // Auto-create groups and stacks when deployment mode or members change
+  useEffect(() => {
+    if (deploymentMode === "per_student" && keycloakMembers.length > 0) {
+      // One group per student, one stack per group
+      const groups = keycloakMembers.map((student) => ({
+        groupId: `group-${student.id}`,
+        groupName:
+          `${student.firstName || student.username || "Student"} ${student.lastName || ""}`.trim(),
+        students: [student],
+      }));
+      setStudentGroups(groups);
+      setNumberOfGroups(groups.length);
 
-      try {
-        const res = await getGroupMembers(selectedCourseId, groupId);
-        setGroupMembersMap((prev) => ({
-          ...prev,
-          [groupId]: res.data,
+      const stacks = groups.map((group, index) => ({
+        stackId: `stack-${index + 1}`,
+        stackName: `Stack ${index + 1}`,
+        assignedGroups: [group],
+      }));
+      setGroupStackAssignments(stacks);
+      setNumberOfStacks(stacks.length);
+    } else if (deploymentMode === "per_course" && keycloakMembers.length > 0) {
+      // One group with all students, one stack
+      const courseGroup = [
+        {
+          groupId: "group-course",
+          groupName: "Kurs Gruppe",
+          students: [...keycloakMembers],
+        },
+      ];
+      setStudentGroups(courseGroup);
+      setNumberOfGroups(1);
+
+      const courseStack = [
+        {
+          stackId: "stack-1",
+          stackName: "Kurs Stack",
+          assignedGroups: courseGroup,
+        },
+      ];
+      setGroupStackAssignments(courseStack);
+      setNumberOfStacks(1);
+    } else if (deploymentMode === "per_group" && keycloakMembers.length > 0) {
+      // Manual mode - initialize empty groups if needed
+      if (studentGroups.length === 0) {
+        const groups = Array.from({ length: numberOfGroups }).map((_, i) => ({
+          groupId: `group-${i + 1}`,
+          groupName: `Gruppe ${i + 1}`,
+          students: [],
         }));
-      } catch (err) {
-        console.error(`Failed to load members for group ${groupId}:`, err);
+        setStudentGroups(groups);
       }
-    },
-    [selectedCourseId],
-  );
-
-  // Load course groups when course is selected and mode is per_group
-  useEffect(() => {
-    if (!selectedCourseId || deploymentMode !== "per_group") {
-      setCourseGroups([]);
-      setSelectedGroupIds([]);
-      setGroupMembersMap({});
-      return;
+      // Initialize stacks if needed
+      if (groupStackAssignments.length === 0 && numberOfStacks > 0) {
+        const stacks = Array.from({ length: numberOfStacks }).map((_, i) => ({
+          stackId: `stack-${i + 1}`,
+          stackName: `Stack ${i + 1}`,
+          assignedGroups: [],
+        }));
+        setGroupStackAssignments(stacks);
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deploymentMode, keycloakMembers, numberOfStacks, numberOfGroups]);
 
-    loadCourseGroups().then(() => {
-      // After groups are loaded, load members for each group
-      courseGroups.forEach((group) => {
-        loadGroupMembers(group.id);
-      });
-    });
-  }, [selectedCourseId, deploymentMode, loadCourseGroups]);
-
-  // Reset selected groups when deployment mode changes
+  // Auto-assign groups to stacks (balanced distribution in background)
   useEffect(() => {
-    if (deploymentMode !== "per_group") {
-      setSelectedGroupIds([]);
+    if (
+      deploymentMode === "per_group" &&
+      studentGroups.length > 0 &&
+      groupStackAssignments.length > 0
+    ) {
+      // Filter groups that have students
+      const groupsWithStudents = studentGroups.filter(
+        (g) => g.students.length > 0,
+      );
+
+      if (groupsWithStudents.length === 0) return;
+
+      // Distribute groups evenly across stacks
+      const groupsPerStack = Math.ceil(
+        groupsWithStudents.length / groupStackAssignments.length,
+      );
+      const updatedStacks = groupStackAssignments.map((stack, index) => ({
+        ...stack,
+        assignedGroups: groupsWithStudents.slice(
+          index * groupsPerStack,
+          (index + 1) * groupsPerStack,
+        ),
+      }));
+
+      setGroupStackAssignments(updatedStacks);
     }
-  }, [deploymentMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studentGroups, deploymentMode]);
 
   // Load template version data when version is selected
   useEffect(() => {
@@ -302,19 +319,17 @@ export function DeploymentWizard({
     const loadVersionData = async () => {
       try {
         setLoading((prev) => ({ ...prev, version: true }));
-        const res = await getTemplateVersion(selectedVersionId, true);
+        const res = await getTemplateVersion(selectedVersionId);
         setTemplateVersionData(res.data);
 
         // Initialize form values with defaults
-        const defaults: Record<string, any> = {};
-        if (res.data.parameters) {
-          res.data.parameters.forEach((param) => {
-            if (param.default !== undefined && param.default !== null) {
-              defaults[param.name] = param.default;
-            }
-          });
-        }
-        setFormValues(defaults);
+        const initialValues: Record<string, any> = {};
+        res.data.parameters?.forEach((param: TemplateParameter) => {
+          if (param.default !== undefined && param.default !== null) {
+            initialValues[param.name] = param.default;
+          }
+        });
+        setFormValues(initialValues);
 
         setLoading((prev) => ({ ...prev, version: false }));
       } catch (err) {
@@ -327,69 +342,74 @@ export function DeploymentWizard({
     };
 
     loadVersionData();
-  }, [selectedVersionId]);
+  }, [selectedVersionId, templateId]);
 
-  // Group parameters by step (excluding template step as it has fixed fields)
+  // Group parameters by step
   const parametersByStep = useMemo(() => {
     if (!templateVersionData?.parameters) return {};
 
-    const grouped: Record<string, TemplateParameter[]> = {};
-    templateVersionData.parameters.forEach((param) => {
-      if (param.hidden) return; // Skip hidden parameters
-      if (param.step === "template") return; // Skip template step parameters (we have fixed fields)
+    const grouped: Record<string, TemplateParameter[]> = {
+      konfiguration: [],
+      netzwerk: [],
+    };
 
-      const step = param.step || "konfiguration"; // Default to konfiguration if no step specified
-      if (!grouped[step]) {
-        grouped[step] = [];
+    templateVersionData.parameters.forEach((param: TemplateParameter) => {
+      // Group network-related parameters
+      if (
+        param.name.toLowerCase().includes("network") ||
+        param.name.toLowerCase().includes("subnet") ||
+        param.name.toLowerCase().includes("port") ||
+        param.name.toLowerCase().includes("ip")
+      ) {
+        grouped.netzwerk.push(param);
+      } else {
+        grouped.konfiguration.push(param);
       }
-      grouped[step].push(param);
     });
 
     return grouped;
   }, [templateVersionData]);
 
-  // Generate steps dynamically from parameters
+  // Define wizard steps
   const steps = useMemo(() => {
-    const stepOrder = ["konfiguration", "zugriff", "netzwerk"];
-    const stepNames: Record<string, string> = {
-      template: "Template",
-      konfiguration: "Konfiguration",
-      zugriff: "Zugriff",
-      netzwerk: "Netzwerk",
-    };
+    const baseSteps = [
+      {
+        name: "Template & Zugriff",
+        stepKey: "template",
+        description: "Wählen Sie Version und Kurs aus",
+        icon: Server,
+      },
+    ];
 
-    // Always start with template step
-    const templateStep = {
-      id: 0,
-      name: "Template",
-      stepKey: "template",
-      icon: Server,
-      description: "Application-Template auswählen",
-    };
+    // Add configuration step if there are config parameters
+    if (parametersByStep.konfiguration?.length > 0) {
+      baseSteps.push({
+        name: "Konfiguration",
+        stepKey: "konfiguration",
+        description: "Passen Sie die Anwendungsparameter an",
+        icon: Settings,
+      });
+    }
 
-    // Add config steps that have parameters
-    const configSteps = stepOrder
-      .filter(
-        (step) => parametersByStep[step] && parametersByStep[step].length > 0,
-      )
-      .map((step, index) => ({
-        id: index + 1,
-        name: stepNames[step] || step,
-        stepKey: step,
-        icon: stepIcons[step] || Settings,
-        description: `Parameter für ${stepNames[step] || step} konfigurieren`,
-      }));
+    // Add network step if there are network parameters
+    if (parametersByStep.netzwerk?.length > 0) {
+      baseSteps.push({
+        name: "Netzwerk",
+        stepKey: "netzwerk",
+        description: "Konfigurieren Sie Netzwerkeinstellungen",
+        icon: Network,
+      });
+    }
 
-    // Always add overview step at the end
-    const overviewStep = {
-      id: configSteps.length + 1,
+    // Always add overview step
+    baseSteps.push({
       name: "Übersicht",
       stepKey: "overview",
+      description: "Überprüfen Sie Ihre Einstellungen",
       icon: CheckCircle2,
-      description: "Überprüfen und deployen",
-    };
+    });
 
-    return [templateStep, ...configSteps, overviewStep];
+    return baseSteps;
   }, [parametersByStep]);
 
   const handleNext = () => {
@@ -404,6 +424,11 @@ export function DeploymentWizard({
     }
   };
 
+  const handleSkipToOverview = () => {
+    // Jump directly to the last step (overview)
+    setCurrentStep(steps.length - 1);
+  };
+
   const handleParameterChange = (paramName: string, value: any) => {
     setFormValues((prev) => ({
       ...prev,
@@ -411,53 +436,40 @@ export function DeploymentWizard({
     }));
   };
 
-  const handleCreateGroup = async () => {
-    if (!selectedCourseId || !newGroupName.trim()) return;
-
-    try {
-      setIsCreatingGroup(true);
-      setError(null);
-      const groupRes = await createCourseGroup(
-        selectedCourseId,
-        newGroupName.trim(),
-      );
-      const newGroup = groupRes.data;
-
-      // If members were selected, add them to the group
-      if (selectedMemberIds.length > 0) {
-        try {
-          await addGroupMembers(
-            selectedCourseId,
-            newGroup.id,
-            selectedMemberIds,
-          );
-        } catch (err) {
-          console.error("Failed to add members to group:", err);
-          // Continue even if adding members fails
-        }
-      }
-
-      setNewGroupName("");
-      setSelectedMemberIds([]);
-      setShowCreateGroup(false);
-      // Reload groups and members
-      await loadCourseGroups();
-      if (selectedMemberIds.length > 0) {
-        await loadGroupMembers(newGroup.id);
-      }
-    } catch (err) {
-      console.error("Failed to create group:", err);
-      setError(
-        err instanceof Error ? err.message : "Fehler beim Erstellen der Gruppe",
-      );
-    } finally {
-      setIsCreatingGroup(false);
-    }
-  };
-
   const handleDeploy = async () => {
-    if (!selectedVersionId || !selectedCourseId || !deploymentName.trim()) {
+    if (
+      !selectedVersionId ||
+      !selectedKeycloakGroupId ||
+      !deploymentName.trim()
+    ) {
       setError("Bitte füllen Sie alle erforderlichen Felder aus");
+      return;
+    }
+
+    if (deploymentMode === "per_group") {
+      if (studentGroups.length === 0) {
+        setError("Bitte erstellen Sie mindestens eine Gruppe");
+        return;
+      }
+      if (studentGroups.every((g) => g.students.length === 0)) {
+        setError("Bitte weisen Sie mindestens einer Gruppe Studenten zu");
+        return;
+      }
+      if (groupStackAssignments.length === 0) {
+        setError("Bitte erstellen Sie mindestens einen Stack");
+        return;
+      }
+      if (groupStackAssignments.every((s) => s.assignedGroups.length === 0)) {
+        setError("Bitte weisen Sie mindestens einem Stack Gruppen zu");
+        return;
+      }
+    }
+
+    if (
+      (deploymentMode === "per_student" || deploymentMode === "per_course") &&
+      groupStackAssignments.length === 0
+    ) {
+      setError("Keine Stack-Zuweisungen gefunden");
       return;
     }
 
@@ -471,33 +483,25 @@ export function DeploymentWizard({
         return;
       }
 
-      // Build heat_parameters: Start with all default values from template parameters
+      // Build heat_parameters
       const heatParameters: Record<string, any> = {};
 
-      // First, set all default values from template parameters
+      // Set default values
       templateVersionData.parameters.forEach((param: TemplateParameter) => {
-        // Use default value from parameter if available
         if (param.default !== undefined && param.default !== null) {
           heatParameters[param.name] = param.default;
         }
       });
 
-      // Override with user-entered values from formValues (these are the values the user changed)
-      // formValues contains all parameters (defaults + user changes), so we use them directly
+      // Override with user values
       Object.keys(formValues).forEach((key) => {
         const userValue = formValues[key];
-        // Skip 'students' parameter for per_course mode - it will be auto-generated by backend
-        if (deploymentMode === "per_course" && key === "students") {
-          return;
-        }
-        // Use user value if it's not empty/null/undefined
-        // This will override the default we just set
         if (userValue !== null && userValue !== undefined && userValue !== "") {
           heatParameters[key] = userValue;
         }
       });
 
-      // Special handling for stack_label: use deployment name if provided, otherwise keep default
+      // Special handling for stack_label
       if (deploymentName.trim()) {
         const stackLabelSlug = deploymentName
           .toLowerCase()
@@ -508,35 +512,34 @@ export function DeploymentWizard({
         }
       }
 
-      // Build deployment request
+      // Build deployment request with stack assignments
       const deploymentData: DeploymentCreateRequest = {
         name: deploymentName.trim() || undefined,
         template_version_id: selectedVersionId,
-        course_id: selectedCourseId,
+        course_id: selectedKeycloakGroupId,
         deployment_mode: deploymentMode,
         config_json: JSON.stringify(formValues),
         heat_parameters: heatParameters,
         access_types: ["ssh", "web"],
       };
 
-      // Add group_ids or course_member_ids based on deployment mode
-      if (deploymentMode === "per_group") {
-        if (selectedGroupIds.length === 0) {
-          setError("Bitte wählen Sie mindestens eine Gruppe aus");
-          setIsDeploying(false);
-          return;
-        }
-        deploymentData.group_ids = selectedGroupIds;
-      } else if (deploymentMode === "per_student") {
-        // TODO: Implement student selection UI
-        // For now, we'll let the backend handle it (all students)
-        deploymentData.course_member_ids = undefined;
-      }
+      // Add stack assignments as metadata for backend
+      const deploymentWithStacks = {
+        ...deploymentData,
+        _stack_assignments: groupStackAssignments.map((stack, stackIndex) => ({
+          stack_index: stackIndex + 1,
+          stack_name: stack.stackName,
+          groups: stack.assignedGroups.map((group) => ({
+            group_id: group.groupId,
+            group_name: group.groupName,
+            student_ids: group.students.map((s) => s.id),
+          })),
+        })),
+      };
 
-      const deployment = await createDeployment(deploymentData);
+      const deployment = await createDeployment(deploymentWithStacks as any);
 
       console.log("Deployment created successfully:", deployment.data);
-      // Navigate to deployment details page with the new deployment ID
       onComplete(deployment.data.id);
     } catch (err) {
       console.error("Deployment failed:", err);
@@ -547,7 +550,6 @@ export function DeploymentWizard({
   };
 
   const renderParameterField = (param: TemplateParameter) => {
-    // Get value from formValues, fallback to default, then to empty value based on type
     let value = formValues[param.name];
     if (value === undefined || value === null) {
       value = param.default;
@@ -574,9 +576,10 @@ export function DeploymentWizard({
           </Label>
           <Select
             value={String(value || "")}
-            onValueChange={(val) => handleParameterChange(param.name, val)}
+            onValueChange={(val: any) => handleParameterChange(param.name, val)}
+            disabled={param.hidden}
           >
-            <SelectTrigger id={fieldId}>
+            <SelectTrigger id={fieldId} className={param.hidden ? "bg-slate-50" : ""}>
               <SelectValue
                 placeholder={`Wählen Sie ${param.label || param.name}`}
               />
@@ -601,7 +604,7 @@ export function DeploymentWizard({
       return (
         <div
           key={param.name}
-          className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
+          className={`flex items-center justify-between p-4 rounded-lg ${param.hidden ? 'bg-slate-100' : 'bg-slate-50'}`}
         >
           <div className="flex-1">
             <Label htmlFor={fieldId}>
@@ -617,9 +620,10 @@ export function DeploymentWizard({
             checked={
               value === true || value === "true" || value === 1 || value === "1"
             }
-            onCheckedChange={(checked) =>
+            onCheckedChange={(checked: any) =>
               handleParameterChange(param.name, checked)
             }
+            disabled={param.hidden}
           />
         </div>
       );
@@ -636,14 +640,19 @@ export function DeploymentWizard({
           <Input
             id={fieldId}
             type="number"
-            value={value !== null && value !== undefined ? String(value) : ""}
+            value={value}
             onChange={(e) =>
               handleParameterChange(
                 param.name,
                 e.target.value ? Number(e.target.value) : "",
               )
             }
-            required={param.required}
+            placeholder={
+              param.description || `Geben Sie ${param.label || param.name} ein`
+            }
+            disabled={param.hidden}
+            readOnly={param.hidden}
+            className={param.hidden ? "bg-slate-50" : ""}
           />
           {param.description && (
             <p className="text-xs text-slate-500">{param.description}</p>
@@ -652,7 +661,7 @@ export function DeploymentWizard({
       );
     }
 
-    // Handle string (default)
+    // Handle text/string (default)
     return (
       <div key={param.name} className="space-y-2">
         <Label htmlFor={fieldId}>
@@ -661,11 +670,15 @@ export function DeploymentWizard({
         </Label>
         <Input
           id={fieldId}
-          type={param.secret ? "password" : "text"}
-          value={value !== null && value !== undefined ? String(value) : ""}
+          type="text"
+          value={value}
           onChange={(e) => handleParameterChange(param.name, e.target.value)}
-          required={param.required}
-          placeholder={param.description}
+          placeholder={
+            param.description || `Geben Sie ${param.label || param.name} ein`
+          }
+          disabled={param.hidden}
+          readOnly={param.hidden}
+          className={param.hidden ? "bg-slate-50" : ""}
         />
         {param.description && (
           <p className="text-xs text-slate-500">{param.description}</p>
@@ -750,340 +763,149 @@ export function DeploymentWizard({
           </div>
 
           <div>
-            <Label>Kurszuweisung</Label>
+            <Label>Kurs auswählen</Label>
             <Select
-              value={selectedCourseId}
-              onValueChange={setSelectedCourseId}
-              disabled={loading.courses}
+              value={selectedKeycloakGroupId}
+              onValueChange={setSelectedKeycloakGroupId}
+              disabled={loading.groups}
             >
               <SelectTrigger className="mt-2">
-                <SelectValue placeholder="Kurs auswählen" />
+                <SelectValue placeholder="Gruppe auswählen" />
               </SelectTrigger>
               <SelectContent>
-                {courses.map((course) => (
-                  <SelectItem key={course.id} value={course.id}>
-                    {course.name} ({course.semester})
+                {keycloakGroups.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-          </div>
-
-          <div>
-            <Label>Gruppieren</Label>
-            <Select value={deploymentMode} onValueChange={setDeploymentMode}>
-              <SelectTrigger className="mt-2">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {/* <SelectItem value="per_student">Pro Student (jeder Student bekommt eine eigene VM)</SelectItem>
-                <SelectItem value="per_group">Pro Gruppe (Studenten werden in Gruppen aufgeteilt)</SelectItem> */}
-                <SelectItem value="per_course">
-                  Pro Kurs (eine VM für den gesamten Kurs)
-                </SelectItem>
-              </SelectContent>
-            </Select>
             <p className="text-xs text-slate-500 mt-2">
-              Wählen Sie, wie die Studenten aus dem Kurs aufgeteilt werden
-              sollen
+              Wählen Sie eine Keycloak-Gruppe (Kurs) aus
             </p>
           </div>
 
-          {/* Group selection - only shown when per_group mode is selected */}
-          {deploymentMode === "per_group" && (
+          <div>
+            <Label>Anzahl der Gruppen</Label>
+            <Input
+              type="number"
+              min="1"
+              max="50"
+              className="mt-2"
+              value={numberOfGroups}
+              onChange={(e) => {
+                const value = parseInt(e.target.value) || 1;
+                setNumberOfGroups(Math.max(1, Math.min(50, value)));
+                // Initialize groups
+                const groups = Array.from({ length: value }).map((_, i) => ({
+                  groupId: `group-${i + 1}`,
+                  groupName: `Gruppe ${i + 1}`,
+                  students: [],
+                }));
+                setStudentGroups(groups);
+              }}
+            />
+            <p className="text-xs text-slate-500 mt-2">
+              Legen Sie fest, in wie viele Gruppen die Studenten aufgeteilt
+              werden
+            </p>
+          </div>
+
+          <div>
+            <Label>Anzahl der Server</Label>
+            <Input
+              type="number"
+              min="1"
+              max="50"
+              className="mt-2"
+              value={numberOfStacks}
+              onChange={(e) => {
+                const value = parseInt(e.target.value) || 1;
+                setNumberOfStacks(Math.max(1, Math.min(50, value)));
+                // Initialize stacks
+                const stacks = Array.from({ length: value }).map((_, i) => ({
+                  stackId: `stack-${i + 1}`,
+                  stackName: `Stack ${i + 1}`,
+                  assignedGroups: [],
+                }));
+                setGroupStackAssignments(stacks);
+              }}
+            />
+            <p className="text-xs text-slate-500 mt-2">
+              Geben Sie an, wie viele Stack-Instanzen Sie benötigen
+            </p>
+          </div>
+
+          {/* Group and Stack Assignment */}
+          {selectedKeycloakGroupId && keycloakMembers.length > 0 && (
             <div>
-              <Label>Gruppen auswählen</Label>
-              {!selectedCourseId ? (
-                <span className="text-xs text-slate-500 mt-2 text-amber-600 block">
-                  Bitte wählen Sie zuerst einen Kurs aus
-                </span>
-              ) : loading.groups ? (
-                <div className="flex items-center gap-2 text-slate-500 mt-2">
-                  <div className="w-4 h-4 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-sm">Lade Gruppen...</span>
-                </div>
-              ) : error && error.includes("404") ? (
-                <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <span className="text-xs text-amber-800 block">
-                    Der API-Endpoint für Gruppen ist noch nicht implementiert.
-                    Bitte verwenden Sie vorerst einen anderen Deployment-Modus.
-                  </span>
-                </div>
-              ) : courseGroups.length === 0 ? (
-                <div className="mt-2 space-y-3">
-                  <span className="text-xs text-slate-500 text-amber-600 block">
-                    Keine Gruppen für diesen Kurs verfügbar.
-                  </span>
-                  {!showCreateGroup ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowCreateGroup(true)}
-                      className="w-full"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Erste Gruppe erstellen
-                    </Button>
-                  ) : (
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+              {deploymentMode === "per_student" ? (
+                <Card className="border-teal-200 bg-teal-50">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3 text-teal-900">
+                      <CheckCircle2 className="w-5 h-5" />
                       <div>
-                        <Label htmlFor="new-group-name" className="text-xs">
-                          Gruppenname
-                        </Label>
-                        <Input
-                          id="new-group-name"
-                          value={newGroupName}
-                          onChange={(e) => setNewGroupName(e.target.value)}
-                          placeholder="z.B. Gruppe A"
-                          className="mt-1"
-                          disabled={isCreatingGroup}
-                        />
-                      </div>
-
-                      {/* Student selection */}
-                      {loading.members ? (
-                        <div className="flex items-center gap-2 text-slate-500">
-                          <div className="w-4 h-4 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
-                          <span className="text-xs">Lade Studenten...</span>
-                        </div>
-                      ) : courseMembers.length > 0 ? (
-                        <div>
-                          <Label className="text-xs mb-2 block">
-                            Studenten auswählen (optional)
-                          </Label>
-                          <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2 bg-white">
-                            {courseMembers.map((member) => (
-                              <div
-                                key={member.id}
-                                className="flex items-center space-x-2 py-1"
-                              >
-                                <input
-                                  type="checkbox"
-                                  id={`member-${member.id}`}
-                                  checked={selectedMemberIds.includes(
-                                    member.id,
-                                  )}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setSelectedMemberIds([
-                                        ...selectedMemberIds,
-                                        member.id,
-                                      ]);
-                                    } else {
-                                      setSelectedMemberIds(
-                                        selectedMemberIds.filter(
-                                          (id) => id !== member.id,
-                                        ),
-                                      );
-                                    }
-                                  }}
-                                  className="w-4 h-4 text-teal-600 border-slate-300 rounded focus:ring-teal-500"
-                                  disabled={isCreatingGroup}
-                                />
-                                <Label
-                                  htmlFor={`member-${member.id}`}
-                                  className="text-xs font-normal cursor-pointer flex-1"
-                                >
-                                  Student {member.user_id.slice(0, 8)}...
-                                </Label>
-                              </div>
-                            ))}
-                          </div>
-                          {selectedMemberIds.length > 0 && (
-                            <span className="text-xs text-slate-500 mt-1 block">
-                              {selectedMemberIds.length} Student(en) ausgewählt
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-500">
-                          Keine Studenten im Kurs verfügbar
-                        </span>
-                      )}
-
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={handleCreateGroup}
-                          disabled={!newGroupName.trim() || isCreatingGroup}
-                          className="flex-1 bg-teal-500 hover:bg-teal-600 text-white"
-                        >
-                          {isCreatingGroup ? (
-                            <>
-                              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                              Erstelle...
-                            </>
-                          ) : (
-                            "Erstellen"
-                          )}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setShowCreateGroup(false);
-                            setNewGroupName("");
-                            setSelectedMemberIds([]);
-                          }}
-                          disabled={isCreatingGroup}
-                        >
-                          Abbrechen
-                        </Button>
+                        <p className="text-sm font-medium">
+                          Automatische Stack-Zuweisung aktiviert
+                        </p>
+                        <p className="text-xs text-teal-700 mt-1">
+                          {keycloakMembers.length} Stack
+                          {keycloakMembers.length !== 1 ? "s" : ""} werden
+                          erstellt - ein Stack pro Student mit individuellen
+                          Credentials
+                        </p>
                       </div>
                     </div>
-                  )}
-                </div>
+                  </CardContent>
+                </Card>
+              ) : deploymentMode === "per_course" ? (
+                <Card className="border-blue-200 bg-blue-50">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3 text-blue-900">
+                      <CheckCircle2 className="w-5 h-5" />
+                      <div>
+                        <p className="text-sm font-medium">
+                          Kurs-weites Deployment aktiviert
+                        </p>
+                        <p className="text-xs text-blue-700 mt-1">
+                          1 Stack wird erstellt - alle {keycloakMembers.length}{" "}
+                          Studenten teilen sich die gleichen Credentials
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               ) : (
-                <div className="mt-2 space-y-2">
-                  <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-lg p-4 space-y-3">
-                    {courseGroups.map((group) => {
-                      const groupMembers = groupMembersMap[group.id] || [];
-                      return (
-                        <div
-                          key={group.id}
-                          className="space-y-2 pb-2 border-b border-slate-100 last:border-0 last:pb-0"
-                        >
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="checkbox"
-                              id={`group-${group.id}`}
-                              checked={selectedGroupIds.includes(group.id)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedGroupIds([
-                                    ...selectedGroupIds,
-                                    group.id,
-                                  ]);
-                                  // Load members if not already loaded
-                                  if (!groupMembersMap[group.id]) {
-                                    loadGroupMembers(group.id);
-                                  }
-                                } else {
-                                  setSelectedGroupIds(
-                                    selectedGroupIds.filter(
-                                      (id) => id !== group.id,
-                                    ),
-                                  );
-                                }
-                              }}
-                              className="w-4 h-4 text-teal-600 border-slate-300 rounded focus:ring-teal-500"
-                            />
-                            <Label
-                              htmlFor={`group-${group.id}`}
-                              className="text-sm font-normal cursor-pointer flex-1"
-                            >
-                              {group.name}
-                              {groupMembers.length > 0 && (
-                                <span className="text-xs text-slate-500 ml-2">
-                                  ({groupMembers.length} Student
-                                  {groupMembers.length !== 1 ? "en" : ""})
-                                </span>
-                              )}
-                            </Label>
-                          </div>
-                          {groupMembers.length > 0 && (
-                            <div className="ml-6 space-y-1">
-                              <span className="text-xs text-slate-500">
-                                Studenten:
-                              </span>
-                              <div className="flex flex-wrap gap-1">
-                                {groupMembers.map((member) => (
-                                  <Badge
-                                    key={member.id}
-                                    variant="outline"
-                                    className="text-xs"
-                                  >
-                                    {member.user_id.slice(0, 8)}...
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Create new group button */}
-                  {!showCreateGroup ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowCreateGroup(true)}
-                      className="w-full"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Neue Gruppe erstellen
-                    </Button>
-                  ) : (
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
-                      <div>
-                        <Label htmlFor="new-group-name" className="text-xs">
-                          Gruppenname
-                        </Label>
-                        <Input
-                          id="new-group-name"
-                          value={newGroupName}
-                          onChange={(e) => setNewGroupName(e.target.value)}
-                          placeholder="z.B. Gruppe A"
-                          className="mt-1"
-                          disabled={isCreatingGroup}
-                          onKeyDown={(e) => {
-                            if (
-                              e.key === "Enter" &&
-                              newGroupName.trim() &&
-                              !isCreatingGroup
-                            ) {
-                              handleCreateGroup();
-                            }
-                          }}
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={handleCreateGroup}
-                          disabled={!newGroupName.trim() || isCreatingGroup}
-                          className="flex-1 bg-teal-500 hover:bg-teal-600 text-white"
-                        >
-                          {isCreatingGroup ? (
-                            <>
-                              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                              Erstelle...
-                            </>
-                          ) : (
-                            "Erstellen"
-                          )}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setShowCreateGroup(false);
-                            setNewGroupName("");
-                          }}
-                          disabled={isCreatingGroup}
-                        >
-                          Abbrechen
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                <div className="space-y-6">
+                  {/* Gruppenverwaltung - Stack-Zuweisung erfolgt automatisch im Hintergrund */}
+                  <GroupManager
+                    students={keycloakMembers}
+                    groups={studentGroups}
+                    onGroupsChange={setStudentGroups}
+                  />
                 </div>
-              )}
-              {selectedGroupIds.length > 0 && (
-                <span className="text-xs text-slate-500 mt-2 block">
-                  {selectedGroupIds.length} Gruppe(n) ausgewählt
-                </span>
               )}
             </div>
           )}
+
+          {/* Loading state for members */}
+          {selectedKeycloakGroupId && loading.members && (
+            <div className="flex items-center gap-2 text-slate-500">
+              <div className="w-4 h-4 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm">Lade Studenten...</span>
+            </div>
+          )}
+
+          {/* No members warning */}
+          {selectedKeycloakGroupId &&
+            !loading.members &&
+            keycloakMembers.length === 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <span className="text-xs text-amber-800 block">
+                  Keine Studenten in dieser Gruppe gefunden.
+                </span>
+              </div>
+            )}
 
           <div>
             <Label>Laufzeit</Label>
@@ -1117,12 +939,9 @@ export function DeploymentWizard({
 
     // Overview step
     if (currentStepData.stepKey === "overview") {
-      const selectedCourse = courses.find((c) => c.id === selectedCourseId);
-      const deploymentModeLabels: Record<string, string> = {
-        // per_student: 'Pro Student',
-        // per_group: 'Pro Gruppe',
-        per_course: "Pro Kurs",
-      };
+      const selectedGroup = keycloakGroups.find(
+        (g) => g.id === selectedKeycloakGroupId,
+      );
       const runtimeLabels: Record<string, string> = {
         "1": "1 Monat",
         "3": "3 Monate",
@@ -1152,34 +971,51 @@ export function DeploymentWizard({
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-sm text-slate-600">Kurs:</span>
+                <span className="text-sm text-slate-600">Gruppe:</span>
                 <span className="text-sm text-slate-900">
-                  {selectedCourse
-                    ? `${selectedCourse.name} (${selectedCourse.semester})`
-                    : "-"}
+                  {selectedGroup?.name || "-"}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-sm text-slate-600">Gruppieren:</span>
+                <span className="text-sm text-slate-600">
+                  Deployment-Modus:
+                </span>
                 <span className="text-sm text-slate-900">
-                  {deploymentModeLabels[deploymentMode] || deploymentMode}
+                  {deploymentMode === "per_group"
+                    ? "Pro Gruppe"
+                    : deploymentMode === "per_student"
+                      ? "Pro Student"
+                      : "Pro Kurs"}
                 </span>
               </div>
-              {deploymentMode === "per_group" &&
-                selectedGroupIds.length > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-sm text-slate-600">
-                      Ausgewählte Gruppen:
-                    </span>
-                    <span className="text-sm text-slate-900">
-                      {selectedGroupIds.length} Gruppe(n):{" "}
-                      {courseGroups
-                        .filter((g) => selectedGroupIds.includes(g.id))
-                        .map((g) => g.name)
-                        .join(", ")}
-                    </span>
-                  </div>
-                )}
+              <div className="flex justify-between">
+                <span className="text-sm text-slate-600">Anzahl Stacks:</span>
+                <span className="text-sm text-slate-900">
+                  {groupStackAssignments.length}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-slate-600">Anzahl Gruppen:</span>
+                <span className="text-sm text-slate-900">
+                  {studentGroups.length}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-slate-600">Studenten:</span>
+                <span className="text-sm text-slate-900">
+                  {keycloakMembers.length}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-slate-600">Credentials:</span>
+                <span className="text-sm text-slate-900">
+                  {deploymentMode === "per_student"
+                    ? `${keycloakMembers.length} individuelle Sets`
+                    : deploymentMode === "per_course"
+                      ? "1 gemeinsames Set"
+                      : `${studentGroups.filter((g) => g.students.length > 0).length} Gruppen-Sets`}
+                </span>
+              </div>
               <div className="flex justify-between">
                 <span className="text-sm text-slate-600">Laufzeit:</span>
                 <span className="text-sm text-slate-900">
@@ -1189,49 +1025,71 @@ export function DeploymentWizard({
             </div>
           </div>
 
-          {templateVersionData?.parameters &&
-            templateVersionData.parameters.filter((p) => !p.hidden).length >
-              0 && (
-              <Card className="border-slate-200">
-                <CardHeader>
-                  <CardTitle className="text-base">
-                    Template-Parameter
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {templateVersionData.parameters
-                    .filter((p) => !p.hidden)
-                    .map((param) => {
-                      const value =
-                        formValues[param.name] !== undefined
-                          ? formValues[param.name]
-                          : param.default !== undefined
-                            ? param.default
-                            : null;
+          {/* Stack Assignments Overview */}
+          {groupStackAssignments.length > 0 && (
+            <Card className="border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-base">Stack-Zuweisungen</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {groupStackAssignments.map((stack) => (
+                  <div key={stack.stackId} className="mb-3 last:mb-0">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">
+                        {stack.stackName}
+                      </span>
+                      <Badge variant="outline">
+                        {stack.assignedGroups.length} Gruppe(n)
+                      </Badge>
+                    </div>
+                    {stack.assignedGroups.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {stack.assignedGroups.map((group) => (
+                          <div
+                            key={group.groupId}
+                            className="text-xs text-slate-600 ml-2"
+                          >
+                            • {group.groupName}: {group.students.length}{" "}
+                            Student(en)
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
-                      return (
-                        <div
-                          key={param.name}
-                          className="flex justify-between text-sm"
-                        >
-                          <span className="text-slate-600">
-                            {param.label || param.name}:
-                          </span>
-                          <span className="text-slate-900">
-                            {value !== null && value !== undefined
-                              ? typeof value === "boolean"
-                                ? value
-                                  ? "Ja"
-                                  : "Nein"
-                                : String(value)
-                              : "-"}
-                          </span>
-                        </div>
-                      );
-                    })}
-                </CardContent>
-              </Card>
-            )}
+          {/* Configuration Parameters */}
+          {Object.keys(formValues).length > 0 && (
+            <Card className="border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-base">Konfiguration</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {Object.entries(formValues).map(([key, value]) => {
+                  const param = templateVersionData?.parameters?.find(
+                    (p: TemplateParameter) => p.name === key,
+                  );
+                  return (
+                    <div key={key} className="flex justify-between py-1">
+                      <span className="text-sm text-slate-600">
+                        {param?.label || key}:
+                      </span>
+                      <span className="text-sm text-slate-900">
+                        {typeof value === "boolean"
+                          ? value
+                            ? "Ja"
+                            : "Nein"
+                          : value || "-"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
 
           <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
             <div className="flex items-start gap-3">
@@ -1267,61 +1125,65 @@ export function DeploymentWizard({
     );
   };
 
-  if (error && !loading.template && !loading.courses) {
+  if (error && !loading.template && !loading.groups) {
     return (
       <div className="p-8">
         <div className="text-center py-12">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
           <p className="text-slate-900 font-medium mb-2">Fehler beim Laden</p>
           <p className="text-slate-600 mb-4">{error}</p>
-          <Button onClick={() => window.location.reload()}>
-            Erneut versuchen
-          </Button>
+          <Button onClick={() => window.location.reload()}>Neu laden</Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading.template || loading.groups) {
+    return (
+      <div className="p-8">
+        <div className="text-center py-12">
+          <div className="w-12 h-12 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-600">Lade Template...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-8 space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-slate-900 mb-2">Application deployen</h1>
-        <p className="text-slate-600">
-          Konfigurieren und deployen Sie Ihre Application
-        </p>
-      </div>
-
+    <div className="max-w-4xl mx-auto p-6 space-y-8">
       {/* Progress Steps */}
       <div className="flex items-center justify-between">
         {steps.map((step, index) => {
-          const Icon = step.icon;
-          const isActive = currentStep === index;
-          const isCompleted = currentStep > index;
+          const StepIcon = step.icon;
+          const isActive = index === currentStep;
+          const isCompleted = index < currentStep;
 
           return (
-            <div key={step.id} className="flex items-center flex-1">
-              <div className="flex flex-col items-center flex-1">
+            <div key={step.stepKey} className="flex items-center flex-1">
+              <div className="flex flex-col items-center">
                 <div
-                  className={`
-                  w-12 h-12 rounded-full flex items-center justify-center transition-all
-                  ${
+                  className={`w-12 h-12 rounded-full flex items-center justify-center ${
                     isCompleted
                       ? "bg-teal-500 text-white"
                       : isActive
-                        ? "bg-teal-500 text-white ring-4 ring-teal-100"
+                        ? "bg-teal-100 text-teal-600 border-2 border-teal-500"
                         : "bg-slate-100 text-slate-400"
-                  }
-                `}
+                  }`}
                 >
                   {isCompleted ? (
-                    <Check className="w-5 h-5" />
+                    <Check className="w-6 h-6" />
                   ) : (
-                    <Icon className="w-5 h-5" />
+                    <StepIcon className="w-6 h-6" />
                   )}
                 </div>
                 <p
-                  className={`text-sm mt-2 ${isActive ? "text-slate-900" : "text-slate-500"}`}
+                  className={`text-xs mt-2 text-center ${
+                    isActive
+                      ? "text-teal-600 font-medium"
+                      : isCompleted
+                        ? "text-slate-600"
+                        : "text-slate-400"
+                  }`}
                 >
                   {step.name}
                 </p>
@@ -1356,42 +1218,60 @@ export function DeploymentWizard({
           {currentStep === 0 ? "Abbrechen" : "Zurück"}
         </Button>
 
-        {currentStep < steps.length - 1 ? (
-          <Button
-            onClick={handleNext}
-            className="bg-teal-500 hover:bg-teal-600 text-white"
-            disabled={
-              (currentStep === 0 &&
-                (!selectedVersionId ||
-                  !selectedCourseId ||
-                  !deploymentName ||
-                  (deploymentMode === "per_group" &&
-                    selectedGroupIds.length === 0))) ||
-              isDeploying
-            }
-          >
-            Weiter
-            <ChevronRight className="w-4 h-4 ml-2" />
-          </Button>
-        ) : (
-          <Button
-            onClick={handleDeploy}
-            disabled={isDeploying}
-            className="bg-teal-500 hover:bg-teal-600 text-white"
-          >
-            {isDeploying ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                Wird deployed...
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="w-4 h-4 mr-2" />
-                Application deployen
-              </>
-            )}
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {/* Skip to Overview button (only on first step) */}
+          {currentStep === 0 && steps.length > 1 && (
+            <Button
+              variant="outline"
+              onClick={handleSkipToOverview}
+              disabled={
+                !selectedVersionId ||
+                !selectedKeycloakGroupId ||
+                !deploymentName ||
+                isDeploying
+              }
+              className="border-teal-500 text-teal-600 hover:bg-teal-50"
+            >
+              Direkt zur Übersicht
+              <ChevronRight className="w-4 h-4 ml-2" />
+            </Button>
+          )}
+
+          {currentStep < steps.length - 1 ? (
+            <Button
+              onClick={handleNext}
+              className="bg-teal-500 hover:bg-teal-600 text-white"
+              disabled={
+                (currentStep === 0 &&
+                  (!selectedVersionId ||
+                    !selectedKeycloakGroupId ||
+                    !deploymentName)) ||
+                isDeploying
+              }
+            >
+              Weiter
+              <ChevronRight className="w-4 h-4 ml-2" />
+            </Button>
+          ) : (
+            <Button
+              onClick={handleDeploy}
+              disabled={isDeploying}
+              className="bg-teal-500 hover:bg-teal-600 text-white"
+            >
+              {isDeploying ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  Wird deployed...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                  Application deployen
+                </>
+              )}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

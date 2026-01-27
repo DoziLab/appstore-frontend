@@ -7,7 +7,7 @@ import { getQuotas, type QuotasResponse } from '../api/quotas';
 import { getAllDeployments, type DeploymentDto } from '../api/deployments';
 
 interface DashboardProps {
-  onSelectDeployment?: (deploymentName: string) => void;
+  onSelectDeployment?: (deploymentId: string) => void;
 }
 
 export function Dashboard({ onSelectDeployment }: DashboardProps) {
@@ -17,7 +17,7 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
   const [activeDeployments, setActiveDeployments] = useState<number | null>(null);
   const [deploymentsError, setDeploymentsError] = useState<string | null>(null);
   const [deploymentsLoading, setDeploymentsLoading] = useState<boolean>(false);
-  const [recentDeployments, setRecentDeployments] = useState<Array<{ name: string; status: string; course?: string; updated: string }>>([]);
+  const [recentDeployments, setRecentDeployments] = useState<Array<{ id: string; name: string; status: string; course?: string; updated: string }>>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -70,6 +70,7 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
 
         const sorted = items.sort((a, b) => (getUpdated(b)?.getTime() || 0) - (getUpdated(a)?.getTime() || 0));
         const mapped = sorted.map((d) => ({
+          id: d.id,
           name: d.name,
           status: d.status,
           course: d.course?.name || undefined,
@@ -189,7 +190,7 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
               {!deploymentsLoading && recentDeployments.map((deployment, idx) => (
                 <div
                   key={idx}
-                  onClick={() => onSelectDeployment?.(deployment.name)}
+                  onClick={() => onSelectDeployment?.(deployment.id)}
                   className="flex items-center gap-4 p-4 rounded-lg bg-slate-50 border border-slate-100 hover:bg-slate-100 hover:border-slate-200 cursor-pointer transition-all"
                 >
                   <div className="flex-1 min-w-0">

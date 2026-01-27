@@ -15,6 +15,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Progress } from '../components/ui/progress';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '../components/ui/alert-dialog';
 
 interface DeploymentStep {
   id: string;
@@ -49,9 +60,10 @@ interface Deployment {
 interface DeploymentDetailsProps {
   deployment: Deployment;
   onBack: () => void;
+  onDelete?: (deploymentId: string) => Promise<void> | void;
 }
 
-export function DeploymentDetails({ deployment, onBack }: DeploymentDetailsProps) {
+export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDetailsProps) {
   const getStatusBadge = () => {
     switch (deployment.status) {
       case 'running':
@@ -336,15 +348,39 @@ export function DeploymentDetails({ deployment, onBack }: DeploymentDetailsProps
             <CardContent className="space-y-2">
               {deployment.status === 'running' && (
                 <>
-                  <Button variant="outline" className="w-full">
+                  <Button variant="outline" className="w-full opacity-50 cursor-not-allowed" disabled>
                     VM starten
                   </Button>
                   <Button variant="outline" className="w-full">
                     Logs anzeigen
                   </Button>
-                  <Button variant="outline" className="w-full text-red-600 hover:text-red-700 hover:bg-red-50">
-                    Deployment löschen
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" className="w-full text-red-600 hover:text-red-700 hover:bg-red-50">
+                        Deployment löschen
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="bg-white w-auto max-w-sm sm:max-w-md max-h-[70vh] overflow-y-auto">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                          <XCircle className="w-5 h-5 text-red-600" />
+                          Deployment löschen?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Diese Aktion kann nicht rückgängig gemacht werden. Das Deployment und alle zugehörigen Ressourcen werden entfernt.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter className="justify-center sm:justify-center">
+                        <AlertDialogCancel className="sm:w-auto">Abbrechen</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="sm:w-auto border bg-white border-slate-200 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => onDelete?.(deployment.id)}
+                        >
+                          Löschen bestätigen
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </>
               )}
               {deployment.status === 'deploying' && (
@@ -354,7 +390,7 @@ export function DeploymentDetails({ deployment, onBack }: DeploymentDetailsProps
               )}
               {(deployment.status === 'failed' || deployment.status === 'cancelled') && (
                 <>
-                  <Button className="w-full bg-teal-500 hover:bg-teal-600 text-white">
+                  <Button className="w-full bg-slate-200 text-slate-500 cursor-not-allowed" disabled>
                     Erneut versuchen
                   </Button>
                   <Button variant="outline" className="w-full">

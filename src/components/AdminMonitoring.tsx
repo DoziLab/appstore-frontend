@@ -629,7 +629,9 @@ export function AdminMonitoring() {
                         {deploymentLogs.map(log => (
                           <TableRow key={log.id}>
                             <TableCell>
-                              {new Date(log.timestamp).toLocaleString("de-DE")}
+                              {new Date(log.created_at).toLocaleString("de-DE")}
+
+
                             </TableCell>
                             <TableCell>
                               <Badge variant="outline">{log.level ?? "INFO"}</Badge>

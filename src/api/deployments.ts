@@ -25,10 +25,11 @@ export type DeploymentState =
  */
 export type DeploymentLogDto = {
     id: string;
-    timestamp: string;
-    level?: "INFO" | "WARN" | "ERROR";
+    created_at: string;               // 🔑 kommt vom Backend
+    level?: "info" | "warn" | "error";
     message: string;
 };
+
 
 export type DeploymentLogsResponse = {
     success: boolean;

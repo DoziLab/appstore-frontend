@@ -179,6 +179,12 @@ export function AdminMonitoring() {
   const [logsError, setLogsError] = useState<string | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
 
+  const [deploymentStacks, setDeploymentStacks] =
+    useState<DeploymentStackDto[]>([]);
+
+  const [deployments, setDeployments] =
+    useState<DeploymentDto[]>([]);
+
 
 
   // ---------- EFFECT 1: DEPLOYMENTS ----------
@@ -190,14 +196,13 @@ export function AdminMonitoring() {
         setLoadingDeployments(true);
         setDeploymentError(null);
 
-        // 1️⃣ Rohdaten (Stacks)
         const res = await getDeployments({ page: 1, page_size: 10 });
         if (!alive) return;
 
-        const stacks: DeploymentStackDto[] = res.data ?? [];
+        const stacks = res.data ?? [];
+        setDeploymentStacks(stacks);
 
-        // 2️⃣ Fachliche Deployments ableiten
-        const deployments: DeploymentDto[] = stacks
+        const realDeployments: DeploymentDto[] = stacks
           .filter(s => s.deployment_id !== null)
           .map(s => ({
             id: s.deployment_id!,
@@ -206,19 +211,13 @@ export function AdminMonitoring() {
             created_at: s.creation_time,
           }));
 
-        // 3️⃣ Kennzahlen
-        const active = deployments.filter(
-          d => d.status === "running"
-        ).length;
-
-        const inactive = deployments.filter(
-          d => d.status !== "running"
-        ).length;
-
-        // 4️⃣ State setzen
-        setActiveDeployments(active);
-        setInactiveDeployments(inactive);
-        setDeploymentRows(deployments);
+        setDeployments(realDeployments);
+        setActiveDeployments(
+          realDeployments.filter(d => d.status === "running").length
+        );
+        setInactiveDeployments(
+          realDeployments.filter(d => d.status !== "running").length
+        );
 
       } catch (e) {
         if (!alive) return;
@@ -235,6 +234,7 @@ export function AdminMonitoring() {
       alive = false;
     };
   }, []);
+
 
 
   // ---------- EFFECT 2: LOGS ----------
@@ -271,10 +271,9 @@ export function AdminMonitoring() {
 
 
   const totalDeployments = useMemo(() => {
-    return deploymentRows.filter(
-      d => d.deployment_id !== null
-    ).length;
-  }, [deploymentRows]);
+    return deployments.length;
+  }, [deployments]);
+
 
 
 

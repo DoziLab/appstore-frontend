@@ -9,7 +9,6 @@ type CourseUi = {
   id: string;
   code: string;
   name: string;
-  semester: string;
 };
 
 export function Courses() {
@@ -60,10 +59,6 @@ export function Courses() {
           <h1 className="text-slate-900 mb-2">Kurse</h1>
           <p className="text-slate-600">Verwalten Sie Anwendungen für Ihre Kurse</p>
         </div>
-        <Button className="bg-teal-500 hover:bg-teal-600 text-white">
-          <BookOpen className="w-4 h-4 mr-2" />
-          Kurs hinzufügen
-        </Button>
       </div>
 
       {loading && (

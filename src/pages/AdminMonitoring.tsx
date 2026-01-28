@@ -1,10 +1,10 @@
-import { 
-  Activity, 
-  Server, 
-  Users, 
-  TrendingUp, 
-  Cpu, 
-  HardDrive, 
+import {
+  Activity,
+  Server,
+  Users,
+  TrendingUp,
+  Cpu,
+  HardDrive,
   Database,
   AlertTriangle,
   CheckCircle2,
@@ -30,7 +30,14 @@ import {
   TableHeader,
   TableRow,
 } from '../components/ui/table';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import {
+  getAllDeployments,
+  getDeploymentLogs,
+  DeploymentDto,
+  DeploymentLogDto,
+} from '../api/deployments';
+
 
 // Mock data für Dozenten-Projekte
 const dozentenProjekte = [
@@ -147,10 +154,10 @@ const apiLogs = [
 
 // Globale Ressourcenstatistiken
 const gesamtQuotas = {
-  vCPUs: { verwendet: 60, verfuegbar: 256, prozent: (60/256) * 100 },
-  ram: { verwendet: 120, verfuegbar: 512, prozent: (120/512) * 100 },
-  storage: { verwendet: 900, verfuegbar: 5120, prozent: (900/5120) * 100 },
-  vms: { verwendet: 15, verfuegbar: 100, prozent: (15/100) * 100 },
+  vCPUs: { verwendet: 60, verfuegbar: 256, prozent: (60 / 256) * 100 },
+  ram: { verwendet: 120, verfuegbar: 512, prozent: (120 / 512) * 100 },
+  storage: { verwendet: 900, verfuegbar: 5120, prozent: (900 / 5120) * 100 },
+  vms: { verwendet: 15, verfuegbar: 100, prozent: (15 / 100) * 100 },
 };
 
 // Mock data für ausstehende Template-Freigaben
@@ -203,6 +210,11 @@ export function AdminMonitoring() {
   const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null);
   const [approvalComment, setApprovalComment] = useState('');
 
+  const [deployments, setDeployments] = useState<DeploymentDto[]>([]);
+  const [selectedDeployment, setSelectedDeployment] = useState<DeploymentDto | null>(null);
+  const [deploymentLogs, setDeploymentLogs] = useState<DeploymentLogDto[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+
   const handleApprove = (templateId: number) => {
     console.log(`Template ${templateId} genehmigt mit Kommentar:`, approvalComment);
     setApprovalComment('');
@@ -216,6 +228,24 @@ export function AdminMonitoring() {
     setSelectedTemplate(null);
     // Hier würde die tatsächliche Ablehnungslogik erfolgen
   };
+
+  useEffect(() => {
+    getAllDeployments()
+      .then(setDeployments)
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedDeployment) return;
+
+    setLogsLoading(true);
+    getDeploymentLogs(selectedDeployment.id)
+      .then((resp) => setDeploymentLogs(resp.data ?? []))
+      .catch(console.error)
+      .finally(() => setLogsLoading(false));
+  }, [selectedDeployment]);
+
+
 
   return (
     <div className="p-8 space-y-8">
@@ -433,8 +463,8 @@ export function AdminMonitoring() {
                             projekt.status === 'aktiv'
                               ? 'bg-green-100 text-green-700 hover:bg-green-100'
                               : projekt.status === 'inaktiv'
-                              ? 'bg-slate-100 text-slate-700 hover:bg-slate-100'
-                              : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-100'
+                                ? 'bg-slate-100 text-slate-700 hover:bg-slate-100'
+                                : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-100'
                           }
                         >
                           {projekt.status === 'aktiv' ? (
@@ -480,78 +510,141 @@ export function AdminMonitoring() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>API-Aufrufe & Ressourcen-Allokation</CardTitle>
+                  <CardTitle>Deployments & Logs</CardTitle>
                   <CardDescription>
-                    Logging und Monitoring aller OpenStack-API-Interaktionen
+                    Übersicht aller Deployments und zugehöriger Logs
                   </CardDescription>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm">
-                    Filter
+
+                {selectedDeployment && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedDeployment(null);
+                      setDeploymentLogs([]);
+                    }}
+                  >
+                    Zurück zu Deployments
                   </Button>
-                  <Button variant="outline" size="sm">
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    Export
-                  </Button>
-                </div>
+                )}
               </div>
             </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Zeitstempel</TableHead>
-                    <TableHead>Benutzer</TableHead>
-                    <TableHead>Aktion</TableHead>
-                    <TableHead>Ressource</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Dauer</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {apiLogs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell className="text-sm text-slate-600">
-                        {log.timestamp}
-                      </TableCell>
-                      <TableCell className="text-sm">{log.user}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{log.action}</Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-slate-600">
-                        {log.resource}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={
-                            log.status === 'erfolg'
-                              ? 'bg-green-100 text-green-700 hover:bg-green-100'
-                              : 'bg-red-100 text-red-700 hover:bg-red-100'
-                          }
-                        >
-                          {log.status === 'erfolg' ? (
-                            <>
-                              <CheckCircle2 className="w-3 h-3 mr-1" />
-                              Erfolg
-                            </>
-                          ) : (
-                            <>
-                              <AlertTriangle className="w-3 h-3 mr-1" />
-                              Fehler
-                            </>
-                          )}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-slate-600">
-                        {log.dauer}
-                      </TableCell>
+
+            <CardContent className="space-y-4">
+              {/* ===== Deployment Liste ===== */}
+              {!selectedDeployment && (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Erstellt</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+
+                  <TableBody>
+                    {deployments.map((deployment) => (
+                      <TableRow
+                        key={deployment.id}
+                        className="cursor-pointer hover:bg-slate-50"
+                        onClick={() => setSelectedDeployment(deployment)}
+                      >
+                        <TableCell>{deployment.name}</TableCell>
+
+                        <TableCell>
+                          <Badge variant="outline">{deployment.status}</Badge>
+                        </TableCell>
+
+                        <TableCell className="text-sm text-slate-600">
+                          {new Date(deployment.created_at).toLocaleString()}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+
+                    {deployments.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center text-slate-500">
+                          Keine Deployments vorhanden
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              )}
+
+              {/* ===== Logs Ansicht ===== */}
+              {selectedDeployment && (
+                <>
+                  <div>
+                    <h3 className="text-slate-900">
+                      Logs für Deployment: {selectedDeployment.name}
+                    </h3>
+                    <p className="text-sm text-slate-500">
+                      Status: {selectedDeployment.status}
+                    </p>
+                  </div>
+
+                  {logsLoading && (
+                    <div className="text-sm text-slate-500">Logs werden geladen…</div>
+                  )}
+
+                  {!logsLoading && deploymentLogs.length === 0 && (
+                    <div className="text-sm text-slate-500">
+                      Keine Logs für dieses Deployment vorhanden
+                    </div>
+                  )}
+
+                  {!logsLoading && deploymentLogs.length > 0 && (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Zeitstempel</TableHead>
+                          <TableHead>Event</TableHead>
+                          <TableHead>Nachricht</TableHead>
+                          <TableHead>Level</TableHead>
+                        </TableRow>
+                      </TableHeader>
+
+                      <TableBody>
+                        {deploymentLogs.map((log) => (
+                          <TableRow key={log.id}>
+                            <TableCell className="text-sm text-slate-600">
+                              {new Date(log.created_at).toLocaleString()}
+                            </TableCell>
+
+                            <TableCell>
+                              <Badge variant="outline">{log.event_type}</Badge>
+                            </TableCell>
+
+                            <TableCell className="text-sm">
+                              {log.message}
+                            </TableCell>
+
+                            <TableCell>
+                              <Badge
+                                className={
+                                  log.level === 'error'
+                                    ? 'bg-red-100 text-red-700'
+                                    : log.level === 'warning'
+                                      ? 'bg-yellow-100 text-yellow-700'
+                                      : 'bg-blue-100 text-blue-700'
+                                }
+                              >
+                                {log.level}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
+
 
         {/* Template-Freigaben Tab */}
         <TabsContent value="templates" className="space-y-4">

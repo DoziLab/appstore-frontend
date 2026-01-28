@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, Users, ChevronRight, Server } from "lucide-react";
+import { BookOpen, ChevronRight, Server } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { getMyCourses, CourseDto } from "../api/courses"; // Pfad ggf. anpassen
+import { getMyCourses, CourseDto } from "../api/courses";
+import { getKeycloakGroups, KeycloakGroup } from "../api/keycloak";
 
 type CourseUi = {
   id: string;
   code: string;
   name: string;
+  keycloakGroupName: string;
   applications: Array<{ name: string; status: string; created_at?: string }>;
 };
 
 export function Courses() {
   const [items, setItems] = useState<CourseDto[]>([]);
+  const [keycloakGroups, setKeycloakGroups] = useState<KeycloakGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,10 +28,15 @@ export function Courses() {
         setLoading(true);
         setError(null);
 
-        const res = await getMyCourses({ page: 1, page_size: 10});
+        const [coursesRes, groupsRes] = await Promise.all([
+          getMyCourses({ page: 1, page_size: 10}),
+          getKeycloakGroups(),
+        ]);
+        
         if (!alive) return;
 
-        setItems(res.data || []);
+        setItems(coursesRes.data || []);
+        setKeycloakGroups(groupsRes.data || []);
       } catch (e) {
         if (!alive) return;
         setError(e instanceof Error ? e.message : "Unbekannter Fehler");
@@ -44,17 +52,23 @@ export function Courses() {
   }, []);
 
   const courses: CourseUi[] = useMemo(() => {
-    return items.map((c) => ({
-      id: c.id,
-      code: c.semester,
-      name: c.name,
-      applications: (Array.isArray(c.deployments) ? c.deployments : []).map((d) => ({
-        name: d.name,
-        status: d.status || "stopped",
-        created_at: d.created_at,
-      })),
-    }));
-  }, [items]);
+    return items.map((c) => {
+      // Find the Keycloak group name by ID
+      const keycloakGroup = keycloakGroups.find((g) => g.id === c.keycloak_course_id);
+      
+      return {
+        id: c.id,
+        code: c.keycloak_course_id,
+        name: c.name,
+        keycloakGroupName: keycloakGroup?.name || c.keycloak_course_id,
+        applications: (Array.isArray(c.deployments) ? c.deployments : []).map((d) => ({
+          name: d.name,
+          status: d.status || "stopped",
+          created_at: d.created_at,
+        })),
+      };
+    });
+  }, [items, keycloakGroups]);
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "running":
@@ -108,10 +122,7 @@ export function Courses() {
                       <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center text-white">
                         <BookOpen className="w-5 h-5" />
                       </div>
-                      <div>
-                        <span className="text-slate-900">{course.code}</span>
-                        <p className="text-sm text-slate-600 mt-1">{course.name}</p>
-                      </div>
+                      <span className="text-slate-900">{course.keycloakGroupName}</span>
                     </CardTitle>
                   </div>
                   {/* Students unbekannt -> Badge optional oder Placeholder */}

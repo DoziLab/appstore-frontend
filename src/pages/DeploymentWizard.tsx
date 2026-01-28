@@ -48,6 +48,7 @@ import {
   type DeploymentCreateRequest,
 } from "../api/deployments";
 import { GroupManager, type StudentGroup } from "../components/GroupManager";
+import keycloak from "../auth/keycloak";
 
 // GroupStackAssignment type (no UI component needed, auto-assignment in background)
 export interface GroupStackAssignment {
@@ -512,32 +513,66 @@ export function DeploymentWizard({
         }
       }
 
+      // Get teacher info from keycloak
+      const teacherInfo = keycloak?.tokenParsed
+        ? {
+            id: keycloak.tokenParsed.sub || "",
+            username: keycloak.tokenParsed.preferred_username || "",
+            email: keycloak.tokenParsed.email || "",
+            first_name: keycloak.tokenParsed.given_name || "",
+            last_name: keycloak.tokenParsed.family_name || "",
+          }
+        : {
+            id: "",
+            username: "",
+            email: "",
+            first_name: "",
+            last_name: "",
+          };
+
+      console.log("=== TEACHER INFO DEBUG ===");
+      console.log("Keycloak authenticated:", keycloak?.authenticated);
+      console.log("Keycloak tokenParsed:", keycloak?.tokenParsed);
+      console.log("Teacher Info:", teacherInfo);
+      console.log("========================");
+
+      // Validate teacher info
+      if (!teacherInfo.id || !teacherInfo.username || !teacherInfo.email) {
+        setError("Lehrer-Informationen konnten nicht aus dem Keycloak-Token gelesen werden. Bitte loggen Sie sich erneut ein.");
+        setIsDeploying(false);
+        return;
+      }
+
       // Build deployment request with stack assignments
-      const deploymentData: DeploymentCreateRequest = {
-        name: deploymentName.trim() || undefined,
+      const deploymentData = {
+        name: deploymentName.trim(),
         template_version_id: selectedVersionId,
         course_id: selectedKeycloakGroupId,
-        deployment_mode: deploymentMode,
-        config_json: JSON.stringify(formValues),
         heat_parameters: heatParameters,
-        access_types: ["ssh", "web"],
-      };
-
-      // Add stack assignments as metadata for backend
-      const deploymentWithStacks = {
-        ...deploymentData,
-        _stack_assignments: groupStackAssignments.map((stack, stackIndex) => ({
-          stack_index: stackIndex + 1,
-          stack_name: stack.stackName,
+        stack_assignments: groupStackAssignments.map((stack, stackIndex) => ({
           groups: stack.assignedGroups.map((group) => ({
-            group_id: group.groupId,
             group_name: group.groupName,
-            student_ids: group.students.map((s) => s.id),
+            group_index: group.groupId ? parseInt(group.groupId.replace(/\D/g, '')) || stackIndex + 1 : stackIndex + 1,
+            students: group.students.map((student) => ({
+              id: student.id,
+              username: student.username || "",
+              email: student.email || "",
+              first_name: student.firstName || "",
+              last_name: student.lastName || "",
+            })),
           })),
         })),
+        teacher: teacherInfo,
       };
 
-      const deployment = await createDeployment(deploymentWithStacks as any);
+      console.log("=== DEPLOYMENT DEBUG ===");
+      console.log("Selected Keycloak Group ID:", selectedKeycloakGroupId);
+      console.log("Student Groups:", studentGroups);
+      console.log("Group Stack Assignments:", groupStackAssignments);
+      console.log("Deployment Data:", JSON.stringify(deploymentData, null, 2));
+      console.log("========================");
+
+      const deployment = await createDeployment(deploymentData as any);
 
       console.log("Deployment created successfully:", deployment.data);
       onComplete(deployment.data.id);

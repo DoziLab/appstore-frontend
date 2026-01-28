@@ -12,8 +12,7 @@ export type CourseDeploymentSummary = {
 export type CourseDto = {
   id: string;
   name: string;
-  semester: string;
-  lecturer_id: string;
+  keycloak_course_id: string;
   deployments: CourseDeploymentSummary[];
   created_at: string;
   updated_at: string;
@@ -71,7 +70,7 @@ export async function getMyCourses(params?: {
   if (params?.lecturer_id) sp.set("lecturer_id", params.lecturer_id);
 
   const qs = sp.toString();
-  return apiFetch<CoursesResponse>(`/api/v1/courses/my${qs ? `?${qs}` : ""}`);
+  return apiFetch<CoursesResponse>(`/api/v1/courses${qs ? `?${qs}` : ""}`);
 }
 
 export async function getCourseGroups(courseId: string) {

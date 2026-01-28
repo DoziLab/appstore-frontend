@@ -50,10 +50,30 @@ export type DeploymentLogDto = {
 export type DeploymentCreateRequest = {
   name?: string;
   template_version_id: string;
-  course_id: string;
-  deployment_mode: string;
+  course_id: string;  // Keycloak Group ID
+  deployment_mode?: string;
   config_json?: string;
   heat_parameters?: Record<string, any>;
+  stack_assignments?: Array<{
+    groups: Array<{
+      group_name: string;
+      group_index: number;
+      students: Array<{
+        id: string;
+        username: string;
+        email: string;
+        first_name: string;
+        last_name: string;
+      }>;
+    }>;
+  }>;
+  teacher?: {
+    id: string;
+    username: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+  };
   group_ids?: string[];
   course_member_ids?: string[];
   access_types?: string[];

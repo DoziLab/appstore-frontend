@@ -1,10 +1,10 @@
-import { 
-  Activity, 
-  Server, 
-  Users, 
-  TrendingUp, 
-  Cpu, 
-  HardDrive, 
+import {
+  Activity,
+  Server,
+  Users,
+  TrendingUp,
+  Cpu,
+  HardDrive,
   Database,
   AlertTriangle,
   CheckCircle2,
@@ -14,7 +14,8 @@ import {
   FileCheck,
   X,
   Check,
-  MessageSquare
+  MessageSquare,
+  XCircle
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -30,7 +31,18 @@ import {
   TableHeader,
   TableRow,
 } from '../components/ui/table';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import {
+  getAllDeployments,
+  getDeploymentLogs,
+  DeploymentDto,
+  DeploymentLogDto,
+} from '../api/deployments';
+import { getQuotas, QuotasResponse } from '../api/quotas';
+import React from 'react';
+
+
+
 
 // Mock data für Dozenten-Projekte
 const dozentenProjekte = [
@@ -96,61 +108,14 @@ const dozentenProjekte = [
   },
 ];
 
-// Mock data für API-Logging
-const apiLogs = [
-  {
-    id: 1,
-    timestamp: '2025-12-30 14:32:15',
-    user: 'Prof. Dr. Schmidt',
-    action: 'VM erstellt',
-    resource: 'VM-Python-Course-01',
-    status: 'erfolg',
-    dauer: '2.3s'
-  },
-  {
-    id: 2,
-    timestamp: '2025-12-30 14:28:42',
-    user: 'Dr. Müller',
-    action: 'Ressourcen aktualisiert',
-    resource: 'VM-DataScience-03',
-    status: 'erfolg',
-    dauer: '0.8s'
-  },
-  {
-    id: 3,
-    timestamp: '2025-12-30 14:15:23',
-    user: 'Prof. Weber',
-    action: 'VM gelöscht',
-    resource: 'VM-WebDev-02',
-    status: 'erfolg',
-    dauer: '1.5s'
-  },
-  {
-    id: 4,
-    timestamp: '2025-12-30 13:45:11',
-    user: 'Dr. Fischer',
-    action: 'Snapshot erstellt',
-    resource: 'VM-MachineLearning-01',
-    status: 'erfolg',
-    dauer: '4.7s'
-  },
-  {
-    id: 5,
-    timestamp: '2025-12-30 13:22:05',
-    user: 'Prof. Becker',
-    action: 'VM erstellt',
-    resource: 'VM-Database-01',
-    status: 'fehler',
-    dauer: '0.2s'
-  },
-];
+
 
 // Globale Ressourcenstatistiken
 const gesamtQuotas = {
-  vCPUs: { verwendet: 60, verfuegbar: 256, prozent: (60/256) * 100 },
-  ram: { verwendet: 120, verfuegbar: 512, prozent: (120/512) * 100 },
-  storage: { verwendet: 900, verfuegbar: 5120, prozent: (900/5120) * 100 },
-  vms: { verwendet: 15, verfuegbar: 100, prozent: (15/100) * 100 },
+  vCPUs: { verwendet: 60, verfuegbar: 256, prozent: (60 / 256) * 100 },
+  ram: { verwendet: 120, verfuegbar: 512, prozent: (120 / 512) * 100 },
+  storage: { verwendet: 900, verfuegbar: 5120, prozent: (900 / 5120) * 100 },
+  vms: { verwendet: 15, verfuegbar: 100, prozent: (15 / 100) * 100 },
 };
 
 // Mock data für ausstehende Template-Freigaben
@@ -203,6 +168,14 @@ export function AdminMonitoring() {
   const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null);
   const [approvalComment, setApprovalComment] = useState('');
 
+  const [deployments, setDeployments] = useState<DeploymentDto[]>([]);
+  const [selectedDeployment, setSelectedDeployment] = useState<DeploymentDto | null>(null);
+  const [deploymentLogs, setDeploymentLogs] = useState<DeploymentLogDto[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  const [quotas, setQuotas] = useState<QuotasResponse | null>(null);
+
+
   const handleApprove = (templateId: number) => {
     console.log(`Template ${templateId} genehmigt mit Kommentar:`, approvalComment);
     setApprovalComment('');
@@ -217,6 +190,157 @@ export function AdminMonitoring() {
     // Hier würde die tatsächliche Ablehnungslogik erfolgen
   };
 
+  useEffect(() => {
+    getAllDeployments()
+      .then(setDeployments)
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedDeployment) return;
+
+    setLogsLoading(true);
+    getDeploymentLogs(selectedDeployment.id)
+      .then((resp) => setDeploymentLogs(resp.data ?? []))
+      .catch(console.error)
+      .finally(() => setLogsLoading(false));
+  }, [selectedDeployment]);
+
+  useEffect(() => {
+    getQuotas()
+      .then(setQuotas)
+      .catch(console.error);
+  }, []);
+
+
+  const totalDeployments = deployments.length;
+
+  const activeDeployments = deployments.filter(
+    (d) => d.status === 'running'
+  ).length;
+
+  const inactiveDeployments = deployments.filter(
+    (d) => d.status !== 'running'
+  ).length;
+
+  const percent = (used: number, limit: number) =>
+    limit > 0 ? (used / limit) * 100 : 0;
+
+  type TeacherInfo = {
+    id: string;
+    name: string;
+    email: string;
+  };
+
+  const extractTeacher = (deployment: DeploymentDto): TeacherInfo => {
+    try {
+      if (!deployment.deployment_parameters) {
+        return {
+          id: 'unknown',
+          name: 'Unbekannt',
+          email: '',
+        };
+      }
+
+      const parsed = JSON.parse(deployment.deployment_parameters);
+      const teacher = parsed?.teacher;
+
+      if (!teacher) {
+        return {
+          id: 'unknown',
+          name: 'Unbekannt',
+          email: '',
+        };
+      }
+
+      return {
+        id: teacher.id,
+        name: `${teacher.first_name} ${teacher.last_name}`,
+        email: teacher.email,
+      };
+    } catch {
+      return {
+        id: 'unknown',
+        name: 'Unbekannt',
+        email: '',
+      };
+    }
+  };
+
+
+  type ProjectHealth = 'healthy' | 'warning' | 'error';
+
+  const getProjectHealth = (deployments: DeploymentDto[]): ProjectHealth => {
+    const statuses = deployments.map(d => d.status);
+
+    if (statuses.includes('failed')) return 'error';
+    if (statuses.some(s => s !== 'running')) return 'warning';
+
+    return 'healthy';
+  };
+
+  type ProjectAggregate = {
+    courseId: string;
+    projectName: string;
+    teacher: TeacherInfo;
+    deployments: DeploymentDto[];
+  };
+
+  const projects: ProjectAggregate[] = Object.values(
+    deployments.reduce<Record<string, ProjectAggregate>>((acc, deployment) => {
+      const courseId = deployment.course_id;
+      const teacher = extractTeacher(deployment);
+
+      if (!acc[courseId]) {
+        acc[courseId] = {
+          courseId,
+          projectName: deployment.name,
+          teacher,
+          deployments: [],
+        };
+      }
+
+      acc[courseId].deployments.push(deployment);
+      return acc;
+    }, {})
+  );
+
+  const getDeploymentStats = (deployments: DeploymentDto[]) => ({
+    total: deployments.length,
+    running: deployments.filter(d => d.status === 'running').length,
+  });
+
+  const renderHealthBadge = (health: ProjectHealth) => {
+    switch (health) {
+      case 'healthy':
+        return (
+          <Badge className="bg-green-100 text-green-700">
+            <CheckCircle2 className="w-3 h-3 mr-1" />
+            Gesund
+          </Badge>
+        );
+      case 'warning':
+        return (
+          <Badge className="bg-yellow-100 text-yellow-700">
+            <AlertTriangle className="w-3 h-3 mr-1" />
+            Warnung
+          </Badge>
+        );
+      case 'error':
+        return (
+          <Badge className="bg-red-100 text-red-700">
+            <XCircle className="w-3 h-3 mr-1" />
+            Fehler
+          </Badge>
+        );
+    }
+  };
+
+
+
+
+
+
   return (
     <div className="p-8 space-y-8">
       {/* Header */}
@@ -228,110 +352,116 @@ export function AdminMonitoring() {
       </div>
 
       {/* Global Resource Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* CPU */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                <Cpu className="w-6 h-6 text-blue-600" />
-              </div>
-              <Badge variant="outline" className="text-blue-600 border-blue-200">
-                {gesamtQuotas.vCPUs.prozent.toFixed(1)}%
-              </Badge>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm text-slate-500">vCPUs Global</p>
-              <p className="text-2xl text-slate-900">
-                {gesamtQuotas.vCPUs.verwendet} / {gesamtQuotas.vCPUs.verfuegbar}
-              </p>
-              <Progress value={gesamtQuotas.vCPUs.prozent} className="h-2" />
-            </div>
-          </CardContent>
-        </Card>
+      {quotas && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 
-        {/* RAM */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                <Database className="w-6 h-6 text-purple-600" />
+          {/* CPU */}
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                  <Cpu className="w-6 h-6 text-blue-600" />
+                </div>
+                <Badge variant="outline" className="text-blue-600 border-blue-200">
+                  {percent(quotas.compute.cores.used, quotas.compute.cores.limit).toFixed(1)}%
+                </Badge>
               </div>
-              <Badge variant="outline" className="text-purple-600 border-purple-200">
-                {gesamtQuotas.ram.prozent.toFixed(1)}%
-              </Badge>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm text-slate-500">RAM Global</p>
-              <p className="text-2xl text-slate-900">
-                {gesamtQuotas.ram.verwendet} / {gesamtQuotas.ram.verfuegbar} GB
-              </p>
-              <Progress value={gesamtQuotas.ram.prozent} className="h-2" />
-            </div>
-          </CardContent>
-        </Card>
 
-        {/* Storage */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center">
-                <HardDrive className="w-6 h-6 text-teal-600" />
+              <div className="space-y-2">
+                <p className="text-sm text-slate-500">vCPUs Global</p>
+                <p className="text-2xl text-slate-900">
+                  {quotas.compute.cores.used} / {quotas.compute.cores.limit}
+                </p>
+                <Progress
+                  value={percent(quotas.compute.cores.used, quotas.compute.cores.limit)}
+                  className="h-2"
+                />
               </div>
-              <Badge variant="outline" className="text-teal-600 border-teal-200">
-                {gesamtQuotas.storage.prozent.toFixed(1)}%
-              </Badge>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm text-slate-500">Speicher Global</p>
-              <p className="text-2xl text-slate-900">
-                {gesamtQuotas.storage.verwendet} / {gesamtQuotas.storage.verfuegbar} GB
-              </p>
-              <Progress value={gesamtQuotas.storage.prozent} className="h-2" />
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {/* VMs */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
-                <Server className="w-6 h-6 text-orange-600" />
+          {/* RAM (MB → GB) */}
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Database className="w-6 h-6 text-purple-600" />
+                </div>
+                <Badge variant="outline" className="text-purple-600 border-purple-200">
+                  {percent(quotas.compute.ram.used, quotas.compute.ram.limit).toFixed(1)}%
+                </Badge>
               </div>
-              <Badge variant="outline" className="text-orange-600 border-orange-200">
-                {gesamtQuotas.vms.prozent.toFixed(1)}%
-              </Badge>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm text-slate-500">VM-Instanzen</p>
-              <p className="text-2xl text-slate-900">
-                {gesamtQuotas.vms.verwendet} / {gesamtQuotas.vms.verfuegbar}
-              </p>
-              <Progress value={gesamtQuotas.vms.prozent} className="h-2" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+
+              <div className="space-y-2">
+                <p className="text-sm text-slate-500">RAM Global</p>
+                <p className="text-2xl text-slate-900">
+                  {(quotas.compute.ram.used / 1024).toFixed(1)} / {(quotas.compute.ram.limit / 1024).toFixed(1)} GB
+                </p>
+                <Progress
+                  value={percent(quotas.compute.ram.used, quotas.compute.ram.limit)}
+                  className="h-2"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Storage */}
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center">
+                  <HardDrive className="w-6 h-6 text-teal-600" />
+                </div>
+                <Badge variant="outline" className="text-teal-600 border-teal-200">
+                  {percent(quotas.volume.gigabytes.used, quotas.volume.gigabytes.limit).toFixed(1)}%
+                </Badge>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm text-slate-500">Speicher Global</p>
+                <p className="text-2xl text-slate-900">
+                  {quotas.volume.gigabytes.used} / {quotas.volume.gigabytes.limit} GB
+                </p>
+                <Progress
+                  value={percent(quotas.volume.gigabytes.used, quotas.volume.gigabytes.limit)}
+                  className="h-2"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* VMs */}
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
+                  <Server className="w-6 h-6 text-orange-600" />
+                </div>
+                <Badge variant="outline" className="text-orange-600 border-orange-200">
+                  {percent(quotas.compute.instances.used, quotas.compute.instances.limit).toFixed(1)}%
+                </Badge>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm text-slate-500">VM-Instanzen</p>
+                <p className="text-2xl text-slate-900">
+                  {quotas.compute.instances.used} / {quotas.compute.instances.limit}
+                </p>
+                <Progress
+                  value={percent(quotas.compute.instances.used, quotas.compute.instances.limit)}
+                  className="h-2"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+        </div>
+      )}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-                <Users className="w-6 h-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-500">Aktive Dozenten</p>
-                <p className="text-2xl text-slate-900">
-                  {dozentenProjekte.filter(d => d.status === 'aktiv').length}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
+        {/* Gesamte Deployments */}
         <Card className="border-slate-200 shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
@@ -341,13 +471,31 @@ export function AdminMonitoring() {
               <div>
                 <p className="text-sm text-slate-500">Gesamte Deployments</p>
                 <p className="text-2xl text-slate-900">
-                  {dozentenProjekte.reduce((sum, d) => sum + d.aktiveDeployments, 0)}
+                  {totalDeployments}
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
 
+        {/* Aktive Deployments */}
+        <Card className="border-slate-200 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                <CheckCircle2 className="w-6 h-6 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">Aktive Deployments</p>
+                <p className="text-2xl text-slate-900">
+                  {activeDeployments}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Inaktive Deployments */}
         <Card className="border-slate-200 shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
@@ -355,15 +503,17 @@ export function AdminMonitoring() {
                 <AlertTriangle className="w-6 h-6 text-yellow-600" />
               </div>
               <div>
-                <p className="text-sm text-slate-500">Inaktive Projekte</p>
+                <p className="text-sm text-slate-500">Inaktive Deployments</p>
                 <p className="text-2xl text-slate-900">
-                  {dozentenProjekte.filter(d => d.status === 'warnung' || d.status === 'inaktiv').length}
+                  {inactiveDeployments}
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
+
       </div>
+
 
       {/* Tabs für verschiedene Ansichten */}
       <Tabs defaultValue="projekte" className="space-y-6">
@@ -379,15 +529,13 @@ export function AdminMonitoring() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Ressourcennutzung pro Dozenten-Projekt</CardTitle>
+                  <CardTitle>Dozenten-Projekte</CardTitle>
                   <CardDescription>
-                    Übersicht über alle aktiven und inaktiven Projekte mit Ressourcenverbrauch
+                    Übersicht über alle Dozenten-Projekte und deren Deployments
                   </CardDescription>
+
                 </div>
-                <Button variant="outline" size="sm">
-                  <TrendingUp className="w-4 h-4 mr-2" />
-                  Export CSV
-                </Button>
+
               </div>
             </CardHeader>
             <CardContent>
@@ -396,79 +544,67 @@ export function AdminMonitoring() {
                   <TableRow>
                     <TableHead>Dozent</TableHead>
                     <TableHead>Deployments</TableHead>
-                    <TableHead>vCPUs</TableHead>
-                    <TableHead>RAM (GB)</TableHead>
-                    <TableHead>Storage (GB)</TableHead>
                     <TableHead>VMs</TableHead>
                     <TableHead>Letzte Aktivität</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Aktionen</TableHead>
                   </TableRow>
                 </TableHeader>
+
                 <TableBody>
-                  {dozentenProjekte.map((projekt) => (
-                    <TableRow key={projekt.id}>
-                      <TableCell>
-                        <div>
-                          <p className="text-slate-900">{projekt.dozent}</p>
-                          <p className="text-xs text-slate-500">{projekt.email}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{projekt.aktiveDeployments}</Badge>
-                      </TableCell>
-                      <TableCell>{projekt.vCPUs}</TableCell>
-                      <TableCell>{projekt.ram}</TableCell>
-                      <TableCell>{projekt.storage}</TableCell>
-                      <TableCell>{projekt.vms}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <Clock className="w-3 h-3" />
-                          {projekt.letzteAktivitaet}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={
-                            projekt.status === 'aktiv'
-                              ? 'bg-green-100 text-green-700 hover:bg-green-100'
-                              : projekt.status === 'inaktiv'
-                              ? 'bg-slate-100 text-slate-700 hover:bg-slate-100'
-                              : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-100'
-                          }
-                        >
-                          {projekt.status === 'aktiv' ? (
-                            <>
-                              <CheckCircle2 className="w-3 h-3 mr-1" />
-                              Aktiv
-                            </>
-                          ) : projekt.status === 'inaktiv' ? (
-                            'Inaktiv'
-                          ) : (
-                            <>
-                              <AlertTriangle className="w-3 h-3 mr-1" />
-                              Warnung
-                            </>
-                          )}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button variant="ghost" size="sm">
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {projects.map((project) => {
+                    const stats = getDeploymentStats(project.deployments);
+                    const health = getProjectHealth(project.deployments);
+
+                    const lastActivity = new Date(
+                      Math.max(
+                        ...project.deployments.map((d) =>
+                          new Date(d.updated_at).getTime()
+                        )
+                      )
+                    ).toLocaleString();
+
+                    return (
+                      <TableRow key={project.courseId}>
+                        {/* Dozent */}
+                        <TableCell>
+                          <div>
+                            <p className="text-slate-900">{project.teacher.name}</p>
+                            {project.teacher.email && (
+                              <p className="text-xs text-slate-500">
+                                {project.teacher.email}
+                              </p>
+                            )}
+                          </div>
+                        </TableCell>
+
+                        {/* Deployments */}
+                        <TableCell>
+                          <Badge variant="outline">
+                            {stats.running} / {stats.total}
+                          </Badge>
+                        </TableCell>
+
+                        {/* VMs */}
+                        <TableCell>
+                          {stats.total}
+                        </TableCell>
+
+                        {/* Letzte Aktivität */}
+                        <TableCell className="text-sm text-slate-600">
+                          {lastActivity}
+                        </TableCell>
+
+                        {/* Status / Gesundheit */}
+                        <TableCell>
+                          {renderHealthBadge(health)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
+
+
+
               </Table>
             </CardContent>
           </Card>
@@ -480,78 +616,141 @@ export function AdminMonitoring() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>API-Aufrufe & Ressourcen-Allokation</CardTitle>
+                  <CardTitle>Deployments & Logs</CardTitle>
                   <CardDescription>
-                    Logging und Monitoring aller OpenStack-API-Interaktionen
+                    Übersicht aller Deployments und zugehöriger Logs
                   </CardDescription>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm">
-                    Filter
+
+                {selectedDeployment && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedDeployment(null);
+                      setDeploymentLogs([]);
+                    }}
+                  >
+                    Zurück zu Deployments
                   </Button>
-                  <Button variant="outline" size="sm">
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    Export
-                  </Button>
-                </div>
+                )}
               </div>
             </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Zeitstempel</TableHead>
-                    <TableHead>Benutzer</TableHead>
-                    <TableHead>Aktion</TableHead>
-                    <TableHead>Ressource</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Dauer</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {apiLogs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell className="text-sm text-slate-600">
-                        {log.timestamp}
-                      </TableCell>
-                      <TableCell className="text-sm">{log.user}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{log.action}</Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-slate-600">
-                        {log.resource}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={
-                            log.status === 'erfolg'
-                              ? 'bg-green-100 text-green-700 hover:bg-green-100'
-                              : 'bg-red-100 text-red-700 hover:bg-red-100'
-                          }
-                        >
-                          {log.status === 'erfolg' ? (
-                            <>
-                              <CheckCircle2 className="w-3 h-3 mr-1" />
-                              Erfolg
-                            </>
-                          ) : (
-                            <>
-                              <AlertTriangle className="w-3 h-3 mr-1" />
-                              Fehler
-                            </>
-                          )}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-slate-600">
-                        {log.dauer}
-                      </TableCell>
+
+            <CardContent className="space-y-4">
+              {/* ===== Deployment Liste ===== */}
+              {!selectedDeployment && (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Erstellt</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+
+                  <TableBody>
+                    {deployments.map((deployment) => (
+                      <TableRow
+                        key={deployment.id}
+                        className="cursor-pointer hover:bg-slate-50"
+                        onClick={() => setSelectedDeployment(deployment)}
+                      >
+                        <TableCell>{deployment.name}</TableCell>
+
+                        <TableCell>
+                          <Badge variant="outline">{deployment.status}</Badge>
+                        </TableCell>
+
+                        <TableCell className="text-sm text-slate-600">
+                          {new Date(deployment.created_at).toLocaleString()}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+
+                    {deployments.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center text-slate-500">
+                          Keine Deployments vorhanden
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              )}
+
+              {/* ===== Logs Ansicht ===== */}
+              {selectedDeployment && (
+                <>
+                  <div>
+                    <h3 className="text-slate-900">
+                      Logs für Deployment: {selectedDeployment.name}
+                    </h3>
+                    <p className="text-sm text-slate-500">
+                      Status: {selectedDeployment.status}
+                    </p>
+                  </div>
+
+                  {logsLoading && (
+                    <div className="text-sm text-slate-500">Logs werden geladen…</div>
+                  )}
+
+                  {!logsLoading && deploymentLogs.length === 0 && (
+                    <div className="text-sm text-slate-500">
+                      Keine Logs für dieses Deployment vorhanden
+                    </div>
+                  )}
+
+                  {!logsLoading && deploymentLogs.length > 0 && (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Zeitstempel</TableHead>
+                          <TableHead>Event</TableHead>
+                          <TableHead>Nachricht</TableHead>
+                          <TableHead>Level</TableHead>
+                        </TableRow>
+                      </TableHeader>
+
+                      <TableBody>
+                        {deploymentLogs.map((log) => (
+                          <TableRow key={log.id}>
+                            <TableCell className="text-sm text-slate-600">
+                              {new Date(log.created_at).toLocaleString()}
+                            </TableCell>
+
+                            <TableCell>
+                              <Badge variant="outline">{log.event_type}</Badge>
+                            </TableCell>
+
+                            <TableCell className="text-sm">
+                              {log.message}
+                            </TableCell>
+
+                            <TableCell>
+                              <Badge
+                                className={
+                                  log.level === 'error'
+                                    ? 'bg-red-100 text-red-700'
+                                    : log.level === 'warning'
+                                      ? 'bg-yellow-100 text-yellow-700'
+                                      : 'bg-blue-100 text-blue-700'
+                                }
+                              >
+                                {log.level}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
+
 
         {/* Template-Freigaben Tab */}
         <TabsContent value="templates" className="space-y-4">

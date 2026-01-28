@@ -351,7 +351,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
                   <Button variant="outline" className="w-full opacity-50 cursor-not-allowed" disabled>
                     VM starten
                   </Button>
-                  <Button variant="outline" className="w-full">
+                  <Button variant="outline" className="w-full" disabled>
                     Logs anzeigen
                   </Button>
                   <AlertDialog>

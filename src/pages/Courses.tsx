@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { BookOpen, ChevronRight, Server } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -11,10 +12,11 @@ type CourseUi = {
   code: string;
   name: string;
   keycloakGroupName: string;
-  applications: Array<{ name: string; status: string; created_at?: string }>;
+  applications: Array<{ id: string; name: string; status: string; created_at?: string }>;
 };
 
 export function Courses() {
+  const navigate = useNavigate();
   const [items, setItems] = useState<CourseDto[]>([]);
   const [keycloakGroups, setKeycloakGroups] = useState<KeycloakGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +64,7 @@ export function Courses() {
         name: c.name,
         keycloakGroupName: keycloakGroup?.name || c.keycloak_course_id,
         applications: (Array.isArray(c.deployments) ? c.deployments : []).map((d) => ({
+          id: d.id,
           name: d.name,
           status: d.status || "stopped",
           created_at: d.created_at,
@@ -144,7 +147,8 @@ export function Courses() {
                     {course.applications.map((app, idx) => (
                       <div
                         key={idx}
-                        className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100 hover:border-teal-200 transition-colors"
+                        onClick={() => navigate(`/deployment/${app.id}`)}
+                        className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100 hover:border-teal-200 hover:bg-slate-100 cursor-pointer transition-colors"
                       >
                         <div className="flex items-center gap-3 flex-1 min-w-0">
                           <Server className="w-4 h-4 text-slate-400 flex-shrink-0" />
@@ -159,11 +163,6 @@ export function Courses() {
                       </div>
                     ))}
                   </div>
-
-                  <Button variant="ghost" className="w-full mt-4 text-teal-600 hover:text-teal-700 hover:bg-teal-50">
-                    Anwendungen verwalten
-                    <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
                 </div>
               </CardContent>
             </Card>

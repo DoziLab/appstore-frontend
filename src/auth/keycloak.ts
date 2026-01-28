@@ -1,11 +1,9 @@
 import Keycloak from "keycloak-js";
 
-
-
 const keycloakConfig = {
-  url: import.meta.env.VITE_KEYCLOAK_URL,
-  realm: import.meta.env.VITE_KEYCLOAK_REALM,
-  clientId: import.meta.env.VITE_KEYCLOAK_CLIENT_ID,
+  url: "http://141.72.176.136:8080/",
+  realm: "Dozilab",
+  clientId: "appstore-frontend",
 };
 
 const keycloak = new Keycloak(keycloakConfig);

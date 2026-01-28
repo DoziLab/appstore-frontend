@@ -14,7 +14,8 @@ import {
   FileCheck,
   X,
   Check,
-  MessageSquare
+  MessageSquare,
+  XCircle
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -38,6 +39,8 @@ import {
   DeploymentLogDto,
 } from '../api/deployments';
 import { getQuotas, QuotasResponse } from '../api/quotas';
+import React from 'react';
+
 
 
 
@@ -223,6 +226,115 @@ export function AdminMonitoring() {
   const percent = (used: number, limit: number) =>
     limit > 0 ? (used / limit) * 100 : 0;
 
+  type TeacherInfo = {
+    id: string;
+    name: string;
+    email: string;
+  };
+
+  const extractTeacher = (deployment: DeploymentDto): TeacherInfo => {
+    try {
+      if (!deployment.deployment_parameters) {
+        return {
+          id: 'unknown',
+          name: 'Unbekannt',
+          email: '',
+        };
+      }
+
+      const parsed = JSON.parse(deployment.deployment_parameters);
+      const teacher = parsed?.teacher;
+
+      if (!teacher) {
+        return {
+          id: 'unknown',
+          name: 'Unbekannt',
+          email: '',
+        };
+      }
+
+      return {
+        id: teacher.id,
+        name: `${teacher.first_name} ${teacher.last_name}`,
+        email: teacher.email,
+      };
+    } catch {
+      return {
+        id: 'unknown',
+        name: 'Unbekannt',
+        email: '',
+      };
+    }
+  };
+
+
+  type ProjectHealth = 'healthy' | 'warning' | 'error';
+
+  const getProjectHealth = (deployments: DeploymentDto[]): ProjectHealth => {
+    const statuses = deployments.map(d => d.status);
+
+    if (statuses.includes('failed')) return 'error';
+    if (statuses.some(s => s !== 'running')) return 'warning';
+
+    return 'healthy';
+  };
+
+  type ProjectAggregate = {
+    courseId: string;
+    projectName: string;
+    teacher: TeacherInfo;
+    deployments: DeploymentDto[];
+  };
+
+  const projects: ProjectAggregate[] = Object.values(
+    deployments.reduce<Record<string, ProjectAggregate>>((acc, deployment) => {
+      const courseId = deployment.course_id;
+      const teacher = extractTeacher(deployment);
+
+      if (!acc[courseId]) {
+        acc[courseId] = {
+          courseId,
+          projectName: deployment.name,
+          teacher,
+          deployments: [],
+        };
+      }
+
+      acc[courseId].deployments.push(deployment);
+      return acc;
+    }, {})
+  );
+
+  const getDeploymentStats = (deployments: DeploymentDto[]) => ({
+    total: deployments.length,
+    running: deployments.filter(d => d.status === 'running').length,
+  });
+
+  const renderHealthBadge = (health: ProjectHealth) => {
+    switch (health) {
+      case 'healthy':
+        return (
+          <Badge className="bg-green-100 text-green-700">
+            <CheckCircle2 className="w-3 h-3 mr-1" />
+            Gesund
+          </Badge>
+        );
+      case 'warning':
+        return (
+          <Badge className="bg-yellow-100 text-yellow-700">
+            <AlertTriangle className="w-3 h-3 mr-1" />
+            Warnung
+          </Badge>
+        );
+      case 'error':
+        return (
+          <Badge className="bg-red-100 text-red-700">
+            <XCircle className="w-3 h-3 mr-1" />
+            Fehler
+          </Badge>
+        );
+    }
+  };
 
 
 
@@ -417,15 +529,13 @@ export function AdminMonitoring() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Ressourcennutzung pro Dozenten-Projekt</CardTitle>
+                  <CardTitle>Dozenten-Projekte</CardTitle>
                   <CardDescription>
-                    Übersicht über alle aktiven und inaktiven Projekte mit Ressourcenverbrauch
+                    Übersicht über alle Dozenten-Projekte und deren Deployments
                   </CardDescription>
+
                 </div>
-                <Button variant="outline" size="sm">
-                  <TrendingUp className="w-4 h-4 mr-2" />
-                  Export CSV
-                </Button>
+
               </div>
             </CardHeader>
             <CardContent>
@@ -434,79 +544,67 @@ export function AdminMonitoring() {
                   <TableRow>
                     <TableHead>Dozent</TableHead>
                     <TableHead>Deployments</TableHead>
-                    <TableHead>vCPUs</TableHead>
-                    <TableHead>RAM (GB)</TableHead>
-                    <TableHead>Storage (GB)</TableHead>
                     <TableHead>VMs</TableHead>
                     <TableHead>Letzte Aktivität</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Aktionen</TableHead>
                   </TableRow>
                 </TableHeader>
+
                 <TableBody>
-                  {dozentenProjekte.map((projekt) => (
-                    <TableRow key={projekt.id}>
-                      <TableCell>
-                        <div>
-                          <p className="text-slate-900">{projekt.dozent}</p>
-                          <p className="text-xs text-slate-500">{projekt.email}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{projekt.aktiveDeployments}</Badge>
-                      </TableCell>
-                      <TableCell>{projekt.vCPUs}</TableCell>
-                      <TableCell>{projekt.ram}</TableCell>
-                      <TableCell>{projekt.storage}</TableCell>
-                      <TableCell>{projekt.vms}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <Clock className="w-3 h-3" />
-                          {projekt.letzteAktivitaet}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={
-                            projekt.status === 'aktiv'
-                              ? 'bg-green-100 text-green-700 hover:bg-green-100'
-                              : projekt.status === 'inaktiv'
-                                ? 'bg-slate-100 text-slate-700 hover:bg-slate-100'
-                                : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-100'
-                          }
-                        >
-                          {projekt.status === 'aktiv' ? (
-                            <>
-                              <CheckCircle2 className="w-3 h-3 mr-1" />
-                              Aktiv
-                            </>
-                          ) : projekt.status === 'inaktiv' ? (
-                            'Inaktiv'
-                          ) : (
-                            <>
-                              <AlertTriangle className="w-3 h-3 mr-1" />
-                              Warnung
-                            </>
-                          )}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button variant="ghost" size="sm">
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {projects.map((project) => {
+                    const stats = getDeploymentStats(project.deployments);
+                    const health = getProjectHealth(project.deployments);
+
+                    const lastActivity = new Date(
+                      Math.max(
+                        ...project.deployments.map((d) =>
+                          new Date(d.updated_at).getTime()
+                        )
+                      )
+                    ).toLocaleString();
+
+                    return (
+                      <TableRow key={project.courseId}>
+                        {/* Dozent */}
+                        <TableCell>
+                          <div>
+                            <p className="text-slate-900">{project.teacher.name}</p>
+                            {project.teacher.email && (
+                              <p className="text-xs text-slate-500">
+                                {project.teacher.email}
+                              </p>
+                            )}
+                          </div>
+                        </TableCell>
+
+                        {/* Deployments */}
+                        <TableCell>
+                          <Badge variant="outline">
+                            {stats.running} / {stats.total}
+                          </Badge>
+                        </TableCell>
+
+                        {/* VMs */}
+                        <TableCell>
+                          {stats.total}
+                        </TableCell>
+
+                        {/* Letzte Aktivität */}
+                        <TableCell className="text-sm text-slate-600">
+                          {lastActivity}
+                        </TableCell>
+
+                        {/* Status / Gesundheit */}
+                        <TableCell>
+                          {renderHealthBadge(health)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
+
+
+
               </Table>
             </CardContent>
           </Card>

@@ -103,54 +103,7 @@ const dozentenProjekte = [
   },
 ];
 
-// Mock data für API-Logging
-const apiLogs = [
-  {
-    id: 1,
-    timestamp: '2025-12-30 14:32:15',
-    user: 'Prof. Dr. Schmidt',
-    action: 'VM erstellt',
-    resource: 'VM-Python-Course-01',
-    status: 'erfolg',
-    dauer: '2.3s'
-  },
-  {
-    id: 2,
-    timestamp: '2025-12-30 14:28:42',
-    user: 'Dr. Müller',
-    action: 'Ressourcen aktualisiert',
-    resource: 'VM-DataScience-03',
-    status: 'erfolg',
-    dauer: '0.8s'
-  },
-  {
-    id: 3,
-    timestamp: '2025-12-30 14:15:23',
-    user: 'Prof. Weber',
-    action: 'VM gelöscht',
-    resource: 'VM-WebDev-02',
-    status: 'erfolg',
-    dauer: '1.5s'
-  },
-  {
-    id: 4,
-    timestamp: '2025-12-30 13:45:11',
-    user: 'Dr. Fischer',
-    action: 'Snapshot erstellt',
-    resource: 'VM-MachineLearning-01',
-    status: 'erfolg',
-    dauer: '4.7s'
-  },
-  {
-    id: 5,
-    timestamp: '2025-12-30 13:22:05',
-    user: 'Prof. Becker',
-    action: 'VM erstellt',
-    resource: 'VM-Database-01',
-    status: 'fehler',
-    dauer: '0.2s'
-  },
-];
+
 
 // Globale Ressourcenstatistiken
 const gesamtQuotas = {
@@ -244,6 +197,17 @@ export function AdminMonitoring() {
       .catch(console.error)
       .finally(() => setLogsLoading(false));
   }, [selectedDeployment]);
+
+  const totalDeployments = deployments.length;
+
+  const activeDeployments = deployments.filter(
+    (d) => d.status === 'running'
+  ).length;
+
+  const inactiveDeployments = deployments.filter(
+    (d) => d.status !== 'running'
+  ).length;
+
 
 
 
@@ -346,22 +310,8 @@ export function AdminMonitoring() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-                <Users className="w-6 h-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-500">Aktive Dozenten</p>
-                <p className="text-2xl text-slate-900">
-                  {dozentenProjekte.filter(d => d.status === 'aktiv').length}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
+        {/* Gesamte Deployments */}
         <Card className="border-slate-200 shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
@@ -371,13 +321,31 @@ export function AdminMonitoring() {
               <div>
                 <p className="text-sm text-slate-500">Gesamte Deployments</p>
                 <p className="text-2xl text-slate-900">
-                  {dozentenProjekte.reduce((sum, d) => sum + d.aktiveDeployments, 0)}
+                  {totalDeployments}
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
 
+        {/* Aktive Deployments */}
+        <Card className="border-slate-200 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                <CheckCircle2 className="w-6 h-6 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">Aktive Deployments</p>
+                <p className="text-2xl text-slate-900">
+                  {activeDeployments}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Inaktive Deployments */}
         <Card className="border-slate-200 shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
@@ -385,15 +353,17 @@ export function AdminMonitoring() {
                 <AlertTriangle className="w-6 h-6 text-yellow-600" />
               </div>
               <div>
-                <p className="text-sm text-slate-500">Inaktive Projekte</p>
+                <p className="text-sm text-slate-500">Inaktive Deployments</p>
                 <p className="text-2xl text-slate-900">
-                  {dozentenProjekte.filter(d => d.status === 'warnung' || d.status === 'inaktiv').length}
+                  {inactiveDeployments}
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
+
       </div>
+
 
       {/* Tabs für verschiedene Ansichten */}
       <Tabs defaultValue="projekte" className="space-y-6">

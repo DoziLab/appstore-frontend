@@ -37,6 +37,8 @@ import {
   DeploymentDto,
   DeploymentLogDto,
 } from '../api/deployments';
+import { getQuotas, QuotasResponse } from '../api/quotas';
+
 
 
 // Mock data für Dozenten-Projekte
@@ -168,6 +170,9 @@ export function AdminMonitoring() {
   const [deploymentLogs, setDeploymentLogs] = useState<DeploymentLogDto[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
 
+  const [quotas, setQuotas] = useState<QuotasResponse | null>(null);
+
+
   const handleApprove = (templateId: number) => {
     console.log(`Template ${templateId} genehmigt mit Kommentar:`, approvalComment);
     setApprovalComment('');
@@ -198,6 +203,13 @@ export function AdminMonitoring() {
       .finally(() => setLogsLoading(false));
   }, [selectedDeployment]);
 
+  useEffect(() => {
+    getQuotas()
+      .then(setQuotas)
+      .catch(console.error);
+  }, []);
+
+
   const totalDeployments = deployments.length;
 
   const activeDeployments = deployments.filter(
@@ -207,6 +219,12 @@ export function AdminMonitoring() {
   const inactiveDeployments = deployments.filter(
     (d) => d.status !== 'running'
   ).length;
+
+  const percent = (used: number, limit: number) =>
+    limit > 0 ? (used / limit) * 100 : 0;
+
+
+
 
 
 
@@ -222,91 +240,111 @@ export function AdminMonitoring() {
       </div>
 
       {/* Global Resource Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* CPU */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                <Cpu className="w-6 h-6 text-blue-600" />
-              </div>
-              <Badge variant="outline" className="text-blue-600 border-blue-200">
-                {gesamtQuotas.vCPUs.prozent.toFixed(1)}%
-              </Badge>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm text-slate-500">vCPUs Global</p>
-              <p className="text-2xl text-slate-900">
-                {gesamtQuotas.vCPUs.verwendet} / {gesamtQuotas.vCPUs.verfuegbar}
-              </p>
-              <Progress value={gesamtQuotas.vCPUs.prozent} className="h-2" />
-            </div>
-          </CardContent>
-        </Card>
+      {quotas && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 
-        {/* RAM */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                <Database className="w-6 h-6 text-purple-600" />
+          {/* CPU */}
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                  <Cpu className="w-6 h-6 text-blue-600" />
+                </div>
+                <Badge variant="outline" className="text-blue-600 border-blue-200">
+                  {percent(quotas.compute.cores.used, quotas.compute.cores.limit).toFixed(1)}%
+                </Badge>
               </div>
-              <Badge variant="outline" className="text-purple-600 border-purple-200">
-                {gesamtQuotas.ram.prozent.toFixed(1)}%
-              </Badge>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm text-slate-500">RAM Global</p>
-              <p className="text-2xl text-slate-900">
-                {gesamtQuotas.ram.verwendet} / {gesamtQuotas.ram.verfuegbar} GB
-              </p>
-              <Progress value={gesamtQuotas.ram.prozent} className="h-2" />
-            </div>
-          </CardContent>
-        </Card>
 
-        {/* Storage */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center">
-                <HardDrive className="w-6 h-6 text-teal-600" />
+              <div className="space-y-2">
+                <p className="text-sm text-slate-500">vCPUs Global</p>
+                <p className="text-2xl text-slate-900">
+                  {quotas.compute.cores.used} / {quotas.compute.cores.limit}
+                </p>
+                <Progress
+                  value={percent(quotas.compute.cores.used, quotas.compute.cores.limit)}
+                  className="h-2"
+                />
               </div>
-              <Badge variant="outline" className="text-teal-600 border-teal-200">
-                {gesamtQuotas.storage.prozent.toFixed(1)}%
-              </Badge>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm text-slate-500">Speicher Global</p>
-              <p className="text-2xl text-slate-900">
-                {gesamtQuotas.storage.verwendet} / {gesamtQuotas.storage.verfuegbar} GB
-              </p>
-              <Progress value={gesamtQuotas.storage.prozent} className="h-2" />
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {/* VMs */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
-                <Server className="w-6 h-6 text-orange-600" />
+          {/* RAM (MB → GB) */}
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Database className="w-6 h-6 text-purple-600" />
+                </div>
+                <Badge variant="outline" className="text-purple-600 border-purple-200">
+                  {percent(quotas.compute.ram.used, quotas.compute.ram.limit).toFixed(1)}%
+                </Badge>
               </div>
-              <Badge variant="outline" className="text-orange-600 border-orange-200">
-                {gesamtQuotas.vms.prozent.toFixed(1)}%
-              </Badge>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm text-slate-500">VM-Instanzen</p>
-              <p className="text-2xl text-slate-900">
-                {gesamtQuotas.vms.verwendet} / {gesamtQuotas.vms.verfuegbar}
-              </p>
-              <Progress value={gesamtQuotas.vms.prozent} className="h-2" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+
+              <div className="space-y-2">
+                <p className="text-sm text-slate-500">RAM Global</p>
+                <p className="text-2xl text-slate-900">
+                  {(quotas.compute.ram.used / 1024).toFixed(1)} / {(quotas.compute.ram.limit / 1024).toFixed(1)} GB
+                </p>
+                <Progress
+                  value={percent(quotas.compute.ram.used, quotas.compute.ram.limit)}
+                  className="h-2"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Storage */}
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center">
+                  <HardDrive className="w-6 h-6 text-teal-600" />
+                </div>
+                <Badge variant="outline" className="text-teal-600 border-teal-200">
+                  {percent(quotas.volume.gigabytes.used, quotas.volume.gigabytes.limit).toFixed(1)}%
+                </Badge>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm text-slate-500">Speicher Global</p>
+                <p className="text-2xl text-slate-900">
+                  {quotas.volume.gigabytes.used} / {quotas.volume.gigabytes.limit} GB
+                </p>
+                <Progress
+                  value={percent(quotas.volume.gigabytes.used, quotas.volume.gigabytes.limit)}
+                  className="h-2"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* VMs */}
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
+                  <Server className="w-6 h-6 text-orange-600" />
+                </div>
+                <Badge variant="outline" className="text-orange-600 border-orange-200">
+                  {percent(quotas.compute.instances.used, quotas.compute.instances.limit).toFixed(1)}%
+                </Badge>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm text-slate-500">VM-Instanzen</p>
+                <p className="text-2xl text-slate-900">
+                  {quotas.compute.instances.used} / {quotas.compute.instances.limit}
+                </p>
+                <Progress
+                  value={percent(quotas.compute.instances.used, quotas.compute.instances.limit)}
+                  className="h-2"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+        </div>
+      )}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

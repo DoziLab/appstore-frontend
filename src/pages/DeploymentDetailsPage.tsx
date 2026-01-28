@@ -4,6 +4,8 @@ import { Server } from "lucide-react";
 import { DeploymentDetails } from "./DeploymentDetails";
 import { mockDeployments } from "./mockDeployments";
 import { getDeployment, getDeploymentLogs, deleteDeployment } from "../api/deployments";
+import { getMyCourses, type CourseDto } from "../api/courses";
+import { getKeycloakGroups, type KeycloakGroup } from "../api/keycloak";
 
 export function DeploymentDetailsPage() {
   const { deploymentId } = useParams<{ deploymentId: string }>();
@@ -50,12 +52,16 @@ export function DeploymentDetailsPage() {
     // Load deployment and logs in parallel
     Promise.all([
       getDeployment(deploymentId),
-      getDeploymentLogs(deploymentId).catch(() => ({ data: [] })) // Logs are optional
+      getDeploymentLogs(deploymentId).catch(() => ({ data: [] })), // Logs are optional
+      getMyCourses({ page: 1, page_size: 100 }).catch(() => ({ data: [] as CourseDto[] })),
+      getKeycloakGroups().catch(() => ({ data: [] as KeycloakGroup[] })),
     ])
-      .then(([deploymentResponse, logsResponse]) => {
+      .then(([deploymentResponse, logsResponse, coursesResponse, groupsResponse]) => {
         // Convert backend deployment format to DeploymentDetails format
         const backendDeployment = deploymentResponse.data;
         const logs = logsResponse.data || [];
+        const courses: CourseDto[] = coursesResponse?.data || [];
+        const groups: KeycloakGroup[] = groupsResponse?.data || [];
         
         // Map status from backend to frontend format
         const statusMap: Record<string, 'deploying' | 'running' | 'failed' | 'cancelled' | 'stopped'> = {
@@ -121,11 +127,23 @@ export function DeploymentDetailsPage() {
           storage = backendDeployment.instances.length * 20; // Assume 20GB per instance
         }
         
+        // Resolve course name using courses + keycloak groups mapping
+        let resolvedCourseName = "Unknown Course";
+        if (backendDeployment.course && backendDeployment.course.name) {
+          resolvedCourseName = backendDeployment.course.name;
+        } else if (backendDeployment.course_id) {
+          const course = courses.find(c => c.id === backendDeployment.course_id);
+          if (course) {
+            const group = groups.find(g => g.id === course.keycloak_course_id);
+            resolvedCourseName = group?.name || course.name || resolvedCourseName;
+          }
+        }
+
         const convertedDeployment = {
           id: backendDeployment.id,
           name: backendDeployment.name || "Unnamed Deployment",
           status: mappedStatus,
-          course: backendDeployment.course?.name || "Unknown Course",
+          course: resolvedCourseName,
           startedAt: backendDeployment.created_at,
           completedAt: mappedStatus === 'running' || mappedStatus === 'failed' ? backendDeployment.updated_at : undefined,
           progress,

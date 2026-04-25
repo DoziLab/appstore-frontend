@@ -33,7 +33,18 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`API ${res.status}: ${text || res.statusText}`);
+    let message = text || res.statusText;
+    try {
+      const json = JSON.parse(text);
+      if (json?.message) message = json.message;
+      else if (json?.detail) message = json.detail;
+    } catch {
+      // not JSON, use raw text
+    }
+    const err = new Error(message) as Error & { status: number; body: string };
+    err.status = res.status;
+    err.body = text;
+    throw err;
   }
 
   return res.json() as Promise<T>;

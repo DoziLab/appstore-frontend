@@ -1,4 +1,4 @@
-import { Settings, RefreshCw, CheckCircle2, AlertCircle, Server, Eye, EyeOff, Shield, Lock, Workflow, FileCode, Cpu, Database } from 'lucide-react';
+import { Settings, RefreshCw, CheckCircle2, AlertCircle, Server, Eye, EyeOff, Shield, Lock, Workflow, FileCode, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -6,25 +6,143 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Switch } from '../components/ui/switch';
 import { Textarea } from '../components/ui/textarea';
-import { useState } from 'react';
+import { Progress } from '../components/ui/progress';
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../components/ui/alert-dialog';
+import { useState, useEffect } from 'react';
+import {
+  listOpenstackProjects,
+  getOpenstackProject,
+  createOpenstackProject,
+  updateOpenstackProject,
+  deleteOpenstackProject,
+  type OpenstackProjectResponse,
+  type OpenstackCredentialsCreate,
+} from '../api/openstackProjects';
+import { getQuotas, type QuotasResponse } from '../api/quotas';
+
+const percent = (used?: number, limit?: number) => {
+  if (!used || !limit || limit === 0) return 0;
+  return Math.min(100, Math.max(0, Math.round((used / limit) * 100)));
+};
+
+const formatGB = (v?: number) => {
+  if (v == null) return '—';
+  return v >= 1024 ? `${(v / 1024).toFixed(1)} TB` : `${v} GB`;
+};
+
+const formatMBasGB = (v?: number) => {
+  if (v == null) return '—';
+  return `${Math.round(v / 1024)} GB`;
+};
 
 export function OpenStackConfig() {
-  const [showApiKey, setShowApiKey] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'testing'>('connected');
   const [settingsMode, setSettingsMode] = useState<'general' | 'admin'>('general');
-  
+
   // Admin-Einstellungen States
   const [autoApproveTemplates, setAutoApproveTemplates] = useState(false);
   const [encryptSecrets, setEncryptSecrets] = useState(true);
   const [autoImageCreation, setAutoImageCreation] = useState(false);
   const [enforceMinPrivilege, setEnforceMinPrivilege] = useState(true);
 
-  const handleTestConnection = () => {
-    setConnectionStatus('testing');
-    setTimeout(() => {
-      setConnectionStatus('connected');
-    }, 2000);
+  // Credentials state
+  const [existingProject, setExistingProject] = useState<OpenstackProjectResponse | null>(null);
+  const [credentialsLoading, setCredentialsLoading] = useState(true);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const [form, setForm] = useState<OpenstackCredentialsCreate>({
+    auth_url: '',
+    username: '',
+    password: '',
+    user_domain_name: 'Default',
+    region_name: '',
+    openstack_project_id: '',
+    openstack_project_name: '',
+  });
+
+  // Quotas state
+  const [quotas, setQuotas] = useState<QuotasResponse | null>(null);
+  const [quotasLoading, setQuotasLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    listOpenstackProjects()
+      .then(async (projects) => {
+        if (!mounted || projects.length === 0) return;
+        const p = projects[0];
+        setExistingProject(p);
+        // Fetch full credentials (includes auth_url, username masked)
+        const creds = await getOpenstackProject(p.id);
+        if (!mounted) return;
+        setForm((prev) => ({
+          ...prev,
+          auth_url: creds.auth_url,
+          username: creds.username,
+          region_name: creds.region_name,
+          openstack_project_id: creds.openstack_project_id,
+          openstack_project_name: creds.openstack_project_name,
+          user_domain_name: creds.user_domain_name,
+        }));
+      })
+      .catch(() => {/* no credentials yet */})
+      .finally(() => { if (mounted) setCredentialsLoading(false); });
+
+    getQuotas()
+      .then((data) => { if (mounted) setQuotas(data); })
+      .catch(() => {/* ignore */})
+      .finally(() => { if (mounted) setQuotasLoading(false); });
+
+    return () => { mounted = false; };
+  }, []);
+
+  const set = (field: keyof OpenstackCredentialsCreate) =>
+    (e: React.ChangeEvent<HTMLInputElement>) =>
+      setForm((prev) => ({ ...prev, [field]: e.target.value }));
+
+  const handleSaveCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.password.trim() && existingProject) {
+      setSaveError('Bitte geben Sie das Passwort ein, um die Zugangsdaten zu aktualisieren.');
+      return;
+    }
+    setSaveError(null);
+    setSaveSuccess(false);
+    setSaveLoading(true);
+    try {
+      if (existingProject) {
+        await updateOpenstackProject(existingProject.id, form);
+      } else {
+        await createOpenstackProject(form);
+      }
+      setSaveSuccess(true);
+      setForm((prev) => ({ ...prev, password: '' }));
+      // Refresh project list to get updated data
+      const projects = await listOpenstackProjects();
+      if (projects.length > 0) setExistingProject(projects[0]);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Fehler beim Speichern der Zugangsdaten');
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  const connectionStatus = existingProject ? 'connected' : 'disconnected';
+
+  const handleDeleteProject = async () => {
+    if (!existingProject) return;
+    setDeleteLoading(true);
+    try {
+      await deleteOpenstackProject(existingProject.id);
+      setExistingProject(null);
+      setForm({ auth_url: '', username: '', password: '', user_domain_name: 'Default', region_name: '', openstack_project_id: '', openstack_project_name: '' });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Fehler beim Löschen des Projekts');
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   return (
@@ -83,15 +201,14 @@ export function OpenStackConfig() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className={`
-                    w-12 h-12 rounded-full flex items-center justify-center
-                    ${connectionStatus === 'connected' ? 'bg-green-100' : 
-                      connectionStatus === 'testing' ? 'bg-blue-100' : 'bg-red-100'}
-                  `}>
-                    {connectionStatus === 'connected' ? (
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                    credentialsLoading ? 'bg-slate-100' :
+                    connectionStatus === 'connected' ? 'bg-green-100' : 'bg-red-100'
+                  }`}>
+                    {credentialsLoading ? (
+                      <RefreshCw className="w-6 h-6 text-slate-400 animate-spin" />
+                    ) : connectionStatus === 'connected' ? (
                       <CheckCircle2 className="w-6 h-6 text-green-600" />
-                    ) : connectionStatus === 'testing' ? (
-                      <RefreshCw className="w-6 h-6 text-blue-600 animate-spin" />
                     ) : (
                       <AlertCircle className="w-6 h-6 text-red-600" />
                     )}
@@ -99,31 +216,24 @@ export function OpenStackConfig() {
                   <div>
                     <p className="text-slate-900">Verbindungsstatus</p>
                     <p className="text-sm text-slate-500">
-                      {connectionStatus === 'connected' ? 'Mit OpenStack verbunden' :
-                       connectionStatus === 'testing' ? 'Verbindung wird getestet...' : 'Nicht verbunden'}
+                      {credentialsLoading ? 'Wird geprüft...' :
+                       connectionStatus === 'connected'
+                         ? `Verbunden mit Projekt: ${existingProject?.openstack_project_name}`
+                         : 'Keine Zugangsdaten hinterlegt'}
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Badge 
-                    className={
-                      connectionStatus === 'connected' ? 'bg-green-100 text-green-700 hover:bg-green-100' :
-                      connectionStatus === 'testing' ? 'bg-blue-100 text-blue-700 hover:bg-blue-100' :
-                      'bg-red-100 text-red-700 hover:bg-red-100'
-                    }
-                  >
-                    {connectionStatus === 'connected' ? 'Aktiv' :
-                     connectionStatus === 'testing' ? 'Testend' : 'Inaktiv'}
-                  </Badge>
-                  <Button
-                    variant="outline"
-                    onClick={handleTestConnection}
-                    disabled={connectionStatus === 'testing'}
-                  >
-                    <RefreshCw className={`w-4 h-4 mr-2 ${connectionStatus === 'testing' ? 'animate-spin' : ''}`} />
-                    Verbindung testen
-                  </Button>
-                </div>
+                <Badge
+                  className={
+                    credentialsLoading ? 'bg-slate-100 text-slate-600' :
+                    connectionStatus === 'connected'
+                      ? 'bg-green-100 text-green-700 hover:bg-green-100'
+                      : 'bg-red-100 text-red-700 hover:bg-red-100'
+                  }
+                >
+                  {credentialsLoading ? 'Prüft...' :
+                   connectionStatus === 'connected' ? 'Aktiv' : 'Nicht verbunden'}
+                </Badge>
               </div>
             </CardContent>
           </Card>
@@ -136,788 +246,442 @@ export function OpenStackConfig() {
                   <Settings className="w-5 h-5" />
                   Authentifizierung
                 </CardTitle>
-                <CardDescription>OpenStack API-Zugangsdaten</CardDescription>
+                <CardDescription>
+                  {existingProject ? 'OpenStack-Zugangsdaten aktualisieren' : 'OpenStack-Zugangsdaten hinterlegen'}
+                </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="auth-url">Authentifizierungs-URL</Label>
-                  <Input 
-                    id="auth-url"
-                    className="mt-2"
-                    defaultValue="https://openstack.university.edu:5000/v3"
-                  />
-                </div>
+              <CardContent>
+                <form onSubmit={handleSaveCredentials} className="space-y-4">
+                  {saveError && (
+                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+                      {saveError}
+                    </div>
+                  )}
+                  {saveSuccess && (
+                    <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-sm text-green-700">
+                      Zugangsdaten erfolgreich gespeichert.
+                    </div>
+                  )}
 
-                <div>
-                  <Label htmlFor="project-name">Projektname</Label>
-                  <Input 
-                    id="project-name"
-                    className="mt-2"
-                    defaultValue="DoziLab-Production"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="domain">Domain</Label>
-                  <Input 
-                    id="domain"
-                    className="mt-2"
-                    defaultValue="default"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="username">Benutzername</Label>
-                  <Input 
-                    id="username"
-                    className="mt-2"
-                    defaultValue="admin"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="password">Passwort</Label>
-                  <div className="relative mt-2">
-                    <Input 
-                      id="password"
-                      type={showPassword ? 'text' : 'password'}
-                      defaultValue="supersecretpassword"
+                  <div>
+                    <Label htmlFor="auth-url">Authentifizierungs-URL</Label>
+                    <Input
+                      id="auth-url"
+                      className="mt-2"
+                      placeholder="https://openstack.example.com:5000/v3"
+                      value={form.auth_url}
+                      onChange={set('auth_url')}
+                      required
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
                   </div>
-                </div>
 
-                <div>
-                  <Label htmlFor="api-key">API-Key (Optional)</Label>
-                  <div className="relative mt-2">
-                    <Input 
-                      id="api-key"
-                      type={showApiKey ? 'text' : 'password'}
-                      placeholder="API-Key eingeben, falls Key-basierte Auth verwendet wird"
-                      defaultValue="sk-1234567890abcdef"
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="project-id">Projekt-ID</Label>
+                      <Input
+                        id="project-id"
+                        className="mt-2"
+                        placeholder="abc123..."
+                        value={form.openstack_project_id}
+                        onChange={set('openstack_project_id')}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="project-name">Projektname</Label>
+                      <Input
+                        id="project-name"
+                        className="mt-2"
+                        placeholder="mein-projekt"
+                        value={form.openstack_project_name}
+                        onChange={set('openstack_project_name')}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="region">Region</Label>
+                      <Input
+                        id="region"
+                        className="mt-2"
+                        placeholder="RegionOne"
+                        value={form.region_name}
+                        onChange={set('region_name')}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="domain">User Domain</Label>
+                      <Input
+                        id="domain"
+                        className="mt-2"
+                        placeholder="Default"
+                        value={form.user_domain_name}
+                        onChange={set('user_domain_name')}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="username">Benutzername</Label>
+                    <Input
+                      id="username"
+                      className="mt-2"
+                      placeholder={existingProject ? '(gespeichert, zum Ändern neu eingeben)' : 'OpenStack-Benutzername'}
+                      value={form.username}
+                      onChange={set('username')}
+                      required={!existingProject}
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    >
-                      {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
                   </div>
-                </div>
 
-                <Button className="w-full bg-teal-500 hover:bg-teal-600 text-white">
-                  Zugangsdaten speichern
-                </Button>
+                  <div>
+                    <Label htmlFor="password">Passwort</Label>
+                    <div className="relative mt-2">
+                      <Input
+                        id="password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder={existingProject ? 'Leer lassen, um nicht zu ändern' : 'OpenStack-Passwort'}
+                        value={form.password}
+                        onChange={set('password')}
+                        required={!existingProject}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full bg-teal-500 hover:bg-teal-600 text-white"
+                    disabled={saveLoading || credentialsLoading}
+                  >
+                    {saveLoading ? 'Wird gespeichert...' : 'Zugangsdaten speichern'}
+                  </Button>
+
+                  {existingProject && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                          disabled={deleteLoading}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          {deleteLoading ? 'Wird gelöscht...' : 'Projekt entfernen'}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Projekt entfernen?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Das OpenStack-Projekt <strong>{existingProject.openstack_project_name}</strong> wird aus dem System entfernt. Diese Aktion kann nicht rückgängig gemacht werden.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter className="flex-row justify-end gap-2">
+                          <AlertDialogCancel className="mt-0">Abbrechen</AlertDialogCancel>
+                          <Button
+                            type="button"
+                            style={{ backgroundColor: '#dc2626', color: '#ffffff' }}
+                            onClick={handleDeleteProject}
+                            disabled={deleteLoading}
+                          >
+                            {deleteLoading ? 'Wird gelöscht...' : 'Entfernen'}
+                          </Button>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                </form>
               </CardContent>
             </Card>
 
-            {/* Endpoints & Quotas */}
+            {/* Quotas */}
             <div className="space-y-6">
-              {/* Service Endpoints */}
               <Card className="border-slate-200 shadow-sm">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Server className="w-5 h-5" />
-                    Service-Endpunkte
+                    Ressourcen-Quotas
                   </CardTitle>
-                  <CardDescription>OpenStack-Serviceendpunkte</CardDescription>
+                  <CardDescription>Aktuelle Zuteilungslimits Ihres Projekts</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div>
-                    <Label htmlFor="compute">Compute (Nova)</Label>
-                    <Input 
-                      id="compute"
-                      className="mt-2"
-                      defaultValue="https://openstack.university.edu:8774/v2.1"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="network">Netzwerk (Neutron)</Label>
-                    <Input 
-                      id="network"
-                      className="mt-2"
-                      defaultValue="https://openstack.university.edu:9696"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="storage">Block Storage (Cinder)</Label>
-                    <Input 
-                      id="storage"
-                      className="mt-2"
-                      defaultValue="https://openstack.university.edu:8776/v3"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="image">Image (Glance)</Label>
-                    <Input 
-                      id="image"
-                      className="mt-2"
-                      defaultValue="https://openstack.university.edu:9292"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Resource Quotas */}
-              <Card className="border-slate-200 shadow-sm">
-                <CardHeader>
-                  <CardTitle>Ressourcen-Quotas</CardTitle>
-                  <CardDescription>Aktuelle Zuteilungslimits</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <span className="text-sm text-slate-600">CPU-Kerne</span>
-                      <Badge variant="outline">64 Kerne</Badge>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <span className="text-sm text-slate-600">Arbeitsspeicher</span>
-                      <Badge variant="outline">192 GB</Badge>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <span className="text-sm text-slate-600">Speicher</span>
-                      <Badge variant="outline">3.0 TB</Badge>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <span className="text-sm text-slate-600">VM-Instanzen</span>
-                      <Badge variant="outline">25 Instanzen</Badge>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <span className="text-sm text-slate-600">Floating IPs</span>
-                      <Badge variant="outline">10 IPs</Badge>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <span className="text-sm text-slate-600">Security Groups</span>
-                      <Badge variant="outline">15 Gruppen</Badge>
-                    </div>
-                  </div>
-
-                  <Button variant="outline" className="w-full">
-                    Quota-Erhöhung anfordern
-                  </Button>
+                  {quotasLoading && (
+                    <p className="text-sm text-slate-500">Lädt...</p>
+                  )}
+                  {!quotasLoading && !quotas && (
+                    <p className="text-sm text-slate-500">Keine Quota-Daten verfügbar</p>
+                  )}
+                  {!quotasLoading && quotas && (() => {
+                    const qc = quotas.compute.cores;
+                    const qram = quotas.compute.ram;
+                    const qvol = quotas.volume.gigabytes;
+                    const qinst = quotas.compute.instances;
+                    const qfip = quotas.network.floatingip;
+                    return (
+                      <div className="space-y-4">
+                        <div>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-slate-600">CPU-Kerne</span>
+                            <span className="text-slate-900">{qc.used} / {qc.limit}</span>
+                          </div>
+                          <Progress value={percent(qc.used, qc.limit)} className="h-2" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-slate-600">Arbeitsspeicher</span>
+                            <span className="text-slate-900">{formatMBasGB(qram.used)} / {formatMBasGB(qram.limit)}</span>
+                          </div>
+                          <Progress value={percent(qram.used, qram.limit)} className="h-2" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-slate-600">Speicher (Volumes)</span>
+                            <span className="text-slate-900">{formatGB(qvol.used)} / {formatGB(qvol.limit)}</span>
+                          </div>
+                          <Progress value={percent(qvol.used, qvol.limit)} className="h-2" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-slate-600">VM-Instanzen</span>
+                            <span className="text-slate-900">{qinst.used} / {qinst.limit}</span>
+                          </div>
+                          <Progress value={percent(qinst.used, qinst.limit)} className="h-2" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-slate-600">Floating IPs</span>
+                            <span className="text-slate-900">{qfip.used} / {qfip.limit}</span>
+                          </div>
+                          <Progress value={percent(qfip.used, qfip.limit)} className="h-2" />
+                        </div>
+                        <div className="pt-2 border-t border-slate-100">
+                          <div className="flex justify-between items-center text-xs text-slate-400">
+                            <span>Projekt: {quotas.project_name}</span>
+                            <span>Stand: {new Date(quotas.fetched_at).toLocaleTimeString('de-DE')}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             </div>
           </div>
-
-          {/* Additional Settings */}
-          <Card className="border-slate-200 shadow-sm">
-            <CardHeader>
-              <CardTitle>Erweiterte Einstellungen</CardTitle>
-              <CardDescription>Zusätzliche Konfigurationsoptionen</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="region">Region</Label>
-                  <Input 
-                    id="region"
-                    className="mt-2"
-                    defaultValue="RegionOne"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="availability-zone">Availability Zone</Label>
-                  <Input 
-                    id="availability-zone"
-                    className="mt-2"
-                    defaultValue="nova"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="timeout">Verbindungszeitüberschreitung (Sekunden)</Label>
-                  <Input 
-                    id="timeout"
-                    type="number"
-                    className="mt-2"
-                    defaultValue="30"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="retry">Wiederholversuche</Label>
-                  <Input 
-                    id="retry"
-                    type="number"
-                    className="mt-2"
-                    defaultValue="3"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 mt-6">
-                <Button className="bg-teal-500 hover:bg-teal-600 text-white">
-                  Alle Einstellungen speichern
-                </Button>
-                <Button variant="outline">
-                  Auf Standardeinstellungen zurücksetzen
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
         </>
       )}
 
       {/* Admin-Spezifische Einstellungen */}
       {settingsMode === 'admin' && (
         <>
-          {/* Connection Status Card */}
-          <Card className="border-slate-200 shadow-sm">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className={`
-                    w-12 h-12 rounded-full flex items-center justify-center
-                    ${connectionStatus === 'connected' ? 'bg-green-100' : 
-                      connectionStatus === 'testing' ? 'bg-blue-100' : 'bg-red-100'}
-                  `}>
-                    {connectionStatus === 'connected' ? (
-                      <CheckCircle2 className="w-6 h-6 text-green-600" />
-                    ) : connectionStatus === 'testing' ? (
-                      <RefreshCw className="w-6 h-6 text-blue-600 animate-spin" />
-                    ) : (
-                      <AlertCircle className="w-6 h-6 text-red-600" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-slate-900">Verbindungsstatus</p>
-                    <p className="text-sm text-slate-500">
-                      {connectionStatus === 'connected' ? 'Mit OpenStack verbunden' :
-                       connectionStatus === 'testing' ? 'Verbindung wird getestet...' : 'Nicht verbunden'}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Badge 
-                    className={
-                      connectionStatus === 'connected' ? 'bg-green-100 text-green-700 hover:bg-green-100' :
-                      connectionStatus === 'testing' ? 'bg-blue-100 text-blue-700 hover:bg-blue-100' :
-                      'bg-red-100 text-red-700 hover:bg-red-100'
-                    }
-                  >
-                    {connectionStatus === 'connected' ? 'Aktiv' :
-                     connectionStatus === 'testing' ? 'Testend' : 'Inaktiv'}
-                  </Badge>
-                  <Button
-                    variant="outline"
-                    onClick={handleTestConnection}
-                    disabled={connectionStatus === 'testing'}
-                  >
-                    <RefreshCw className={`w-4 h-4 mr-2 ${connectionStatus === 'testing' ? 'animate-spin' : ''}`} />
-                    Verbindung testen
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Authentication Settings */}
-            <Card className="border-slate-200 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings className="w-5 h-5" />
-                  Authentifizierung
-                </CardTitle>
-                <CardDescription>OpenStack API-Zugangsdaten</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="auth-url">Authentifizierungs-URL</Label>
-                  <Input 
-                    id="auth-url"
-                    className="mt-2"
-                    defaultValue="https://openstack.university.edu:5000/v3"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="project-name">Projektname</Label>
-                  <Input 
-                    id="project-name"
-                    className="mt-2"
-                    defaultValue="DoziLab-Production"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="domain">Domain</Label>
-                  <Input 
-                    id="domain"
-                    className="mt-2"
-                    defaultValue="default"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="username">Benutzername</Label>
-                  <Input 
-                    id="username"
-                    className="mt-2"
-                    defaultValue="admin"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="password">Passwort</Label>
-                  <div className="relative mt-2">
-                    <Input 
-                      id="password"
-                      type={showPassword ? 'text' : 'password'}
-                      defaultValue="supersecretpassword"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="api-key">API-Key (Optional)</Label>
-                  <div className="relative mt-2">
-                    <Input 
-                      id="api-key"
-                      type={showApiKey ? 'text' : 'password'}
-                      placeholder="API-Key eingeben, falls Key-basierte Auth verwendet wird"
-                      defaultValue="sk-1234567890abcdef"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    >
-                      {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <Button className="w-full bg-teal-500 hover:bg-teal-600 text-white">
-                  Zugangsdaten speichern
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Endpoints & Quotas */}
-            <div className="space-y-6">
-              {/* Service Endpoints */}
-              <Card className="border-slate-200 shadow-sm">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Server className="w-5 h-5" />
-                    Service-Endpunkte
-                  </CardTitle>
-                  <CardDescription>OpenStack-Serviceendpunkte</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label htmlFor="compute">Compute (Nova)</Label>
-                    <Input 
-                      id="compute"
-                      className="mt-2"
-                      defaultValue="https://openstack.university.edu:8774/v2.1"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="network">Netzwerk (Neutron)</Label>
-                    <Input 
-                      id="network"
-                      className="mt-2"
-                      defaultValue="https://openstack.university.edu:9696"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="storage">Block Storage (Cinder)</Label>
-                    <Input 
-                      id="storage"
-                      className="mt-2"
-                      defaultValue="https://openstack.university.edu:8776/v3"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="image">Image (Glance)</Label>
-                    <Input 
-                      id="image"
-                      className="mt-2"
-                      defaultValue="https://openstack.university.edu:9292"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Resource Quotas */}
-              <Card className="border-slate-200 shadow-sm">
-                <CardHeader>
-                  <CardTitle>Ressourcen-Quotas</CardTitle>
-                  <CardDescription>Aktuelle Zuteilungslimits</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <span className="text-sm text-slate-600">CPU-Kerne</span>
-                      <Badge variant="outline">64 Kerne</Badge>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <span className="text-sm text-slate-600">Arbeitsspeicher</span>
-                      <Badge variant="outline">192 GB</Badge>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <span className="text-sm text-slate-600">Speicher</span>
-                      <Badge variant="outline">3.0 TB</Badge>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <span className="text-sm text-slate-600">VM-Instanzen</span>
-                      <Badge variant="outline">25 Instanzen</Badge>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <span className="text-sm text-slate-600">Floating IPs</span>
-                      <Badge variant="outline">10 IPs</Badge>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <span className="text-sm text-slate-600">Security Groups</span>
-                      <Badge variant="outline">15 Gruppen</Badge>
-                    </div>
-                  </div>
-
-                  <Button variant="outline" className="w-full">
-                    Quota-Erhöhung anfordern
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-
-          {/* Admin-Einstellungen */}
+          {/* Template Approval Workflow */}
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Admin-Einstellungen</CardTitle>
-              <CardDescription>Zusätzliche Konfigurationsoptionen für Administratoren</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <Workflow className="w-5 h-5" />
+                Template-Genehmigungsworkflow
+              </CardTitle>
+              <CardDescription>
+                Verwalten Sie den Prozess für die Freigabe neuer Templates
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="region">Region</Label>
-                  <Input 
-                    id="region"
-                    className="mt-2"
-                    defaultValue="RegionOne"
-                  />
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                <div className="flex-1">
+                  <p className="text-slate-900">Automatische Genehmigung</p>
+                  <p className="text-sm text-slate-500">
+                    Templates automatisch ohne manuelle Überprüfung freigeben
+                  </p>
                 </div>
-
-                <div>
-                  <Label htmlFor="availability-zone">Availability Zone</Label>
-                  <Input 
-                    id="availability-zone"
-                    className="mt-2"
-                    defaultValue="nova"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="timeout">Verbindungszeitüberschreitung (Sekunden)</Label>
-                  <Input 
-                    id="timeout"
-                    type="number"
-                    className="mt-2"
-                    defaultValue="30"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="retry">Wiederholversuche</Label>
-                  <Input 
-                    id="retry"
-                    type="number"
-                    className="mt-2"
-                    defaultValue="3"
-                  />
-                </div>
+                <Switch
+                  checked={autoApproveTemplates}
+                  onCheckedChange={setAutoApproveTemplates}
+                />
               </div>
 
-              <div className="flex gap-3 mt-6">
-                <Button className="bg-teal-500 hover:bg-teal-600 text-white">
-                  Alle Einstellungen speichern
-                </Button>
-                <Button variant="outline">
-                  Auf Standardeinstellungen zurücksetzen
-                </Button>
+              <div className="space-y-3">
+                <Label>Ressourcen-Prüfschwellen für Genehmigung</Label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label htmlFor="max-cpu-threshold" className="text-sm text-slate-600">
+                      Max. CPU-Kerne
+                    </Label>
+                    <Input id="max-cpu-threshold" type="number" className="mt-2" defaultValue="8" />
+                  </div>
+                  <div>
+                    <Label htmlFor="max-ram-threshold" className="text-sm text-slate-600">
+                      Max. RAM (GB)
+                    </Label>
+                    <Input id="max-ram-threshold" type="number" className="mt-2" defaultValue="16" />
+                  </div>
+                  <div>
+                    <Label htmlFor="max-gpu-threshold" className="text-sm text-slate-600">
+                      Max. GPU-Einheiten
+                    </Label>
+                    <Input id="max-gpu-threshold" type="number" className="mt-2" defaultValue="1" />
+                  </div>
+                </div>
+                <p className="text-sm text-slate-500">
+                  Templates, die diese Schwellen überschreiten, benötigen manuelle Genehmigung
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="approval-email">Benachrichtigungs-E-Mail für Genehmigungen</Label>
+                <Input
+                  id="approval-email"
+                  type="email"
+                  className="mt-2"
+                  defaultValue="admin@university.edu"
+                />
+              </div>
+
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex gap-3">
+                  <Workflow className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-blue-900">Workflow-Status</p>
+                    <p className="text-sm text-blue-700 mt-1">
+                      Genehmigungsworkflow aktiv · 3 Templates warten auf Freigabe
+                    </p>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Admin-Spezifische Einstellungen */}
-          <div className="space-y-6">
-            {/* Template Approval Workflow */}
-            <Card className="border-slate-200 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Workflow className="w-5 h-5" />
-                  Template-Genehmigungsworkflow
-                </CardTitle>
-                <CardDescription>
-                  Verwalten Sie den Prozess für die Freigabe neuer Templates (AC 2.3, AC 2.4)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                  <div className="flex-1">
-                    <p className="text-slate-900">Automatische Genehmigung</p>
-                    <p className="text-sm text-slate-500">
-                      Templates automatisch ohne manuelle Überprüfung freigeben
-                    </p>
-                  </div>
-                  <Switch
-                    checked={autoApproveTemplates}
-                    onCheckedChange={setAutoApproveTemplates}
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <Label>Ressourcen-Prüfschwellen für Genehmigung</Label>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <Label htmlFor="max-cpu-threshold" className="text-sm text-slate-600">
-                        Max. CPU-Kerne
-                      </Label>
-                      <Input
-                        id="max-cpu-threshold"
-                        type="number"
-                        className="mt-2"
-                        defaultValue="8"
-                        placeholder="Max. CPU-Kerne"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="max-ram-threshold" className="text-sm text-slate-600">
-                        Max. RAM (GB)
-                      </Label>
-                      <Input
-                        id="max-ram-threshold"
-                        type="number"
-                        className="mt-2"
-                        defaultValue="16"
-                        placeholder="Max. RAM (GB)"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="max-gpu-threshold" className="text-sm text-slate-600">
-                        Max. GPU-Einheiten
-                      </Label>
-                      <Input
-                        id="max-gpu-threshold"
-                        type="number"
-                        className="mt-2"
-                        defaultValue="1"
-                        placeholder="Max. GPU"
-                      />
-                    </div>
-                  </div>
+          {/* Security & Secrets Management */}
+          <Card className="border-slate-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Lock className="w-5 h-5" />
+                Sicherheit & Secrets-Verwaltung
+              </CardTitle>
+              <CardDescription>
+                Konfiguration für verschlüsselte Speicherung und sichere API-Nutzung
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                <div className="flex-1">
+                  <p className="text-slate-900">Verschlüsselte Secrets-Speicherung</p>
                   <p className="text-sm text-slate-500">
-                    Templates, die diese Schwellen überschreiten, benötigen manuelle Genehmigung
+                    Alle Zugangsdaten werden verschlüsselt gespeichert (kein Client-Side-Storage)
                   </p>
                 </div>
+                <Switch checked={encryptSecrets} onCheckedChange={setEncryptSecrets} />
+              </div>
 
-                <div>
-                  <Label htmlFor="approval-email">Benachrichtigungs-E-Mail für Genehmigungen</Label>
-                  <Input
-                    id="approval-email"
-                    type="email"
-                    className="mt-2"
-                    defaultValue="admin@university.edu"
-                    placeholder="admin@university.edu"
-                  />
-                </div>
-
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex gap-3">
-                    <Workflow className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm text-blue-900">Workflow-Status</p>
-                      <p className="text-sm text-blue-700 mt-1">
-                        Genehmigungsworkflow aktiv · 3 Templates warten auf Freigabe
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Security & Secrets Management */}
-            <Card className="border-slate-200 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Lock className="w-5 h-5" />
-                  Sicherheit & Secrets-Verwaltung
-                </CardTitle>
-                <CardDescription>
-                  Konfiguration für verschlüsselte Speicherung und sichere API-Nutzung (AC 3.1, AC 3.2)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                  <div className="flex-1">
-                    <p className="text-slate-900">Verschlüsselte Secrets-Speicherung</p>
-                    <p className="text-sm text-slate-500">
-                      Alle Zugangsdaten werden verschlüsselt gespeichert (kein Client-Side-Storage)
-                    </p>
-                  </div>
-                  <Switch
-                    checked={encryptSecrets}
-                    onCheckedChange={setEncryptSecrets}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                  <div className="flex-1">
-                    <p className="text-slate-900">Prinzip der minimalen Berechtigung</p>
-                    <p className="text-sm text-slate-500">
-                      OpenStack-APIs nur mit minimalen erforderlichen Rechten nutzen
-                    </p>
-                  </div>
-                  <Switch
-                    checked={enforceMinPrivilege}
-                    onCheckedChange={setEnforceMinPrivilege}
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="encryption-key">Verschlüsselungs-Algorithmus</Label>
-                  <Input
-                    id="encryption-key"
-                    className="mt-2"
-                    defaultValue="AES-256-GCM"
-                    disabled
-                  />
-                  <p className="text-sm text-slate-500 mt-1">
-                    Industriestandard-Verschlüsselung für maximale Sicherheit
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                <div className="flex-1">
+                  <p className="text-slate-900">Prinzip der minimalen Berechtigung</p>
+                  <p className="text-sm text-slate-500">
+                    OpenStack-APIs nur mit minimalen erforderlichen Rechten nutzen
                   </p>
                 </div>
+                <Switch checked={enforceMinPrivilege} onCheckedChange={setEnforceMinPrivilege} />
+              </div>
 
-                <div>
-                  <Label htmlFor="key-rotation">Schlüsselrotation (Tage)</Label>
-                  <Input
-                    id="key-rotation"
-                    type="number"
-                    className="mt-2"
-                    defaultValue="90"
-                    placeholder="Tage bis zur automatischen Rotation"
-                  />
-                </div>
+              <div>
+                <Label htmlFor="encryption-key">Verschlüsselungs-Algorithmus</Label>
+                <Input id="encryption-key" className="mt-2" defaultValue="AES-256-GCM" disabled />
+              </div>
 
-                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm text-green-900">Sicherheitsstatus</p>
-                      <p className="text-sm text-green-700 mt-1">
-                        Alle Secrets verschlüsselt · Kein Client-Side-Storage · OpenStack-Policies konform
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+              <div>
+                <Label htmlFor="key-rotation">Schlüsselrotation (Tage)</Label>
+                <Input id="key-rotation" type="number" className="mt-2" defaultValue="90" />
+              </div>
 
-            {/* Automated Base Image Creation */}
-            <Card className="border-slate-200 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileCode className="w-5 h-5" />
-                  Automatisierte Basis-Image-Erstellung
-                </CardTitle>
-                <CardDescription>
-                  Automatisierung für die Erstellung klonbarer VM-Templates (AC 2.5)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                  <div className="flex-1">
-                    <p className="text-slate-900">Automatische Image-Erstellung aktivieren</p>
-                    <p className="text-sm text-slate-500">
-                      Basis-VMs werden automatisch als klonbare Templates gespeichert
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-green-900">Sicherheitsstatus</p>
+                    <p className="text-sm text-green-700 mt-1">
+                      Alle Secrets verschlüsselt · Kein Client-Side-Storage · OpenStack-Policies konform
                     </p>
                   </div>
-                  <Switch
-                    checked={autoImageCreation}
-                    onCheckedChange={setAutoImageCreation}
-                  />
                 </div>
+              </div>
+            </CardContent>
+          </Card>
 
-                <div>
-                  <Label htmlFor="automation-script">Automatisierungsskript-Pfad</Label>
-                  <Input
-                    id="automation-script"
-                    className="mt-2"
-                    defaultValue="/opt/dozilab/scripts/create-base-image.sh"
-                    placeholder="Pfad zum Automatisierungsskript"
-                  />
+          {/* Automated Base Image Creation */}
+          <Card className="border-slate-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileCode className="w-5 h-5" />
+                Automatisierte Basis-Image-Erstellung
+              </CardTitle>
+              <CardDescription>
+                Automatisierung für die Erstellung klonbarer VM-Templates
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                <div className="flex-1">
+                  <p className="text-slate-900">Automatische Image-Erstellung aktivieren</p>
+                  <p className="text-sm text-slate-500">
+                    Basis-VMs werden automatisch als klonbare Templates gespeichert
+                  </p>
                 </div>
+                <Switch checked={autoImageCreation} onCheckedChange={setAutoImageCreation} />
+              </div>
 
-                <div>
-                  <Label htmlFor="base-image-template">Basis-Template-Konfiguration</Label>
-                  <Textarea
-                    id="base-image-template"
-                    className="mt-2 font-mono text-sm"
-                    rows={6}
-                    defaultValue={`# Base Image Automation Config
+              <div>
+                <Label htmlFor="automation-script">Automatisierungsskript-Pfad</Label>
+                <Input
+                  id="automation-script"
+                  className="mt-2"
+                  defaultValue="/opt/dozilab/scripts/create-base-image.sh"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="base-image-template">Basis-Template-Konfiguration</Label>
+                <Textarea
+                  id="base-image-template"
+                  className="mt-2 font-mono text-sm"
+                  rows={6}
+                  defaultValue={`# Base Image Automation Config
 image_format: qcow2
 snapshot_enabled: true
 clone_template: true
 auto_optimize: true
 cleanup_after_build: true`}
-                  />
-                </div>
+                />
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <Label htmlFor="image-retention" className="text-sm text-slate-600">
-                      Image-Aufbewahrung (Tage)
-                    </Label>
-                    <Input
-                      id="image-retention"
-                      type="number"
-                      className="mt-2"
-                      defaultValue="365"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="max-concurrent-builds" className="text-sm text-slate-600">
-                      Max. gleichzeitige Builds
-                    </Label>
-                    <Input
-                      id="max-concurrent-builds"
-                      type="number"
-                      className="mt-2"
-                      defaultValue="3"
-                    />
-                  </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="image-retention" className="text-sm text-slate-600">
+                    Image-Aufbewahrung (Tage)
+                  </Label>
+                  <Input id="image-retention" type="number" className="mt-2" defaultValue="365" />
                 </div>
+                <div>
+                  <Label htmlFor="max-concurrent-builds" className="text-sm text-slate-600">
+                    Max. gleichzeitige Builds
+                  </Label>
+                  <Input id="max-concurrent-builds" type="number" className="mt-2" defaultValue="3" />
+                </div>
+              </div>
 
-                <Button variant="outline" className="w-full">
-                  <FileCode className="w-4 h-4 mr-2" />
-                  Automatisierungsskript testen
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+              <Button variant="outline" className="w-full">
+                <FileCode className="w-4 h-4 mr-2" />
+                Automatisierungsskript testen
+              </Button>
+            </CardContent>
+          </Card>
 
           <div className="flex gap-3">
             <Button className="bg-teal-500 hover:bg-teal-600 text-white">

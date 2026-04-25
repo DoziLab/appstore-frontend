@@ -10,9 +10,18 @@ This is a code bundle for DoziLab University Web App UI. The original project is
 
 Run `npm i` to install the dependencies.
 
-Run `npm i --save-dev @types/react`
-
 Run `npm run dev` to start the development server.
+
+### Environment Variables
+
+Create a `.env` file in the project root with the following variables:
+
+```env
+VITE_KEYCLOAK_URL=http://your-keycloak-server:8080/
+VITE_KEYCLOAK_REALM=Dozilab
+VITE_KEYCLOAK_CLIENT_ID=appstore-frontend
+VITE_API_BASE_URL=           # optional, defaults to "" (uses vite proxy in dev)
+```
 
 ## Running Docker
 

@@ -22,6 +22,7 @@ RUN rm /etc/nginx/conf.d/default.conf
 
 # Eigene nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY certs /etc/nginx/certs
 
 # ✅ Vite Output liegt bei euch in "build/"
 COPY --from=build /app/build /usr/share/nginx/html

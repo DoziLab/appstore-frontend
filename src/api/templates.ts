@@ -11,6 +11,8 @@ export type TemplateParameter = {
   step?: string;
   hidden?: boolean;
   enum?: string[];
+  min?: number;
+  max?: number;
 };
 
 export type TemplateVersionDto = {

@@ -1,20 +1,21 @@
+import { useCallback, useState } from "react";
 import { 
   CheckCircle2, 
   Clock, 
   AlertCircle, 
   XCircle, 
   ArrowLeft,
-  Server,
-  Settings,
-  Network,
-  HardDrive,
-  Shield,
+  Eye,
+  EyeOff,
+  Copy,
+  Download,
   Loader2
-} from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
-import { Progress } from '../components/ui/progress';
+} from "lucide-react";
+import { toast } from "sonner@2.0.3";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
+import { Progress } from "../components/ui/progress";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,7 +26,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '../components/ui/alert-dialog';
+} from "../components/ui/alert-dialog";
+import {
+  AccessType,
+  DeploymentCredentialsResponse,
+  getDeploymentCredentials,
+} from "../api/deployments";
 
 interface DeploymentStep {
   id: string;
@@ -64,6 +70,119 @@ interface DeploymentDetailsProps {
 }
 
 export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDetailsProps) {
+  const [credentialsVisible, setCredentialsVisible] = useState(false);
+  const [credentialsLoading, setCredentialsLoading] = useState(false);
+  const [credentialsError, setCredentialsError] = useState<string | null>(null);
+  const [credentialsData, setCredentialsData] = useState<DeploymentCredentialsResponse | null>(null);
+  const [passwordVisibility, setPasswordVisibility] = useState<Record<string, boolean>>({});
+
+  const accessTypeLabels: Record<AccessType, string> = {
+    ssh: "SSH",
+    web_url: "Web URL",
+    guacamole: "Guacamole",
+    rdp: "RDP",
+    vnc: "VNC",
+    database: "Database",
+  };
+
+  const handleCopy = useCallback(async (value: string | null, label: string) => {
+    if (!value) {
+      toast.error("Kein Wert zum Kopieren vorhanden.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} kopiert.`);
+    } catch {
+      toast.error("Kopieren fehlgeschlagen.");
+    }
+  }, []);
+
+  const togglePasswordVisibility = (key: string) => {
+    setPasswordVisibility((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const getMaskedPassword = (value: string | null) => {
+    if (!value) return "-";
+    return "*".repeat(Math.max(8, value.length));
+  };
+
+  const loadCredentials = useCallback(async () => {
+    if (credentialsLoading) return;
+    setCredentialsLoading(true);
+    setCredentialsError(null);
+
+    try {
+      const response = await getDeploymentCredentials(deployment.id);
+      setCredentialsData(response.data);
+    } catch (err) {
+      const error = err as Error & { status?: number };
+      if (error.status === 403) {
+        setCredentialsError("You do not have permission to view deployment credentials.");
+      } else {
+        setCredentialsError("Failed to load deployment credentials.");
+      }
+    } finally {
+      setCredentialsLoading(false);
+    }
+  }, [credentialsLoading, deployment.id]);
+
+  const handleToggleCredentials = () => {
+    const nextVisible = !credentialsVisible;
+    setCredentialsVisible(nextVisible);
+
+    if (nextVisible && !credentialsData && !credentialsLoading) {
+      void loadCredentials();
+    }
+  };
+
+  const handleDownloadCredentials = () => {
+    if (!credentialsData) return;
+
+    const content = credentialsData.instances
+      .map((instance) => {
+        const header = [
+          `VM: ${instance.vm_name || instance.instance_id}`,
+          `Stack ID: ${instance.openstack_stack_id || "-"}`,
+          "",
+        ].join("\n");
+
+        const accessBlocks = instance.accesses
+          .map((access) => {
+            const title = accessTypeLabels[access.access_type] || access.access_type;
+            return [
+              title,
+              `Username: ${access.username ?? "-"}`,
+              `Password: ${access.password ?? "-"}`,
+              `Connection URL: ${access.connection_url ?? "-"}`,
+              `Port: ${access.port ?? "-"}`,
+              "",
+            ].join("\n");
+          })
+          .join("\n");
+
+        return `${header}${accessBlocks}`.trimEnd();
+      })
+      .join("\n\n");
+
+    const fileNameBase = deployment.name
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80);
+    const fileName = `${fileNameBase || "deployment"}-credentials.txt`;
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
   const getStatusBadge = () => {
     switch (deployment.status) {
       case 'running':
@@ -402,6 +521,170 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
           </Card>
         </div>
       </div>
+
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Credentials</CardTitle>
+            <CardDescription>
+              Passwoerter werden erst geladen, wenn Sie sie explizit anzeigen.
+            </CardDescription>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={handleToggleCredentials}
+              disabled={credentialsLoading}
+            >
+              {credentialsLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Lade Credentials...
+                </>
+              ) : credentialsVisible ? (
+                "Hide Credentials"
+              ) : (
+                "Show Credentials"
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleDownloadCredentials}
+              disabled={!credentialsData || credentialsLoading}
+            >
+              <Download className="w-4 h-4" />
+              Download Credentials
+            </Button>
+          </div>
+        </CardHeader>
+        {credentialsVisible && (
+          <CardContent className="space-y-6">
+            {credentialsLoading && (
+              <div className="flex items-center gap-2 text-slate-500">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">Credentials werden geladen...</span>
+              </div>
+            )}
+
+            {!credentialsLoading && credentialsError && (
+              <div className="space-y-3">
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <span className="text-sm text-red-700">{credentialsError}</span>
+                </div>
+                <Button variant="outline" onClick={loadCredentials}>
+                  Erneut versuchen
+                </Button>
+              </div>
+            )}
+
+            {!credentialsLoading && !credentialsError && credentialsData && (
+              <div className="space-y-6">
+                {credentialsData.instances.map((instance) => (
+                  <Card key={instance.instance_id} className="border-slate-200">
+                    <CardHeader>
+                      <CardTitle className="text-base">
+                        {instance.vm_name || "VM"}
+                      </CardTitle>
+                      <CardDescription>
+                        Stack ID: {instance.openstack_stack_id || "-"}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {instance.accesses.map((access, index) => {
+                        const accessKey = `${instance.instance_id}-${access.access_type}-${index}`;
+                        const isVisible = passwordVisibility[accessKey] === true;
+
+                        return (
+                          <div key={accessKey} className="rounded-lg border border-slate-200 p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-sm font-medium text-slate-900">
+                                {accessTypeLabels[access.access_type] || access.access_type}
+                              </h4>
+                              <Badge variant="outline">{access.access_type}</Badge>
+                            </div>
+
+                            <div className="grid gap-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-xs text-slate-500">Username</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-slate-900">
+                                    {access.username ?? "-"}
+                                  </span>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleCopy(access.username, "Username")}
+                                    disabled={!access.username}
+                                  >
+                                    <Copy className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-xs text-slate-500">Password</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-slate-900">
+                                    {isVisible ? access.password ?? "-" : getMaskedPassword(access.password)}
+                                  </span>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => togglePasswordVisibility(accessKey)}
+                                    disabled={!access.password}
+                                  >
+                                    {isVisible ? (
+                                      <EyeOff className="w-4 h-4" />
+                                    ) : (
+                                      <Eye className="w-4 h-4" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleCopy(access.password, "Password")}
+                                    disabled={!access.password}
+                                  >
+                                    <Copy className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-xs text-slate-500">Connection URL</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-slate-900">
+                                    {access.connection_url ?? "-"}
+                                  </span>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleCopy(access.connection_url, "Connection URL")}
+                                    disabled={!access.connection_url}
+                                  >
+                                    <Copy className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-xs text-slate-500">Port</span>
+                                <span className="text-sm text-slate-900">
+                                  {access.port ?? "-"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
     </div>
   );
 }

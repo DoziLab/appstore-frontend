@@ -666,6 +666,23 @@ export function DeploymentWizard({
 
     // Handle number
     if (param.type === "number") {
+      const minValue =
+        typeof param.min === "number"
+          ? param.min
+          : param.name === "pw_min_length"
+            ? 6
+            : undefined;
+      const maxValue =
+        typeof param.max === "number"
+          ? param.max
+          : param.name === "pw_min_length"
+            ? 64
+            : undefined;
+      const rangeHint =
+        typeof minValue === "number" || typeof maxValue === "number"
+          ? `Erlaubte Passwortlänge: ${minValue ?? "-"}–${maxValue ?? "-"}`
+          : null;
+
       return (
         <div key={param.name} className="space-y-2">
           <Label htmlFor={fieldId}>
@@ -676,12 +693,29 @@ export function DeploymentWizard({
             id={fieldId}
             type="number"
             value={value}
-            onChange={(e) =>
-              handleParameterChange(
-                param.name,
-                e.target.value ? Number(e.target.value) : "",
-              )
-            }
+            min={minValue}
+            max={maxValue}
+            onChange={(e) => {
+              if (!e.target.value) {
+                handleParameterChange(param.name, "");
+                return;
+              }
+
+              let nextValue = Number(e.target.value);
+              if (Number.isNaN(nextValue)) {
+                handleParameterChange(param.name, "");
+                return;
+              }
+
+              if (typeof minValue === "number") {
+                nextValue = Math.max(minValue, nextValue);
+              }
+              if (typeof maxValue === "number") {
+                nextValue = Math.min(maxValue, nextValue);
+              }
+
+              handleParameterChange(param.name, nextValue);
+            }}
             placeholder={
               param.description || `Geben Sie ${param.label || param.name} ein`
             }
@@ -691,6 +725,12 @@ export function DeploymentWizard({
           />
           {param.description && (
             <p className="text-xs text-slate-500">{param.description}</p>
+          )}
+          {!param.description && rangeHint && (
+            <p className="text-xs text-slate-500">{rangeHint}</p>
+          )}
+          {param.description && rangeHint && (
+            <p className="text-xs text-slate-500">{rangeHint}</p>
           )}
         </div>
       );

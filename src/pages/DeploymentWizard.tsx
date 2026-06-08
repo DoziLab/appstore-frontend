@@ -726,10 +726,7 @@ export function DeploymentWizard({
           {param.description && (
             <p className="text-xs text-slate-500">{param.description}</p>
           )}
-          {!param.description && rangeHint && (
-            <p className="text-xs text-slate-500">{rangeHint}</p>
-          )}
-          {param.description && rangeHint && (
+          {rangeHint && (
             <p className="text-xs text-slate-500">{rangeHint}</p>
           )}
         </div>

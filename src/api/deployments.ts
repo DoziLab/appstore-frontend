@@ -30,10 +30,45 @@ export type DeploymentDto = {
     openstack_instance_id?: string | null;
     status?: string | null;
     ip_address?: string | null;
-    access_urls?: string | null;
+    access_urls: Array<{
+      id: string;
+      access_type: string | null;
+      connection_url: string | null;
+      username: string | null;
+      port: number | null;
+      is_active: boolean;
+    }>;
     created_at: string;
     updated_at: string;
   }>;
+};
+
+export type AccessType =
+  | "ssh"
+  | "web_url"
+  | "guacamole"
+  | "rdp"
+  | "vnc"
+  | "database";
+
+export type CredentialAccess = {
+  access_type: AccessType;
+  username: string | null;
+  password: string | null;
+  connection_url: string | null;
+  port: number | null;
+};
+
+export type CredentialInstance = {
+  instance_id: string;
+  vm_name: string;
+  openstack_stack_id: string;
+  accesses: CredentialAccess[];
+};
+
+export type DeploymentCredentialsResponse = {
+  deployment_id: string;
+  instances: CredentialInstance[];
 };
 
 export type DeploymentLogDto = {
@@ -97,6 +132,17 @@ export async function createDeployment(data: DeploymentCreateRequest) {
 
 export async function getDeployment(deploymentId: string) {
   return apiFetch<DeploymentResponse>(`/api/v1/deployments/${deploymentId}`);
+}
+
+export async function getDeploymentCredentials(deploymentId: string) {
+  return apiFetch<{
+    success: boolean;
+    message?: string;
+    data: DeploymentCredentialsResponse;
+    errors: unknown;
+    timestamp?: string;
+    request_id?: string;
+  }>(`/api/v1/deployments/${deploymentId}/credentials`);
 }
 
 export async function getDeploymentLogs(deploymentId: string) {

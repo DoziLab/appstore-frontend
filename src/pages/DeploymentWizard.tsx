@@ -680,7 +680,7 @@ export function DeploymentWizard({
             : undefined;
       const rangeHint =
         typeof minValue === "number" || typeof maxValue === "number"
-          ? `Erlaubte Passwortlänge: ${minValue ?? "-"}–${maxValue ?? "-"}`
+          ? `Erlaubter Bereich: ${minValue ?? "-"}–${maxValue ?? "-"}`
           : null;
 
       return (

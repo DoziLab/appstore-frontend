@@ -122,9 +122,9 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
     } catch (err) {
       const error = err as Error & { status?: number };
       if (error.status === 403) {
-        setCredentialsError("You do not have permission to view deployment credentials.");
+        setCredentialsError("Sie haben keine Berechtigung, die Deployment-Credentials anzusehen.");
       } else {
-        setCredentialsError("Failed to load deployment credentials.");
+        setCredentialsError("Deployment-Credentials konnten nicht geladen werden.");
       }
     } finally {
       setCredentialsLoading(false);

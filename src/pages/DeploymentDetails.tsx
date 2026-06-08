@@ -522,169 +522,173 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
         </div>
       </div>
 
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <CardTitle>Credentials</CardTitle>
-            <CardDescription>
-              Passwoerter werden erst geladen, wenn Sie sie explizit anzeigen.
-            </CardDescription>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={handleToggleCredentials}
-              disabled={credentialsLoading}
-            >
-              {credentialsLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Lade Credentials...
-                </>
-              ) : credentialsVisible ? (
-                "Hide Credentials"
-              ) : (
-                "Show Credentials"
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleDownloadCredentials}
-              disabled={!credentialsData || credentialsLoading}
-            >
-              <Download className="w-4 h-4" />
-              Download Credentials
-            </Button>
-          </div>
-        </CardHeader>
-        {credentialsVisible && (
-          <CardContent className="space-y-6">
-            {credentialsLoading && (
-              <div className="flex items-center gap-2 text-slate-500">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="text-sm">Credentials werden geladen...</span>
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <CardTitle>Credentials</CardTitle>
+                <CardDescription>
+                  Hier können Sie sich die Credentials anzeigen lassen.
+                </CardDescription>
               </div>
-            )}
-
-            {!credentialsLoading && credentialsError && (
-              <div className="space-y-3">
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <span className="text-sm text-red-700">{credentialsError}</span>
-                </div>
-                <Button variant="outline" onClick={loadCredentials}>
-                  Erneut versuchen
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleToggleCredentials}
+                  disabled={credentialsLoading}
+                >
+                  {credentialsLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2" />
+                      Laden...
+                    </>
+                  ) : credentialsVisible ? (
+                    "Verbergen"
+                  ) : (
+                    "Credentials anzeigen"
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadCredentials}
+                  disabled={!credentialsData || credentialsLoading}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download
                 </Button>
               </div>
-            )}
+            </div>
+          </CardHeader>
+          {credentialsVisible && (
+            <CardContent className="space-y-6">
+              {credentialsLoading && (
+                <div className="flex items-center gap-2 text-slate-500">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Credentials werden geladen...</span>
+                </div>
+              )}
 
-            {!credentialsLoading && !credentialsError && credentialsData && (
-              <div className="space-y-6">
-                {credentialsData.instances.map((instance) => (
-                  <Card key={instance.instance_id} className="border-slate-200">
-                    <CardHeader>
-                      <CardTitle className="text-base">
-                        {instance.vm_name || "VM"}
-                      </CardTitle>
-                      <CardDescription>
-                        Stack ID: {instance.openstack_stack_id || "-"}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {instance.accesses.map((access, index) => {
-                        const accessKey = `${instance.instance_id}-${access.access_type}-${index}`;
-                        const isVisible = passwordVisibility[accessKey] === true;
+              {!credentialsLoading && credentialsError && (
+                <div className="space-y-3">
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <span className="text-sm text-red-700">{credentialsError}</span>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={loadCredentials}>
+                    Erneut versuchen
+                  </Button>
+                </div>
+              )}
 
-                        return (
-                          <div key={accessKey} className="rounded-lg border border-slate-200 p-4 space-y-3">
-                            <div className="flex items-center justify-between">
-                              <h4 className="text-sm font-medium text-slate-900">
-                                {accessTypeLabels[access.access_type] || access.access_type}
-                              </h4>
-                              <Badge variant="outline">{access.access_type}</Badge>
+              {!credentialsLoading && !credentialsError && credentialsData && (
+                <div className="space-y-6">
+                  {credentialsData.instances.map((instance) => (
+                    <Card key={instance.instance_id} className="border-slate-200">
+                      <CardHeader>
+                        <CardTitle className="text-base">
+                          {instance.vm_name || "VM"}
+                        </CardTitle>
+                        <CardDescription>
+                          Stack ID: {instance.openstack_stack_id || "-"}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {instance.accesses.map((access, index) => {
+                          const accessKey = `${instance.instance_id}-${access.access_type}-${index}`;
+                          const isVisible = passwordVisibility[accessKey] === true;
+
+                          return (
+                            <div key={accessKey} className="rounded-lg border border-slate-200 p-4 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-medium text-slate-900">
+                                  {accessTypeLabels[access.access_type] || access.access_type}
+                                </h4>
+                                <Badge variant="outline">{access.access_type}</Badge>
+                              </div>
+
+                              <div className="grid gap-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="text-xs text-slate-500">Username</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm text-slate-900">
+                                      {access.username ?? "-"}
+                                    </span>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleCopy(access.username, "Username")}
+                                      disabled={!access.username}
+                                    >
+                                      <Copy className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="text-xs text-slate-500">Password</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm text-slate-900">
+                                      {isVisible ? access.password ?? "-" : getMaskedPassword(access.password)}
+                                    </span>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => togglePasswordVisibility(accessKey)}
+                                      disabled={!access.password}
+                                    >
+                                      {isVisible ? (
+                                        <EyeOff className="w-4 h-4" />
+                                      ) : (
+                                        <Eye className="w-4 h-4" />
+                                      )}
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleCopy(access.password, "Password")}
+                                      disabled={!access.password}
+                                    >
+                                      <Copy className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="text-xs text-slate-500">Connection URL</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm text-slate-900 break-all">
+                                      {access.connection_url ?? "-"}
+                                    </span>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleCopy(access.connection_url, "Connection URL")}
+                                      disabled={!access.connection_url}
+                                    >
+                                      <Copy className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="text-xs text-slate-500">Port</span>
+                                  <span className="text-sm text-slate-900">
+                                    {access.port ?? "-"}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
-
-                            <div className="grid gap-3">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="text-xs text-slate-500">Username</span>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm text-slate-900">
-                                    {access.username ?? "-"}
-                                  </span>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleCopy(access.username, "Username")}
-                                    disabled={!access.username}
-                                  >
-                                    <Copy className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              </div>
-
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="text-xs text-slate-500">Password</span>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm text-slate-900">
-                                    {isVisible ? access.password ?? "-" : getMaskedPassword(access.password)}
-                                  </span>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => togglePasswordVisibility(accessKey)}
-                                    disabled={!access.password}
-                                  >
-                                    {isVisible ? (
-                                      <EyeOff className="w-4 h-4" />
-                                    ) : (
-                                      <Eye className="w-4 h-4" />
-                                    )}
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleCopy(access.password, "Password")}
-                                    disabled={!access.password}
-                                  >
-                                    <Copy className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              </div>
-
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="text-xs text-slate-500">Connection URL</span>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm text-slate-900">
-                                    {access.connection_url ?? "-"}
-                                  </span>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleCopy(access.connection_url, "Connection URL")}
-                                    disabled={!access.connection_url}
-                                  >
-                                    <Copy className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              </div>
-
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="text-xs text-slate-500">Port</span>
-                                <span className="text-sm text-slate-900">
-                                  {access.port ?? "-"}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        )}
-      </Card>
+                          );
+                        })}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          )}
+        </Card>
     </div>
   );
 }

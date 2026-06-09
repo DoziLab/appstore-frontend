@@ -1,15 +1,21 @@
 import { useCallback, useState } from "react";
-import { 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle, 
-  XCircle, 
+import React from "react";
+import {
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  XCircle,
   ArrowLeft,
   Eye,
   EyeOff,
   Copy,
   Download,
-  Loader2
+  Loader2,
+  ChevronDown,
+  ChevronRight,
+  Flame,
+  Terminal,
+  Flag,
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -30,8 +36,10 @@ import {
 import {
   AccessType,
   DeploymentCredentialsResponse,
+  DeploymentLogDto,
   getDeploymentCredentials,
 } from "../api/deployments";
+import { type LogPhase, type PhaseStatus } from "./DeploymentDetailsPage";
 
 interface DeploymentStep {
   id: string;
@@ -47,7 +55,7 @@ interface DeploymentStep {
 interface Deployment {
   id: string;
   name: string;
-  status: 'deploying' | 'running' | 'failed' | 'cancelled' | 'stopped';
+  status: 'deploying' | 'running' | 'failed' | 'cancelled' | 'stopped' | 'deleting' | 'delete_failed';
   course: string;
   startedAt: string;
   completedAt?: string;
@@ -55,6 +63,8 @@ interface Deployment {
   progress: number;
   currentStep?: string;
   steps: DeploymentStep[];
+  phases?: LogPhase[];
+  logs?: DeploymentLogDto[];
   error?: string;
   resources: {
     cpu: number;
@@ -184,8 +194,17 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
     URL.revokeObjectURL(url);
   };
   const getStatusBadge = () => {
+    const hasFailedPhase = deployment.phases?.some(p => p.status === 'failed');
     switch (deployment.status) {
       case 'running':
+        if (hasFailedPhase) {
+          return (
+            <Badge className="bg-red-100 text-red-700 hover:bg-red-100">
+              <XCircle className="w-4 h-4 mr-2" />
+              Fehlgeschlagen
+            </Badge>
+          );
+        }
         return (
           <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
             <CheckCircle2 className="w-4 h-4 mr-2" />
@@ -213,56 +232,26 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
             Abgebrochen
           </Badge>
         );
+      case 'deleting':
+        return (
+          <Badge className="bg-red-100 text-red-700 hover:bg-red-100">
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            Wird gelöscht…
+          </Badge>
+        );
+      case 'delete_failed':
+        return (
+          <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
+            <AlertCircle className="w-4 h-4 mr-2" />
+            Löschen fehlgeschlagen
+          </Badge>
+        );
       case 'stopped':
         return (
           <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">
             Gestoppt
           </Badge>
         );
-    }
-  };
-
-  const getStepIcon = (step: DeploymentStep) => {
-    const Icon = step.icon;
-    
-    switch (step.status) {
-      case 'completed':
-        return (
-          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-            <CheckCircle2 className="w-5 h-5 text-green-600" />
-          </div>
-        );
-      case 'in-progress':
-        return (
-          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-            <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
-          </div>
-        );
-      case 'failed':
-        return (
-          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-            <XCircle className="w-5 h-5 text-red-600" />
-          </div>
-        );
-      case 'pending':
-        return (
-          <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
-            <Icon className="w-5 h-5 text-slate-400" />
-          </div>
-        );
-    }
-  };
-
-  const getStepStatusBadge = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Abgeschlossen</Badge>;
-      case 'in-progress':
-        return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">In Bearbeitung</Badge>;
-      case 'failed':
-        return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Fehlgeschlagen</Badge>;
-      case 'pending':
-        return <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">Ausstehend</Badge>;
     }
   };
 
@@ -287,7 +276,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
           <div className="flex flex-col items-end gap-2">
             {getStatusBadge()}
             <p className="text-sm text-slate-500">
-              Gestartet: {deployment.startedAt}
+              Gestartet: {new Date(deployment.startedAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
             </p>
           </div>
         </div>
@@ -306,10 +295,6 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
               </div>
               <div className="text-right">
                 <p className="text-2xl text-blue-600 mb-1">{deployment.progress}%</p>
-                <p className="text-sm text-slate-500">
-                  <Clock className="w-3 h-3 inline mr-1" />
-                  Ca. {deployment.estimatedTimeRemaining} verbleibend
-                </p>
               </div>
             </div>
             <Progress value={deployment.progress} className="h-3" />
@@ -318,7 +303,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
       )}
 
       {/* Success Message für abgeschlossene Deployments */}
-      {deployment.status === 'running' && (
+      {deployment.status === 'running' && !deployment.phases?.some(p => p.status === 'failed') && (
         <Card className="border-green-200 shadow-sm bg-gradient-to-br from-green-50 to-white">
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
@@ -331,8 +316,34 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
                   Ihre Anwendung wurde erfolgreich bereitgestellt und ist jetzt für Ihre Kursteilnehmer verfügbar.
                 </p>
                 <p className="text-sm text-green-600">
-                  Abgeschlossen am: {deployment.completedAt}
+                  Abgeschlossen am: {deployment.completedAt ? new Date(deployment.completedAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}
                 </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Partial failure: Heat OK but a phase failed — show as full error */}
+      {deployment.status === 'running' && deployment.phases?.some(p => p.status === 'failed') && (
+        <Card className="border-red-200 shadow-sm bg-gradient-to-br from-red-50 to-white">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <XCircle className="w-6 h-6 text-red-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-red-900 mb-2">Deployment fehlgeschlagen</h3>
+                <p className="text-sm text-red-700 mb-3">
+                  Bei der Bereitstellung ist ein Fehler aufgetreten. Bitte überprüfen Sie die Details unten.
+                </p>
+                {deployment.error && (
+                  <div className="p-3 bg-red-100 rounded-lg">
+                    <p className="text-sm text-red-900">
+                      <strong>Fehlermeldung:</strong> {deployment.error}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>
@@ -382,56 +393,78 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
         </Card>
       )}
 
+      {/* Delete failed — show retry */}
+      {deployment.status === 'delete_failed' && (
+        <Card className="border-orange-200 shadow-sm bg-gradient-to-br from-orange-50 to-white">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                <AlertCircle className="w-6 h-6 text-orange-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-orange-900 mb-2">Löschen fehlgeschlagen</h3>
+                <p className="text-sm text-orange-700 mb-3">
+                  Das Deployment konnte nicht vollständig gelöscht werden. Bitte versuchen Sie es erneut.
+                </p>
+                <Button
+                  variant="outline"
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  onClick={() => onDelete?.(deployment.id)}
+                >
+                  Erneut versuchen
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Deleting Message */}
+      {deployment.status === 'deleting' && (
+        <Card className="border-red-200 shadow-sm bg-gradient-to-br from-red-50 to-white">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <Loader2 className="w-6 h-6 text-red-600 animate-spin" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-red-900 mb-2">Deployment wird gelöscht…</h3>
+                <p className="text-sm text-red-700">
+                  Die Ressourcen werden gerade abgebaut. Sie werden automatisch zum Dashboard weitergeleitet.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Deployment Steps */}
         <Card className="lg:col-span-2 border-slate-200 shadow-sm">
           <CardHeader>
-            <CardTitle>Deployment-Schritte</CardTitle>
-            <CardDescription>
-              Detaillierter Ablauf der Bereitstellung
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Deployment-Schritte</CardTitle>
+                <CardDescription>Detaillierter Ablauf der Bereitstellung</CardDescription>
+              </div>
+              {deployment.status === "deploying" && (
+                <span className="flex items-center gap-1.5 text-xs text-teal-600 font-medium">
+                  <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
+                  Live
+                </span>
+              )}
+            </div>
+            {/* Overall progress bar */}
+            <div className="mt-3 space-y-1">
+              <div className="flex justify-between text-xs text-slate-500">
+                <span>{deployment.currentStep ?? (deployment.status === "running" ? "Abgeschlossen" : "Warte auf Start…")}</span>
+                <span>{deployment.progress}%</span>
+              </div>
+              <Progress value={deployment.progress} className="h-2" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6">
-              {deployment.steps.map((step, index) => (
-                <div key={step.id} className="relative">
-                  {/* Connecting Line */}
-                  {index < deployment.steps.length - 1 && (
-                    <div 
-                      className={`absolute left-5 top-10 w-0.5 h-full ${
-                        step.status === 'completed' ? 'bg-green-200' : 'bg-slate-200'
-                      }`}
-                    />
-                  )}
-                  
-                  <div className="flex gap-4">
-                    {getStepIcon(step)}
-                    
-                    <div className="flex-1 pb-2">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <h4 className="text-slate-900 mb-1">{step.name}</h4>
-                          <p className="text-sm text-slate-600">{step.description}</p>
-                        </div>
-                        {getStepStatusBadge(step.status)}
-                      </div>
-                      
-                      <div className="flex items-center gap-4 text-xs text-slate-500 mt-2">
-                        {step.startTime && (
-                          <span>Gestartet: {step.startTime}</span>
-                        )}
-                        {step.endTime && (
-                          <span>· Beendet: {step.endTime}</span>
-                        )}
-                        {step.duration && (
-                          <span>· Dauer: {step.duration}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <DeploymentPhaseList phases={deployment.phases ?? []} isLive={deployment.status === "deploying"} />
           </CardContent>
         </Card>
 
@@ -469,9 +502,6 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
                 <>
                   <Button variant="outline" className="w-full opacity-50 cursor-not-allowed" disabled>
                     VM starten
-                  </Button>
-                  <Button variant="outline" className="w-full" disabled>
-                    Logs anzeigen
                   </Button>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -655,15 +685,32 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
                                 </div>
 
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <span className="text-xs text-slate-500">Connection URL</span>
+                                  <span className="text-xs text-slate-500">
+                                    {access.access_type === "ssh" ? "SSH-Befehl" : access.access_type === "web_url" ? "URL" : "Connection URL"}
+                                  </span>
                                   <div className="flex items-center gap-2">
-                                    <span className="text-sm text-slate-900 break-all">
-                                      {access.connection_url ?? "-"}
-                                    </span>
+                                    {access.connection_url ? (
+                                      access.access_type === "web_url" ? (
+                                        <a
+                                          href={access.connection_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-sm text-blue-600 hover:underline break-all"
+                                        >
+                                          {access.connection_url}
+                                        </a>
+                                      ) : (
+                                        <code className="text-sm bg-slate-100 px-2 py-0.5 rounded break-all font-mono">
+                                          {access.connection_url}
+                                        </code>
+                                      )
+                                    ) : (
+                                      <span className="text-sm text-slate-400">-</span>
+                                    )}
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      onClick={() => handleCopy(access.connection_url, "Connection URL")}
+                                      onClick={() => handleCopy(access.connection_url, access.access_type === "ssh" ? "SSH-Befehl" : "URL")}
                                       disabled={!access.connection_url}
                                     >
                                       <Copy className="w-4 h-4" />
@@ -689,6 +736,161 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
             </CardContent>
           )}
         </Card>
+    </div>
+  );
+}
+
+// ── Phase helpers ─────────────────────────────────────────────────────────────
+
+const PHASE_ICONS: Record<string, React.ReactNode> = {
+  heat: <Flame className="w-4 h-4" />,
+  ansible: <Terminal className="w-4 h-4" />,
+  done: <Flag className="w-4 h-4" />,
+};
+
+function fmtTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  } catch {
+    return iso;
+  }
+}
+
+function phaseBadge(status: PhaseStatus) {
+  switch (status) {
+    case "completed":
+      return <Badge className="bg-green-100 text-green-800 border-green-200">Fertig</Badge>;
+    case "running":
+      return <Badge className="bg-teal-100 text-teal-800 border-teal-200">Läuft</Badge>;
+    case "failed":
+      return <Badge className="bg-red-100 text-red-800 border-red-200">Fehler</Badge>;
+    default:
+      return <Badge variant="outline" className="text-slate-400">Ausstehend</Badge>;
+  }
+}
+
+function LogRow({ log }: { log: DeploymentLogDto }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDetails = log.details && Object.keys(log.details).length > 0;
+
+  const lvl = log.level.toUpperCase();
+
+  const levelColor =
+    lvl === "ERROR"   ? "#f87171" :
+    lvl === "WARNING" ? "#facc15" :
+    lvl === "DEBUG"   ? "#64748b" :
+    "#4ade80";
+
+  const msgColor =
+    lvl === "ERROR"   ? "#fca5a5" :
+    lvl === "WARNING" ? "#fde047" :
+    lvl === "DEBUG"   ? "#64748b" :
+    "#e2e8f0";
+
+  return (
+    <div
+      style={{
+        fontFamily: "monospace",
+        fontSize: "12px",
+        borderBottom: "1px solid #1e293b",
+        cursor: hasDetails ? "pointer" : "default",
+        backgroundColor: "transparent",
+      }}
+      onMouseEnter={e => { if (hasDetails) (e.currentTarget as HTMLElement).style.backgroundColor = "#1e293b"; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
+      onClick={() => hasDetails && setExpanded(e => !e)}
+    >
+      <div style={{ display: "grid", gridTemplateColumns: "16px 72px 72px 1fr", gap: "8px", padding: "6px 16px", alignItems: "baseline" }}>
+        <span style={{ color: "#94a3b8" }}>{hasDetails ? (expanded ? "▾" : "▸") : ""}</span>
+        <span style={{ color: "#94a3b8" }}>{fmtTime(log.created_at)}</span>
+        <span style={{ color: levelColor, fontWeight: "bold" }}>[{log.level.toLowerCase()}]</span>
+        <span style={{ color: msgColor, wordBreak: "break-word" }}>{log.message}</span>
+      </div>
+      {expanded && hasDetails && (
+        <pre style={{ margin: "0 16px 8px 40px", color: "#94a3b8", whiteSpace: "pre-wrap", wordBreak: "break-all", fontSize: "11px" }}>
+          {JSON.stringify(log.details, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function PhaseRow({ phase, isLive, defaultOpen }: { phase: LogPhase; isLive: boolean; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  const phaseIcon = PHASE_ICONS[phase.id] ?? <CheckCircle2 className="w-4 h-4" />;
+
+  const dotClass =
+    phase.status === "completed"
+      ? "bg-green-500"
+      : phase.status === "running"
+      ? "bg-teal-500 animate-pulse"
+      : phase.status === "failed"
+      ? "bg-red-500"
+      : "bg-slate-300";
+
+  return (
+    <div className="border border-slate-200 rounded-lg overflow-hidden">
+      {/* Phase header */}
+      <button
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotClass}`} />
+        <span className="text-slate-500 flex-shrink-0">{phaseIcon}</span>
+        <span className="flex-1 font-medium text-slate-900 text-sm">{phase.label}</span>
+        {phase.logs.length > 0 && (
+          <span className="text-xs text-slate-400 mr-2">{phase.logs.length} Einträge</span>
+        )}
+        {phaseBadge(phase.status)}
+        {open ? (
+          <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
+        ) : (
+          <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
+        )}
+      </button>
+
+      {/* Log entries */}
+      {open && (
+        <div style={{ borderTop: "1px solid #1e293b", backgroundColor: "#0f172a" }}>
+          {phase.logs.length === 0 ? (
+            <p className="px-4 py-3 text-xs italic font-mono" style={{ color: "#475569" }}>
+              {phase.status === "pending" ? "// Noch nicht gestartet" : "// Keine Einträge"}
+            </p>
+          ) : (
+            phase.logs.map((log) => <LogRow key={log.id} log={log} />)
+          )}
+          {phase.status === "running" && isLive && (
+            <div className="flex items-center gap-2 px-4 py-2 text-xs font-mono" style={{ color: "#2dd4bf" }}>
+              <Loader2 className="w-3 h-3 animate-spin" />
+              warte auf neue logs…
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeploymentPhaseList({ phases, isLive }: { phases: LogPhase[]; isLive: boolean }) {
+  if (phases.length === 0) {
+    return (
+      <p className="text-sm text-slate-400 text-center py-8">
+        Noch keine Logs vorhanden.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {phases.map((phase) => (
+        <PhaseRow
+          key={phase.id}
+          phase={phase}
+          isLive={isLive}
+          defaultOpen={phase.status === "running" || phase.status === "failed"}
+        />
+      ))}
     </div>
   );
 }

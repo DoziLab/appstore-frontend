@@ -1,182 +1,357 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, Navigate } from "react-router-dom";
-import { Server } from "lucide-react";
 import { DeploymentDetails } from "./DeploymentDetails";
 import { mockDeployments } from "./mockDeployments";
-import { getDeployment, getDeploymentLogs, deleteDeployment } from "../api/deployments";
+import {
+  getDeployment,
+  getDeploymentLogs,
+  streamDeploymentLogs,
+  deleteDeployment,
+  type DeploymentLogDto,
+} from "../api/deployments";
 import { getMyCourses, type CourseDto } from "../api/courses";
 import { getKeycloakGroups, type KeycloakGroup } from "../api/keycloak";
+
+// ── Phase definitions ─────────────────────────────────────────────────────────
+
+export type PhaseStatus = "pending" | "running" | "completed" | "failed";
+
+export interface LogPhase {
+  id: string;        // e.g. "heat", "ansible", "done"
+  label: string;
+  status: PhaseStatus;
+  logs: DeploymentLogDto[];
+  startedAt?: string;
+  finishedAt?: string;
+}
+
+const HEAT_EVENTS = new Set([
+  "DEPLOYMENT_STARTED",
+  "STACK_CREATE",
+  "SSH_WAIT",
+  "VM_READY",
+]);
+
+const ANSIBLE_EVENTS = new Set([
+  "ANSIBLE_STARTED",
+  "ANSIBLE_TASK",
+  "ANSIBLE_OK",
+  "ANSIBLE_FAILED",
+  "ANSIBLE_COMPLETED",
+]);
+
+function buildPhases(logs: DeploymentLogDto[]): LogPhase[] {
+  const heat: DeploymentLogDto[] = [];
+  const ansible: DeploymentLogDto[] = [];
+  const done: DeploymentLogDto[] = [];
+
+  let ansibleStarted = false;
+
+  for (const log of logs) {
+    const et = log.event_type.toUpperCase();
+    if (ANSIBLE_EVENTS.has(et)) {
+      ansibleStarted = true;
+      ansible.push(log);
+    } else if (et === "DEPLOYMENT_DELETED" || et === "DEPLOYMENT_DELETION_REQUESTED") {
+      done.push(log);
+    } else if (et === "FAILED" && ansibleStarted) {
+      // FAILED after Ansible started belongs to Ansible phase
+      ansible.push(log);
+    } else {
+      heat.push(log);
+    }
+  }
+
+  // Heat is complete when VM_READY appears (regardless of Ansible outcome)
+  const vmReady = heat.some((l) => l.event_type.toUpperCase() === "VM_READY");
+  // Heat failed only if a FAILED/ERROR log exists and no stacks were created
+  const heatError = heat.some(
+    (l) => (l.event_type.toUpperCase() === "FAILED" || l.level === "ERROR") && !vmReady
+  );
+
+  let heatStatus: PhaseStatus = "pending";
+  if (heat.length === 0) heatStatus = "pending";
+  else if (heatError) heatStatus = "failed";
+  else if (vmReady || ansible.length > 0) heatStatus = "completed";
+  else heatStatus = "running";
+
+  // Ansible status
+  const ansibleFailed = ansible.some(
+    (l) => l.event_type.toUpperCase() === "ANSIBLE_FAILED" || l.level === "ERROR"
+  );
+  const ansibleCompleted = ansible.some(
+    (l) => l.event_type.toUpperCase() === "ANSIBLE_COMPLETED"
+  );
+
+  let ansibleStatus: PhaseStatus = "pending";
+  if (ansible.length === 0) {
+    ansibleStatus = heatStatus === "completed" ? "running" : "pending";
+  } else if (ansibleFailed) {
+    ansibleStatus = "failed";
+  } else if (ansibleCompleted) {
+    ansibleStatus = "completed";
+  } else {
+    ansibleStatus = "running";
+  }
+
+  const doneStatus: PhaseStatus = done.length > 0 ? "completed" : "pending";
+
+  const ts = (arr: DeploymentLogDto[]) => arr[0]?.created_at;
+  const te = (arr: DeploymentLogDto[]) => arr[arr.length - 1]?.created_at;
+
+  return [
+    {
+      id: "heat",
+      label: "Infrastruktur (Heat)",
+      status: heatStatus,
+      logs: heat,
+      startedAt: ts(heat),
+      finishedAt: heatStatus === "completed" || heatStatus === "failed" ? te(heat) : undefined,
+    },
+    {
+      id: "ansible",
+      label: "Konfiguration (Ansible)",
+      status: ansibleStatus,
+      logs: ansible,
+      startedAt: ts(ansible),
+      finishedAt: ansibleStatus === "completed" || ansibleStatus === "failed" ? te(ansible) : undefined,
+    },
+    ...(done.length > 0 ? [{
+      id: "done",
+      label: "Abgeschlossen",
+      status: "completed" as PhaseStatus,
+      logs: done,
+      startedAt: ts(done),
+    }] : []),
+  ];
+}
+
+function calcProgress(phases: LogPhase[], overallStatus: string): number {
+  if (overallStatus === "running") return 100;
+  if (overallStatus === "failed") {
+    const completedCount = phases.filter((p) => p.status === "completed").length;
+    return Math.round((completedCount / phases.length) * 100);
+  }
+  const weights = [40, 60]; // heat, ansible
+  let progress = 0;
+  phases.forEach((phase, i) => {
+    if (phase.status === "completed") progress += weights[i];
+    else if (phase.status === "running") {
+      // partial credit based on log count within this phase
+      const phaseLogs = phase.logs.length;
+      progress += Math.min(weights[i] * 0.6, weights[i] * (phaseLogs / 10));
+    }
+  });
+  return Math.min(99, Math.round(progress));
+}
+
+// ── Status mapping ─────────────────────────────────────────────────────────────
+
+const STATUS_MAP: Record<string, "deploying" | "running" | "failed" | "cancelled" | "stopped" | "deleting"> = {
+  QUEUED: "deploying",
+  CREATING: "deploying",
+  PROCESSING: "deploying",
+  DEPLOYING: "deploying",
+  ACTIVE: "running",
+  RUNNING: "running",
+  CREATE_COMPLETE: "running",
+  FAILED: "failed",
+  CREATE_FAILED: "failed",
+  DELETE_COMPLETE: "stopped",
+  DELETING: "deleting",
+  CANCELLED: "cancelled",
+  DELETED: "stopped",
+};
+
+const ACTIVE_STATUSES = new Set(["deploying"]);
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function DeploymentDetailsPage() {
   const { deploymentId } = useParams<{ deploymentId: string }>();
   const navigate = useNavigate();
   const [deploymentData, setDeploymentData] = useState<any>(null);
   const [loadingDeployment, setLoadingDeployment] = useState(false);
-  const [deletingDeployment, setDeletingDeployment] = useState(false);
+  const isDeletingRef = useRef(false);
 
-  const handleBackToDashboard = () => {
-    navigate("/dashboard");
-  };
+  // Stable reference data fetched once
+  const coursesCacheRef = useRef<CourseDto[]>([]);
+  const groupsCacheRef = useRef<KeycloakGroup[]>([]);
+  // Accumulate logs from SSE
+  const logsRef = useRef<DeploymentLogDto[]>([]);
+  const backendDeploymentRef = useRef<any>(null);
+  const stopStreamRef = useRef<(() => void) | null>(null);
+
+  const handleBackToDashboard = () => navigate("/dashboard");
 
   const handleDeleteDeployment = async (id: string) => {
+    isDeletingRef.current = true;
+    stopStreamRef.current?.();
+    setDeploymentData((prev: any) => prev ? { ...prev, status: "deleting" } : prev);
+
     try {
-      setDeletingDeployment(true);
-      const resp = await deleteDeployment(id);
-      if (resp && typeof resp === 'object' && 'success' in resp && (resp as any).success) {
-        navigate('/dashboard');
-      } else {
-        navigate('/dashboard');
-      }
+      await deleteDeployment(id);
     } catch (err) {
-      console.error('Failed to delete deployment', err);
-      navigate('/dashboard');
-    } finally {
-      setDeletingDeployment(false);
+      console.error("Failed to initiate delete", err);
     }
+
+    // Poll for max 60s, then give up and show retry
+    let attempts = 0;
+    const poll = async () => {
+      attempts++;
+      try {
+        const resp = await getDeployment(id);
+        const s = resp.data.status.toUpperCase();
+        if (s === "DELETED" || s === "DELETE_COMPLETE") {
+          navigate("/dashboard");
+        } else if (attempts < 30) {
+          setTimeout(poll, 2000);
+        } else {
+          // Timeout — let user retry
+          isDeletingRef.current = false;
+          setDeploymentData((prev: any) => prev ? { ...prev, status: "delete_failed" } : prev);
+        }
+      } catch {
+        navigate("/dashboard");
+      }
+    };
+    poll();
   };
 
-  // Load deployment when deploymentId changes
+  const buildDeploymentData = useCallback(
+    (backendDeployment: any, logs: DeploymentLogDto[]) => {
+      const mappedStatus =
+        STATUS_MAP[backendDeployment.status.toUpperCase()] || "deploying";
+
+      const phases = buildPhases(logs);
+      const progress = calcProgress(phases, mappedStatus);
+
+      const failedLog = logs.find(
+        (l) =>
+          l.event_type.toLowerCase().includes("failed") ||
+          l.level === "ERROR"
+      );
+
+      const steps = logs.map((log) => ({
+        id: log.id,
+        name: log.event_type.replace(/_/g, " "),
+        status:
+          log.event_type.toUpperCase().includes("FAILED") || log.level === "ERROR"
+            ? ("failed" as const)
+            : ("completed" as const),
+        startTime: log.created_at,
+        description: log.message,
+        icon: null,
+      }));
+
+      let cpu = 0, ram = 0, storage = 0;
+      if (backendDeployment.instances?.length > 0) {
+        cpu = backendDeployment.instances.length * 2;
+        ram = backendDeployment.instances.length * 4;
+        storage = backendDeployment.instances.length * 20;
+      }
+
+      let resolvedCourseName = "Unbekannter Kurs";
+      if (backendDeployment.course?.name) {
+        resolvedCourseName = backendDeployment.course.name;
+      } else if (backendDeployment.course_id) {
+        const course = coursesCacheRef.current.find(
+          (c) => c.id === backendDeployment.course_id
+        );
+        if (course) {
+          const group = groupsCacheRef.current.find(
+            (g) => g.id === (course as any).keycloak_course_id
+          );
+          resolvedCourseName = group?.name || course.name || resolvedCourseName;
+        }
+      }
+
+      return {
+        id: backendDeployment.id,
+        name: backendDeployment.name || "Unnamed Deployment",
+        status: mappedStatus,
+        course: resolvedCourseName,
+        startedAt: backendDeployment.created_at,
+        completedAt:
+          mappedStatus === "running" || mappedStatus === "failed"
+            ? backendDeployment.updated_at
+            : undefined,
+        progress,
+        currentStep: phases.find((p) => p.status === "running")?.label,
+        steps,
+        phases,
+        logs,
+        error: failedLog?.message || undefined,
+        resources: { cpu, ram, storage },
+      };
+    },
+    []
+  );
+
   useEffect(() => {
     if (!deploymentId) return;
 
-    // Check if it's a mock deployment first
     const mockDeployment = mockDeployments[deploymentId as keyof typeof mockDeployments];
     if (mockDeployment) {
       setDeploymentData(mockDeployment);
       return;
     }
 
-    // Otherwise load from API
     setLoadingDeployment(true);
-    
-    // Load deployment and logs in parallel
+    logsRef.current = [];
+
+    // Fetch reference data + initial deployment + existing logs in parallel
     Promise.all([
-      getDeployment(deploymentId),
-      getDeploymentLogs(deploymentId).catch(() => ({ data: [] })), // Logs are optional
       getMyCourses({ page: 1, page_size: 100 }).catch(() => ({ data: [] as CourseDto[] })),
       getKeycloakGroups().catch(() => ({ data: [] as KeycloakGroup[] })),
-    ])
-      .then(([deploymentResponse, logsResponse, coursesResponse, groupsResponse]) => {
-        // Convert backend deployment format to DeploymentDetails format
-        const backendDeployment = deploymentResponse.data;
-        const logs = logsResponse.data || [];
-        const courses: CourseDto[] = coursesResponse?.data || [];
-        const groups: KeycloakGroup[] = groupsResponse?.data || [];
-        
-        // Map status from backend to frontend format
-        const statusMap: Record<string, 'deploying' | 'running' | 'failed' | 'cancelled' | 'stopped'> = {
-          'QUEUED': 'deploying',
-          'PROCESSING': 'deploying',
-          'DEPLOYING': 'deploying',
-          'ACTIVE': 'running',
-          'RUNNING': 'running',
-          'CREATE_COMPLETE': 'running',
-          'FAILED': 'failed',
-          'CREATE_FAILED': 'failed',
-          'DELETE_COMPLETE': 'stopped',
-          'CANCELLED': 'cancelled',
-          'DELETED': 'stopped',
-        };
-        
-        const mappedStatus = statusMap[backendDeployment.status.toUpperCase()] || 'deploying';
-        
-        // Reverse logs to show newest first, then convert to steps format
-        const reversedLogs = [...logs].reverse();
-        
-        // Find failed log to extract error message
-        const failedLog = logs.find(log => 
-          log.event_type.toLowerCase().includes('failed') || log.level === 'ERROR'
-        );
-        
-        // Convert logs to steps format (newest first)
-        const steps = reversedLogs.map((log, index) => {
-          // Determine status: check if event_type contains "failed" or level is ERROR
-          const isFailed = log.event_type.toLowerCase().includes('failed') || log.level === 'ERROR';
-          const isWarning = log.level === 'WARNING';
-          
-          return {
-            id: log.id,
-            name: log.event_type.replace(/_/g, ' '),
-            status: isFailed ? 'failed' as const : 
-                   isWarning ? 'in-progress' as const : 
-                   'completed' as const,
-            startTime: log.created_at,
-            endTime: index < reversedLogs.length - 1 ? reversedLogs[index + 1].created_at : undefined,
-            description: log.message,
-            icon: Server, // Default icon
-          };
-        });
-        
-        // Calculate progress based on status
-        let progress = 0;
-        if (mappedStatus === 'running') progress = 100;
-        else if (mappedStatus === 'failed' || mappedStatus === 'cancelled') progress = 0;
-        else if (mappedStatus === 'deploying') {
-          // Calculate progress based on number of completed steps
-          const completedSteps = steps.filter(s => s.status === 'completed').length;
-          progress = steps.length > 0 ? Math.round((completedSteps / steps.length) * 100) : 50;
-        }
-        
-        // Calculate resources from instances if available
-        let cpu = 0, ram = 0, storage = 0;
-        if (backendDeployment.instances && backendDeployment.instances.length > 0) {
-          // Try to extract resource info from deployment_parameters or instances
-          // This is a simplified calculation - adjust based on actual data structure
-          cpu = backendDeployment.instances.length * 2; // Assume 2 cores per instance
-          ram = backendDeployment.instances.length * 4; // Assume 4GB per instance
-          storage = backendDeployment.instances.length * 20; // Assume 20GB per instance
-        }
-        
-        // Resolve course name using courses + keycloak groups mapping
-        let resolvedCourseName = "Unknown Course";
-        if (backendDeployment.course && backendDeployment.course.name) {
-          resolvedCourseName = backendDeployment.course.name;
-        } else if (backendDeployment.course_id) {
-          const course = courses.find(c => c.id === backendDeployment.course_id);
-          if (course) {
-            const group = groups.find(g => g.id === course.keycloak_course_id);
-            resolvedCourseName = group?.name || course.name || resolvedCourseName;
+      getDeployment(deploymentId),
+      getDeploymentLogs(deploymentId).catch(() => ({ data: [] as DeploymentLogDto[] })),
+    ]).then(([coursesResp, groupsResp, depResp, logsResp]) => {
+      coursesCacheRef.current = (coursesResp as any)?.data || [];
+      groupsCacheRef.current = (groupsResp as any)?.data || [];
+      backendDeploymentRef.current = depResp.data;
+
+      const existingLogs: DeploymentLogDto[] = (logsResp as any).data || [];
+      logsRef.current = existingLogs;
+
+      setDeploymentData(buildDeploymentData(depResp.data, existingLogs));
+      setLoadingDeployment(false);
+
+      // Start SSE stream from the last known log (avoids duplicates)
+      const lastLogId = existingLogs.length > 0 ? existingLogs[existingLogs.length - 1].id : undefined;
+      const stopStream = streamDeploymentLogs(
+        deploymentId,
+        lastLogId,
+        (log) => {
+          if (isDeletingRef.current) return;
+          logsRef.current = [...logsRef.current, log];
+          if (backendDeploymentRef.current) {
+            setDeploymentData(buildDeploymentData(backendDeploymentRef.current, logsRef.current));
           }
-        }
+        },
+        () => {
+          if (isDeletingRef.current) return;
+          getDeployment(deploymentId).then((depResp) => {
+            backendDeploymentRef.current = depResp.data;
+            setDeploymentData(buildDeploymentData(depResp.data, logsRef.current));
+          }).catch(() => {});
+        },
+      );
+      stopStreamRef.current = stopStream;
+    }).catch(() => setLoadingDeployment(false));
 
-        const convertedDeployment = {
-          id: backendDeployment.id,
-          name: backendDeployment.name || "Unnamed Deployment",
-          status: mappedStatus,
-          course: resolvedCourseName,
-          startedAt: backendDeployment.created_at,
-          completedAt: mappedStatus === 'running' || mappedStatus === 'failed' ? backendDeployment.updated_at : undefined,
-          progress,
-          currentStep: steps.find(s => s.status === 'in-progress')?.name,
-          steps,
-          error: failedLog?.message || undefined,
-          resources: {
-            cpu,
-            ram,
-            storage,
-          },
-        };
-        
-        setDeploymentData(convertedDeployment);
-        setLoadingDeployment(false);
-      })
-      .catch((error) => {
-        console.error("Failed to load deployment:", error);
-        setLoadingDeployment(false);
-      });
-  }, [deploymentId]);
+    return () => { stopStreamRef.current?.(); stopStreamRef.current = null; };
+  }, [deploymentId, buildDeploymentData]);
 
-  if (!deploymentId) {
-    return <Navigate to="/dashboard" replace />;
-  }
+  if (!deploymentId) return <Navigate to="/dashboard" replace />;
+  if (loadingDeployment) return <div className="p-6">Lade Deployment...</div>;
+  if (!deploymentData) return <div className="p-6">Deployment nicht gefunden</div>;
 
-  if (loadingDeployment) {
-    return <div className="p-6">Lade Deployment...</div>;
-  }
-
-  if (!deploymentData) {
-    return <div className="p-6">Deployment nicht gefunden</div>;
-  }
-
-  return <DeploymentDetails deployment={deploymentData} onBack={handleBackToDashboard} onDelete={handleDeleteDeployment} />;
+  return (
+    <DeploymentDetails
+      deployment={deploymentData}
+      onBack={handleBackToDashboard}
+      onDelete={handleDeleteDeployment}
+    />
+  );
 }

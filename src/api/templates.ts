@@ -15,6 +15,16 @@ export type TemplateParameter = {
   max?: number;
 };
 
+export type UserFileDefinition = {
+  name: string;
+  label?: string;
+  description?: string;
+  required?: boolean;
+  accept?: string;
+  destination?: string;
+  mode?: "all_stacks" | "per_group";
+};
+
 export type TemplateVersionDto = {
   id: string;
   template_id: string;
@@ -23,6 +33,8 @@ export type TemplateVersionDto = {
   is_active: boolean;
   created_at: string;
   parameters?: TemplateParameter[];
+  user_files?: UserFileDefinition[];
+  allow_user_files?: boolean;
 };
 
 export type TemplateDto = {

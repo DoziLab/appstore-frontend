@@ -1,4 +1,5 @@
 import { apiFetch } from "./http";
+import keycloak from "../auth/keycloak";
 
 export type DeploymentDto = {
   id: string;
@@ -85,10 +86,11 @@ export type DeploymentLogDto = {
 export type DeploymentCreateRequest = {
   name?: string;
   template_version_id: string;
-  course_id: string;  // Keycloak Group ID
+  course_id: string;
   deployment_mode?: string;
   config_json?: string;
-  heat_parameters?: Record<string, any>;
+  parameters?: Record<string, any>;
+  user_files?: Record<string, string>;  // file_name -> base64-encoded content
   stack_assignments?: Array<{
     groups: Array<{
       group_name: string;
@@ -156,15 +158,69 @@ export async function getDeploymentLogs(deploymentId: string) {
   }>(`/api/v1/deployments/${deploymentId}/logs`);
 }
 
+/**
+ * Stream deployment logs via SSE (fetch-based, supports Bearer auth).
+ * Calls onLog for each new log entry, onDone when stream closes.
+ * Returns a cleanup function to abort the stream.
+ */
+export function streamDeploymentLogs(
+  deploymentId: string,
+  sinceId: string | undefined,
+  onLog: (log: DeploymentLogDto) => void,
+  onDone: () => void,
+): () => void {
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      try { await keycloak.updateToken(30); } catch {}
+      const token = keycloak.token;
+      const url = `/api/v1/deployments/${deploymentId}/logs/stream${sinceId ? `?since_id=${sinceId}` : ""}`;
+
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal: controller.signal,
+      });
+
+      if (!res.ok || !res.body) { onDone(); return; }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (line.startsWith("event: done")) { onDone(); return; }
+          if (line.startsWith("data: ")) {
+            try { onLog(JSON.parse(line.slice(6))); } catch {}
+          }
+        }
+      }
+    } catch (e: any) {
+      if (e?.name !== "AbortError") console.error("SSE error", e);
+    }
+    onDone();
+  })();
+
+  return () => controller.abort();
+}
+
 export async function deleteDeployment(deploymentId: string) {
-  return apiFetch<{
-    success: boolean;
-    message: string;
-    data?: any;
-    errors: unknown;
-    timestamp: string;
-    request_id: string;
-  }>(`/api/v1/deployments/${deploymentId}` , { method: "DELETE" });
+  // Backend returns 204 No Content — don't call res.json()
+  await keycloak.updateToken(30).catch(() => {});
+  const res = await fetch(`/api/v1/deployments/${deploymentId}`, {
+    method: "DELETE",
+    headers: keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {},
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || res.statusText);
+  }
 }
 
 // List deployments (stacks) from OpenStack view

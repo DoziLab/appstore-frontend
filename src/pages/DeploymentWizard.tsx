@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
+  Upload,
 } from "lucide-react";
 import {
   Card,
@@ -36,6 +37,7 @@ import {
   type TemplateDto,
   type TemplateVersionDto,
   type TemplateParameter,
+  type UserFileDefinition,
 } from "../api/templates";
 import {
   getKeycloakGroups,
@@ -108,6 +110,9 @@ export function DeploymentWizard({
 
   // Form values - stores all parameter values
   const [formValues, setFormValues] = useState<Record<string, any>>({});
+
+  // Uploaded files - stores File objects keyed by user_file name
+  const [uploadedFiles, setUploadedFiles] = useState<Record<string, File>>({});
 
   // Load template and Keycloak groups on mount
   useEffect(() => {
@@ -402,6 +407,16 @@ export function DeploymentWizard({
       });
     }
 
+    // Add file upload step if template supports user files
+    if (templateVersionData?.allow_user_files && templateVersionData?.user_files?.length) {
+      baseSteps.push({
+        name: "Dateien",
+        stepKey: "dateien",
+        description: "Laden Sie optionale Dateien für die Gruppen hoch",
+        icon: Upload,
+      });
+    }
+
     // Always add overview step
     baseSteps.push({
       name: "Übersicht",
@@ -543,12 +558,25 @@ export function DeploymentWizard({
         return;
       }
 
+      // Convert uploaded files to base64
+      const userFilesPayload: Record<string, string> = {};
+      for (const [name, file] of Object.entries(uploadedFiles)) {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string).split(",")[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        userFilesPayload[name] = base64;
+      }
+
       // Build deployment request with stack assignments
-      const deploymentData = {
+      const deploymentData: DeploymentCreateRequest = {
         name: deploymentName.trim(),
         template_version_id: selectedVersionId,
         course_id: selectedKeycloakGroupId,
-        heat_parameters: heatParameters,
+        parameters: heatParameters,
+        ...(Object.keys(userFilesPayload).length > 0 && { user_files: userFilesPayload }),
         stack_assignments: groupStackAssignments.map((stack, stackIndex) => ({
           groups: stack.assignedGroups.map((group) => ({
             group_name: group.groupName,
@@ -1005,6 +1033,71 @@ export function DeploymentWizard({
               <span className="text-sm">Lade Template-Version...</span>
             </div>
           )}
+        </div>
+      );
+    }
+
+    // File upload step
+    if (currentStepData.stepKey === "dateien") {
+      const userFiles: UserFileDefinition[] = templateVersionData?.user_files ?? [];
+      return (
+        <div className="space-y-6">
+          <p className="text-sm text-slate-500">
+            Alle Felder sind optional. Dateien werden beim Deployment auf die VMs kopiert.
+          </p>
+          {userFiles.map((fileDef) => {
+            const uploaded = uploadedFiles[fileDef.name];
+            return (
+              <div key={fileDef.name} className="space-y-2">
+                <Label htmlFor={`file-${fileDef.name}`}>
+                  {fileDef.label ?? fileDef.name}
+                  {fileDef.required && <span className="text-red-500 ml-1">*</span>}
+                  {fileDef.mode === "per_group" && (
+                    <span className="ml-2 text-xs text-slate-400">(pro Gruppe)</span>
+                  )}
+                </Label>
+                {fileDef.description && (
+                  <p className="text-xs text-slate-500">{fileDef.description}</p>
+                )}
+                <div className="flex items-center gap-3">
+                  <label
+                    htmlFor={`file-${fileDef.name}`}
+                    className="flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-md cursor-pointer hover:bg-slate-50 text-sm"
+                  >
+                    <Upload className="w-4 h-4 text-slate-400" />
+                    {uploaded ? uploaded.name : "Datei auswählen…"}
+                  </label>
+                  <input
+                    id={`file-${fileDef.name}`}
+                    type="file"
+                    accept={fileDef.accept}
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setUploadedFiles((prev) => ({ ...prev, [fileDef.name]: file }));
+                      }
+                    }}
+                  />
+                  {uploaded && (
+                    <button
+                      type="button"
+                      className="text-xs text-red-400 hover:text-red-600"
+                      onClick={() =>
+                        setUploadedFiles((prev) => {
+                          const next = { ...prev };
+                          delete next[fileDef.name];
+                          return next;
+                        })
+                      }
+                    >
+                      Entfernen
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       );
     }

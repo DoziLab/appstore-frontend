@@ -5,6 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -46,7 +47,7 @@ jobs:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
 
     permissions:
       contents: read
@@ -84,3 +85,45 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy via Internal Network
+    needs: build-and-push
+    runs-on: self-hosted
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.APPSTORE_SERVER_SSH_KEY }}
+
+      - name: Remote Deployment
+        env:
+          SERVER_HOST: ${{ secrets.APPSTORE_SERVER_HOST }}
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@$SERVER_HOST bash -s << 'ENDSSH'
+
+            cd /home/ubuntu/app-store || { echo "❌ Path not found"; exit 1; }
+
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            docker compose pull frontend
+
+            docker compose up frontend -d --force-recreate --remove-orphans
+
+            echo "🔍 Waiting for health check..."
+            NEXT_WAIT_TIME=0
+            until curl -f http://localhost:80 || [ $NEXT_WAIT_TIME -eq 10 ]; do
+               sleep $(( NEXT_WAIT_TIME++ ))
+               echo "Retry check... ($NEXT_WAIT_TIME/10)"
+            done
+
+            if ! curl -f http://localhost:80; then
+               echo "❌ Deployment failed!"
+               docker compose logs frontend --tail=50
+               exit 1
+            fi
+
+            docker image prune -af --filter "until=24h"
+          ENDSSH

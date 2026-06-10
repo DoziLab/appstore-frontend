@@ -122,3 +122,17 @@ export async function getTemplateVersions(templateId: string, activeOnly = false
     request_id: string;
   }>(`/api/v1/template-versions/template/${templateId}${sp.toString() ? `?${sp.toString()}` : ""}`);
 }
+
+export async function approveTemplate(templateId: string, comment?: string) {
+  return apiFetch<{ success: boolean; message: string }>(
+    `/api/v1/templates/${templateId}/approve`,
+    { method: "POST", body: JSON.stringify({ comment: comment ?? "" }) }
+  );
+}
+
+export async function rejectTemplate(templateId: string, comment?: string) {
+  return apiFetch<{ success: boolean; message: string }>(
+    `/api/v1/templates/${templateId}/reject`,
+    { method: "POST", body: JSON.stringify({ comment: comment ?? "" }) }
+  );
+}

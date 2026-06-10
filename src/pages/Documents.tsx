@@ -30,20 +30,13 @@ export function Documents() {
   // wie im Dashboard: statische Demo-Daten; später durch fetch('/docs/manifest.json') ersetzen
   const [docs, setDocs] = useState<DocItem[]>([]);
   const [q, setQ] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Falls du sofort echte Inhalte willst, lege public/docs/manifest.json an (siehe unten)
     fetch('/docs/manifest.json')
       .then(r => r.ok ? r.json() : Promise.reject())
-      .then(setDocs)
-      .catch(() => {
-        // Fallback: Mock-Inhalte, damit die Seite sofort "wie Dashboard" aussieht
-        setDocs([
-          { id: 'techstack', title: 'Technologiestack', file: '/docs/Technologiestack.pdf', type: 'pdf', updated: '2026-01-03', tags: ['Architektur', 'UML'] },
-          { id: 'install', title: 'Installationsanleitung', file: '/docs/Installationsanleitung.pdf', type: 'pdf', updated: '2026-01-02', tags: ['Setup', 'Admin'] },
-          { id: 'arch', title: 'Architekturübersicht', file: '/docs/Architektur.png', type: 'image', updated: '2026-01-01', tags: ['Diagramm'] },
-        ]);
-      });
+      .then((data: DocItem[]) => { setDocs(data); setError(null); })
+      .catch(() => setError('Dokumente konnten nicht geladen werden.'));
   }, []);
 
   const filtered = useMemo(() => {
@@ -70,6 +63,12 @@ export function Documents() {
         <h1 className="text-slate-900 mb-2">Dokumentation</h1>
         <p className="text-slate-600">Technische Unterlagen, Architektur & Installationshinweise</p>
       </div>
+
+      {error && (
+        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* Suchfeld + KPIs (optisch an Stats-Grid angelehnt) */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -185,8 +184,7 @@ export function Documents() {
               <CardDescription>Quelle der Dokumente</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-slate-600">
-              <p>Standardmäßig lädt die Seite <code>/docs/manifest.json</code> aus <code>public/docs/</code>.</p>
-              <p>Für gesicherte Inhalte kannst du später auf eine Backend‑API umstellen.</p>
+              <p>Die Seite lädt <code>/docs/manifest.json</code> aus <code>public/docs/</code>.</p>
             </CardContent>
           </Card>
         </div>

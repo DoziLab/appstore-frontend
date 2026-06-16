@@ -2,14 +2,12 @@ import {
   Activity,
   Server,
   Users,
-  TrendingUp,
   Cpu,
   HardDrive,
   Database,
   AlertTriangle,
   CheckCircle2,
   Clock,
-  Trash2,
   Eye,
   FileCheck,
   X,
@@ -39,133 +37,14 @@ import {
   DeploymentLogDto,
 } from '../api/deployments';
 import { getQuotas, QuotasResponse } from '../api/quotas';
+import { getTemplates, approveTemplate, rejectTemplate, TemplateDto } from '../api/templates';
 import React from 'react';
 
 
 
 
-// Mock data für Dozenten-Projekte
-const dozentenProjekte = [
-  {
-    id: 1,
-    dozent: 'Prof. Dr. Schmidt',
-    email: 'schmidt@uni.edu',
-    aktiveDeployments: 3,
-    vCPUs: 12,
-    ram: 24,
-    storage: 180,
-    vms: 3,
-    letzteAktivitaet: '2 Stunden',
-    status: 'aktiv'
-  },
-  {
-    id: 2,
-    dozent: 'Dr. Müller',
-    email: 'mueller@uni.edu',
-    aktiveDeployments: 5,
-    vCPUs: 20,
-    ram: 40,
-    storage: 300,
-    vms: 5,
-    letzteAktivitaet: '30 Minuten',
-    status: 'aktiv'
-  },
-  {
-    id: 3,
-    dozent: 'Prof. Weber',
-    email: 'weber@uni.edu',
-    aktiveDeployments: 2,
-    vCPUs: 8,
-    ram: 16,
-    storage: 120,
-    vms: 2,
-    letzteAktivitaet: '5 Tage',
-    status: 'inaktiv'
-  },
-  {
-    id: 4,
-    dozent: 'Dr. Fischer',
-    email: 'fischer@uni.edu',
-    aktiveDeployments: 4,
-    vCPUs: 16,
-    ram: 32,
-    storage: 240,
-    vms: 4,
-    letzteAktivitaet: '1 Stunde',
-    status: 'aktiv'
-  },
-  {
-    id: 5,
-    dozent: 'Prof. Becker',
-    email: 'becker@uni.edu',
-    aktiveDeployments: 1,
-    vCPUs: 4,
-    ram: 8,
-    storage: 60,
-    vms: 1,
-    letzteAktivitaet: '12 Tage',
-    status: 'warnung'
-  },
-];
-
-
-
-// Globale Ressourcenstatistiken
-const gesamtQuotas = {
-  vCPUs: { verwendet: 60, verfuegbar: 256, prozent: (60 / 256) * 100 },
-  ram: { verwendet: 120, verfuegbar: 512, prozent: (120 / 512) * 100 },
-  storage: { verwendet: 900, verfuegbar: 5120, prozent: (900 / 5120) * 100 },
-  vms: { verwendet: 15, verfuegbar: 100, prozent: (15 / 100) * 100 },
-};
-
-// Mock data für ausstehende Template-Freigaben
-const pendingTemplates = [
-  {
-    id: 1,
-    name: 'Python Data Science Environment',
-    version: 'v2.1.0',
-    eingereichtVon: 'Prof. Dr. Schmidt',
-    eingereichtAm: '2025-12-28 10:30',
-    cpu: 8,
-    ram: 16,
-    gpu: 1,
-    storage: 80,
-    beschreibung: 'Vollständige Python-Umgebung mit Jupyter, pandas, numpy, scikit-learn und TensorFlow',
-    status: 'pending',
-    exceedsThreshold: true
-  },
-  {
-    id: 2,
-    name: 'Web Development Stack',
-    version: 'v1.5.2',
-    eingereichtVon: 'Dr. Müller',
-    eingereichtAm: '2025-12-29 14:15',
-    cpu: 4,
-    ram: 8,
-    gpu: 0,
-    storage: 50,
-    beschreibung: 'Node.js, React, PostgreSQL, Redis für moderne Webentwicklung',
-    status: 'pending',
-    exceedsThreshold: false
-  },
-  {
-    id: 3,
-    name: 'Machine Learning Laboratory',
-    version: 'v3.0.0',
-    eingereichtVon: 'Prof. Weber',
-    eingereichtAm: '2025-12-27 09:45',
-    cpu: 16,
-    ram: 32,
-    gpu: 2,
-    storage: 150,
-    beschreibung: 'High-Performance ML-Umgebung mit CUDA, PyTorch, TensorFlow und Keras',
-    status: 'pending',
-    exceedsThreshold: true
-  },
-];
-
 export function AdminMonitoring() {
-  const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [approvalComment, setApprovalComment] = useState('');
 
   const [deployments, setDeployments] = useState<DeploymentDto[]>([]);
@@ -175,19 +54,31 @@ export function AdminMonitoring() {
 
   const [quotas, setQuotas] = useState<QuotasResponse | null>(null);
 
+  const [pendingTemplates, setPendingTemplates] = useState<TemplateDto[]>([]);
+  const [templateActionError, setTemplateActionError] = useState<string | null>(null);
 
-  const handleApprove = (templateId: number) => {
-    console.log(`Template ${templateId} genehmigt mit Kommentar:`, approvalComment);
-    setApprovalComment('');
-    setSelectedTemplate(null);
-    // Hier würde die tatsächliche Genehmigungslogik erfolgen
+  const handleApprove = async (templateId: string) => {
+    try {
+      await approveTemplate(templateId, approvalComment);
+      setPendingTemplates((prev) => prev.filter((t) => t.id !== templateId));
+      setApprovalComment('');
+      setSelectedTemplate(null);
+      setTemplateActionError(null);
+    } catch {
+      setTemplateActionError('Template konnte nicht genehmigt werden.');
+    }
   };
 
-  const handleReject = (templateId: number) => {
-    console.log(`Template ${templateId} abgelehnt mit Kommentar:`, approvalComment);
-    setApprovalComment('');
-    setSelectedTemplate(null);
-    // Hier würde die tatsächliche Ablehnungslogik erfolgen
+  const handleReject = async (templateId: string) => {
+    try {
+      await rejectTemplate(templateId, approvalComment);
+      setPendingTemplates((prev) => prev.filter((t) => t.id !== templateId));
+      setApprovalComment('');
+      setSelectedTemplate(null);
+      setTemplateActionError(null);
+    } catch {
+      setTemplateActionError('Template konnte nicht abgelehnt werden.');
+    }
   };
 
   useEffect(() => {
@@ -209,6 +100,12 @@ export function AdminMonitoring() {
   useEffect(() => {
     getQuotas()
       .then(setQuotas)
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    getTemplates({ status: 'pending' })
+      .then((res) => setPendingTemplates(res.data))
       .catch(console.error);
   }, []);
 
@@ -524,6 +421,9 @@ export function AdminMonitoring() {
         </TabsList>
 
         {/* Dozenten-Projekte Tab */}
+        {/* TODO (#75): table still uses mock data — needs GET /admin/lecturers/usage from backend.
+            Available: GET /openstack-projects (owner_id) + GET /quotas?lecturer_id (per-project).
+            Problem: N+1 calls + no user name resolution. Waiting on backend team. */}
         <TabsContent value="projekte" className="space-y-4">
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
@@ -770,6 +670,11 @@ export function AdminMonitoring() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              {templateActionError && (
+                <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+                  {templateActionError}
+                </div>
+              )}
               {pendingTemplates.map((template) => (
                 <Card key={template.id} className="border-slate-200">
                   <CardContent className="p-6">
@@ -777,65 +682,78 @@ export function AdminMonitoring() {
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
                           <h3 className="text-slate-900">{template.name}</h3>
-                          <Badge variant="outline">{template.version}</Badge>
-                          {template.exceedsThreshold && (
-                            <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
-                              <AlertTriangle className="w-3 h-3 mr-1" />
-                              Überschreitet Schwellenwerte
-                            </Badge>
+                          {template.versions?.[0]?.version && (
+                            <Badge variant="outline">{template.versions[0].version}</Badge>
                           )}
                         </div>
-                        <p className="text-sm text-slate-600 mb-3">{template.beschreibung}</p>
+                        {template.description && (
+                          <p className="text-sm text-slate-600 mb-3">{template.description}</p>
+                        )}
                         <div className="flex items-center gap-4 text-sm text-slate-500">
-                          <span>Eingereicht von: <strong>{template.eingereichtVon}</strong></span>
-                          <span>·</span>
-                          <span>{template.eingereichtAm}</span>
+                          <span>Eingereicht: {new Date(template.created_at).toLocaleString()}</span>
+                          {/* TODO: owner_id is available but not resolved to a display name.
+                              Needs GET /users/{id} or a user lookup endpoint from the backend. */}
                         </div>
                       </div>
                     </div>
 
                     {/* Ressourcen-Anforderungen */}
-                    <div className="grid grid-cols-4 gap-4 mb-4">
-                      <div className="p-3 bg-blue-50 rounded-lg">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Cpu className="w-4 h-4 text-blue-600" />
-                          <span className="text-xs text-blue-600">CPU-Kerne</span>
+                    {(() => {
+                      const version = template.versions?.[0];
+                      const flavorParam = version?.parameters?.find(p => p.name === 'flavor');
+                      // TODO (#73): flavor name (e.g. "gp1.medium") is available but vCPU/RAM/storage
+                      // numbers are not — requires GET /openstack/flavors from backend (Nova API).
+                      // TODO (#74): owner_id is available but not resolved to a display name —
+                      // requires GET /users/{id} or owner_name in TemplateResponse from backend.
+                      return (
+                        <div className="grid grid-cols-4 gap-4 mb-4">
+                          <div className="p-3 bg-blue-50 rounded-lg">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Cpu className="w-4 h-4 text-blue-600" />
+                              <span className="text-xs text-blue-600">CPU-Kerne</span>
+                            </div>
+                            {/* TODO (#73): replace with vCPU count from flavor endpoint */}
+                            <p className="text-slate-900">8 Kerne</p>
+                          </div>
+                          <div className="p-3 bg-purple-50 rounded-lg">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Database className="w-4 h-4 text-purple-600" />
+                              <span className="text-xs text-purple-600">RAM</span>
+                            </div>
+                            {/* TODO (#73): replace with RAM from flavor endpoint */}
+                            <p className="text-slate-900">16 GB</p>
+                          </div>
+                          <div className="p-3 bg-teal-50 rounded-lg">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Server className="w-4 h-4 text-teal-600" />
+                              <span className="text-xs text-teal-600">Flavor</span>
+                            </div>
+                            <p className="text-slate-900 text-sm">
+                              {flavorParam?.default ?? '—'}
+                            </p>
+                          </div>
+                          <div className="p-3 bg-slate-50 rounded-lg">
+                            <div className="flex items-center gap-2 mb-1">
+                              <HardDrive className="w-4 h-4 text-slate-600" />
+                              <span className="text-xs text-slate-600">Speicher</span>
+                            </div>
+                            {/* TODO (#73): replace with disk size from flavor endpoint */}
+                            <p className="text-slate-900">80 GB</p>
+                          </div>
                         </div>
-                        <p className="text-slate-900">{template.cpu} Kerne</p>
-                        {template.cpu > 8 && (
-                          <p className="text-xs text-orange-600 mt-1">Max: 8 Kerne</p>
-                        )}
-                      </div>
+                      );
+                    })()}
 
-                      <div className="p-3 bg-purple-50 rounded-lg">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Database className="w-4 h-4 text-purple-600" />
-                          <span className="text-xs text-purple-600">RAM</span>
-                        </div>
-                        <p className="text-slate-900">{template.ram} GB</p>
-                        {template.ram > 16 && (
-                          <p className="text-xs text-orange-600 mt-1">Max: 16 GB</p>
-                        )}
-                      </div>
-
-                      <div className="p-3 bg-teal-50 rounded-lg">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Server className="w-4 h-4 text-teal-600" />
-                          <span className="text-xs text-teal-600">GPU</span>
-                        </div>
-                        <p className="text-slate-900">{template.gpu} {template.gpu === 1 ? 'Einheit' : 'Einheiten'}</p>
-                        {template.gpu > 1 && (
-                          <p className="text-xs text-orange-600 mt-1">Max: 1 Einheit</p>
-                        )}
-                      </div>
-
-                      <div className="p-3 bg-slate-50 rounded-lg">
-                        <div className="flex items-center gap-2 mb-1">
-                          <HardDrive className="w-4 h-4 text-slate-600" />
-                          <span className="text-xs text-slate-600">Speicher</span>
-                        </div>
-                        <p className="text-slate-900">{template.storage} GB</p>
-                      </div>
+                    {/* Repo & Commit */}
+                    <div className="flex items-center gap-4 text-xs text-slate-500 mb-4">
+                      <span className="truncate">
+                        <span className="font-medium">Repo:</span> {template.repo_url}
+                      </span>
+                      {template.versions?.[0]?.git_commit_sha && (
+                        <span className="font-mono shrink-0">
+                          {template.versions[0].git_commit_sha.slice(0, 8)}
+                        </span>
+                      )}
                     </div>
 
                     {/* Kommentar-Bereich */}
@@ -900,9 +818,7 @@ export function AdminMonitoring() {
                           <Button
                             size="sm"
                             className="bg-green-600 hover:bg-green-700 text-white"
-                            onClick={() => {
-                              setSelectedTemplate(template.id);
-                            }}
+                            onClick={() => setSelectedTemplate(template.id)}
                           >
                             <FileCheck className="w-4 h-4 mr-2" />
                             Schnell genehmigen

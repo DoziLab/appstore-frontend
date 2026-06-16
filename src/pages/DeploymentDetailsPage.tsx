@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, Navigate } from "react-router-dom";
 import { DeploymentDetails } from "./DeploymentDetails";
-import { mockDeployments } from "./mockDeployments";
 import {
   getDeployment,
   getDeploymentLogs,
@@ -290,12 +289,6 @@ export function DeploymentDetailsPage() {
 
   useEffect(() => {
     if (!deploymentId) return;
-
-    const mockDeployment = mockDeployments[deploymentId as keyof typeof mockDeployments];
-    if (mockDeployment) {
-      setDeploymentData(mockDeployment);
-      return;
-    }
 
     setLoadingDeployment(true);
     logsRef.current = [];

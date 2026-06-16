@@ -45,7 +45,6 @@ src/
 │   ├── Documents.tsx
 │   ├── Login.tsx                 # Login-Seite
 │   ├── OpenStackConfig.tsx      # /config
-│   └── mockDeployments.ts       # Mock-Daten für Entwicklung
 │
 ├── store/                  # State Management
 │   # Für zukünftiges State Management (Redux, Zustand oder Context)

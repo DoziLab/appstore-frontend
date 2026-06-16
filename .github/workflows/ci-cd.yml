@@ -1,0 +1,147 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Lint, Format & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm install
+      - name: ESLint (soft check)
+        run: npm run lint
+        continue-on-error: true
+      - name: Prettier (soft check)
+        run: npm run format:check
+        continue-on-error: true
+      - name: Build application
+        run: npm run build
+
+  build-and-push-staging:
+    name: Build & Push Staging Image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push staging image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/dozilab/appstore-frontend:staging
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VITE_KEYCLOAK_URL=https://${{ secrets.STAGING_SERVER_HOST }}:8443
+            VITE_KEYCLOAK_REALM=${{ secrets.VITE_KEYCLOAK_REALM }}
+            VITE_KEYCLOAK_CLIENT_ID=${{ secrets.VITE_KEYCLOAK_CLIENT_ID }}
+
+  build-and-push-prod:
+    name: Build & Push Production Image
+    runs-on: ubuntu-latest
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push production image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/dozilab/appstore-frontend:latest
+            ghcr.io/dozilab/appstore-frontend:${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VITE_KEYCLOAK_URL=https://${{ secrets.PROD_SERVER_HOST }}:8443
+            VITE_KEYCLOAK_REALM=${{ secrets.VITE_KEYCLOAK_REALM }}
+            VITE_KEYCLOAK_CLIENT_ID=${{ secrets.VITE_KEYCLOAK_CLIENT_ID }}
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: build-and-push-staging
+    runs-on: self-hosted
+    environment: staging
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.STAGING_SERVER_SSH_KEY }}
+
+      - name: Deploy frontend on Staging
+        env:
+          SERVER_HOST: ${{ secrets.STAGING_SERVER_HOST }}
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@$SERVER_HOST bash -s << 'ENDSSH'
+            cd /opt/appstore || { echo "Path not found"; exit 1; }
+
+            git pull
+
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml pull frontend
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d frontend
+
+            docker image prune -af --filter "until=24h"
+          ENDSSH
+
+  deploy-production:
+    name: Deploy to Production
+    needs: build-and-push-prod
+    runs-on: self-hosted
+    environment: production
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+
+      - name: Deploy frontend on Production
+        env:
+          SERVER_HOST: ${{ secrets.PROD_SERVER_HOST }}
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@$SERVER_HOST bash -s << 'ENDSSH'
+            cd /opt/appstore || { echo "Path not found"; exit 1; }
+
+            git pull
+
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull frontend
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d frontend
+
+            docker image prune -af --filter "until=24h"
+          ENDSSH

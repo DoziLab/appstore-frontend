@@ -226,7 +226,7 @@ export function DeploymentWizard({
       const groups = keycloakMembers.map((student) => ({
         groupId: `group-${student.id}`,
         groupName:
-          `${student.firstName || student.username || "Student"} ${student.lastName || ""}`.trim(),
+          `G_${student.firstName || student.username || "Student"} ${student.lastName || ""}`.trim(),
         students: [student],
       }));
       setStudentGroups(groups);
@@ -282,6 +282,33 @@ export function DeploymentWizard({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deploymentMode, keycloakMembers, numberOfStacks, numberOfGroups]);
+
+  // Auto-update group names when only one student is in a group
+  useEffect(() => {
+    const updatedGroups = studentGroups.map((group, groupIndex) => {
+      // If group has exactly one student
+      if (group.students.length === 1) {
+        const student = group.students[0];
+        const studentName = `G_${student.firstName || student.username || "Student"} ${student.lastName || ""}`.trim();
+        // Update name if it doesn't match the student name pattern
+        if (!(student.firstName && group.groupName.includes(student.firstName)) && 
+            !(student.lastName && group.groupName.includes(student.lastName))) {
+          return { ...group, groupName: studentName };
+        }
+      } else if ((group.students.length !== 1 && group.groupName.startsWith("G_"))) {
+        // If group doesn't have exactly one student and name starts with "G_", revert to generic name
+        // Use the group index + 1 as the group number
+        return { ...group, groupName: `Gruppe ${groupIndex + 1}` };
+      }
+      return group;
+    });
+
+    // Only update if something changed
+    const hasChanges = updatedGroups.some((group, idx) => group.groupName !== studentGroups[idx].groupName);
+    if (hasChanges) {
+      setStudentGroups(updatedGroups);
+    }
+  }, [studentGroups]);
 
   // Auto-assign groups to stacks (balanced distribution in background)
   useEffect(() => {
@@ -863,29 +890,6 @@ export function DeploymentWizard({
           </div>
 
           <div>
-            <Label>Kurs auswählen</Label>
-            <Select
-              value={selectedKeycloakGroupId}
-              onValueChange={setSelectedKeycloakGroupId}
-              disabled={loading.groups}
-            >
-              <SelectTrigger className="mt-2">
-                <SelectValue placeholder="Gruppe auswählen" />
-              </SelectTrigger>
-              <SelectContent>
-                {keycloakGroups.map((group) => (
-                  <SelectItem key={group.id} value={group.id}>
-                    {group.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-slate-500 mt-2">
-              Wählen Sie eine Keycloak-Gruppe (Kurs) aus
-            </p>
-          </div>
-
-          <div>
             <Label>Anzahl der Gruppen</Label>
             <Input
               type="number"
@@ -912,27 +916,25 @@ export function DeploymentWizard({
           </div>
 
           <div>
-            <Label>Anzahl der Server</Label>
-            <Input
-              type="number"
-              min="1"
-              max="50"
-              className="mt-2"
-              value={numberOfStacks}
-              onChange={(e) => {
-                const value = parseInt(e.target.value) || 1;
-                setNumberOfStacks(Math.max(1, Math.min(50, value)));
-                // Initialize stacks
-                const stacks = Array.from({ length: value }).map((_, i) => ({
-                  stackId: `stack-${i + 1}`,
-                  stackName: `Stack ${i + 1}`,
-                  assignedGroups: [],
-                }));
-                setGroupStackAssignments(stacks);
-              }}
-            />
+            <Label>Kurs auswählen</Label>
+            <Select
+              value={selectedKeycloakGroupId}
+              onValueChange={setSelectedKeycloakGroupId}
+              disabled={loading.groups}
+            >
+              <SelectTrigger className="mt-2">
+                <SelectValue placeholder="Gruppe auswählen" />
+              </SelectTrigger>
+              <SelectContent>
+                {keycloakGroups.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <p className="text-xs text-slate-500 mt-2">
-              Geben Sie an, wie viele Stack-Instanzen Sie benötigen
+              Wählen Sie eine Keycloak-Gruppe (Kurs) aus
             </p>
           </div>
 
@@ -1006,6 +1008,31 @@ export function DeploymentWizard({
                 </span>
               </div>
             )}
+
+          <div>
+            <Label>Anzahl der Server</Label>
+            <Input
+              type="number"
+              min="1"
+              max="50"
+              className="mt-2"
+              value={numberOfStacks}
+              onChange={(e) => {
+                const value = parseInt(e.target.value) || 1;
+                setNumberOfStacks(Math.max(1, Math.min(50, value)));
+                // Initialize stacks
+                const stacks = Array.from({ length: value }).map((_, i) => ({
+                  stackId: `stack-${i + 1}`,
+                  stackName: `Stack ${i + 1}`,
+                  assignedGroups: [],
+                }));
+                setGroupStackAssignments(stacks);
+              }}
+            />
+            <p className="text-xs text-slate-500 mt-2">
+              Geben Sie an, wie viele Stack-Instanzen Sie benötigen
+            </p>
+          </div>
 
           <div>
             <Label>Laufzeit</Label>

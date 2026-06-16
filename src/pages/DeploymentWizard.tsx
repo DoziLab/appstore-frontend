@@ -283,13 +283,55 @@ export function DeploymentWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deploymentMode, keycloakMembers, numberOfStacks, numberOfGroups]);
 
+  // Helper function to validate and apply group count
+  const validateAndApplyGroupCount = useCallback(() => {
+    let value = numberOfGroups;
+    if (typeof value === "string") {
+      value = parseInt(value) || 1;
+    }
+    // Round down if decimal
+    value = Math.floor(value);
+    // Constrain to valid range
+    value = Math.max(1, Math.min(50, value));
+    setNumberOfGroups(value);
+    // Initialize groups
+    const groups = Array.from({ length: value }).map((_, i) => ({
+      groupId: `group-${i + 1}`,
+      groupName: `Gruppe ${i + 1}`,
+      students: [],
+    }));
+    setStudentGroups(groups);
+  }, [numberOfGroups]);
+
+  // Helper function to validate and apply stack count
+  const validateAndApplyStackCount = useCallback(() => {
+    let value = numberOfStacks;
+    if (typeof value === "string") {
+      value = parseInt(value) || 1;
+    }
+    // Round down if decimal
+    value = Math.floor(value);
+    // Constrain to valid range
+    value = Math.max(1, Math.min(50, value));
+    setNumberOfStacks(value);
+    // Initialize stacks
+    const stacks = Array.from({ length: value }).map((_, i) => ({
+      stackId: `stack-${i + 1}`,
+      stackName: `Stack ${i + 1}`,
+      assignedGroups: [],
+    }));
+    setGroupStackAssignments(stacks);
+  }, [numberOfStacks]);
+
   // Auto-update group names when only one student is in a group
   useEffect(() => {
     const updatedGroups = studentGroups.map((group, groupIndex) => {
       // If group has exactly one student
       if (group.students.length === 1) {
         const student = group.students[0];
-        const studentName = `G_${student.firstName || student.username || "Student"} ${student.lastName || ""}`.trim();
+        const firstName = student.firstName || student.username || "Student";
+        const lastName = student.lastName || "";
+        const studentName = `G_${firstName}${lastName ? "_" + lastName : ""}`;
         // Update name if it doesn't match the student name pattern
         if (!(student.firstName && group.groupName.includes(student.firstName)) && 
             !(student.lastName && group.groupName.includes(student.lastName))) {
@@ -898,15 +940,26 @@ export function DeploymentWizard({
               className="mt-2"
               value={numberOfGroups}
               onChange={(e) => {
-                const value = parseInt(e.target.value) || 1;
-                setNumberOfGroups(Math.max(1, Math.min(50, value)));
-                // Initialize groups
-                const groups = Array.from({ length: value }).map((_, i) => ({
-                  groupId: `group-${i + 1}`,
-                  groupName: `Gruppe ${i + 1}`,
-                  students: [],
-                }));
-                setStudentGroups(groups);
+                // Allow empty input while typing
+                const inputValue = e.target.value;
+                if (inputValue === "") {
+                  setNumberOfGroups(0); // Temporarily allow 0 for empty state
+                  return;
+                }
+                const parsed = parseInt(inputValue);
+                if (!isNaN(parsed)) {
+                  setNumberOfGroups(parsed);
+                }
+              }}
+              onKeyDown={(e) => {
+                // Validate and apply when Enter is pressed
+                if (e.key === "Enter") {
+                  validateAndApplyGroupCount();
+                }
+              }}
+              onBlur={() => {
+                // Validate and apply when field loses focus
+                validateAndApplyGroupCount();
               }}
             />
             <p className="text-xs text-slate-500 mt-2">
@@ -1018,15 +1071,26 @@ export function DeploymentWizard({
               className="mt-2"
               value={numberOfStacks}
               onChange={(e) => {
-                const value = parseInt(e.target.value) || 1;
-                setNumberOfStacks(Math.max(1, Math.min(50, value)));
-                // Initialize stacks
-                const stacks = Array.from({ length: value }).map((_, i) => ({
-                  stackId: `stack-${i + 1}`,
-                  stackName: `Stack ${i + 1}`,
-                  assignedGroups: [],
-                }));
-                setGroupStackAssignments(stacks);
+                // Allow empty input while typing
+                const inputValue = e.target.value;
+                if (inputValue === "") {
+                  setNumberOfStacks(0); // Temporarily allow 0 for empty state
+                  return;
+                }
+                const parsed = parseInt(inputValue);
+                if (!isNaN(parsed)) {
+                  setNumberOfStacks(parsed);
+                }
+              }}
+              onKeyDown={(e) => {
+                // Validate and apply when Enter is pressed
+                if (e.key === "Enter") {
+                  validateAndApplyStackCount();
+                }
+              }}
+              onBlur={() => {
+                // Validate and apply when field loses focus
+                validateAndApplyStackCount();
               }}
             />
             <p className="text-xs text-slate-500 mt-2">

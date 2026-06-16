@@ -1012,7 +1012,7 @@ export function DeploymentWizard({
           </Card>
 
           {/* Section 2: Groups */}
-          <Card className="p-2 bg-gradient-to-br from-teal-50 to-blue-50 border border-teal-200 rounded-lg">
+          <Card className="border-slate-200 shadow-sm">
             <CardHeader>
               <CardTitle className="text-black">Gruppen & Kurszuordnung</CardTitle>
             </CardHeader>
@@ -1062,7 +1062,7 @@ export function DeploymentWizard({
                   disabled={loading.groups}
                 >
                   <SelectTrigger className="mt-2">
-                    <SelectValue placeholder="Gruppe auswählen" />
+                    <SelectValue placeholder="z.B. WWI23SEB" />
                   </SelectTrigger>
                   <SelectContent>
                     {keycloakGroups.map((group) => (

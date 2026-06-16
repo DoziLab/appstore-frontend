@@ -72,6 +72,7 @@ export function DeploymentWizard({
 }: DeploymentWizardProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isDeploying, setIsDeploying] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   // Data loading states
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDto | null>(
@@ -323,6 +324,50 @@ export function DeploymentWizard({
     setGroupStackAssignments(stacks);
   }, [numberOfStacks]);
 
+  // Validation function for step 0
+  const validateStep0 = useCallback((): boolean => {
+    const errors: string[] = [];
+
+    // Check deployment name
+    if (!deploymentName || deploymentName.trim() === "") {
+      errors.push("Ein Deployment-Name ist erforderlich");
+    }
+
+    // Check if template and group are selected
+    if (!selectedVersionId) {
+      errors.push("Eine Template-Version muss ausgewählt werden");
+    }
+    if (!selectedKeycloakGroupId) {
+      errors.push("Ein Kurs muss ausgewählt werden");
+    }
+
+    // Check if we need to validate groups (only in per_group mode)
+    if (deploymentMode === "per_group" && selectedKeycloakGroupId && keycloakMembers.length > 0) {
+      // Check if there are any empty groups
+      const emptyGroups = studentGroups.filter((g) => g.students.length === 0);
+      if (emptyGroups.length > 0) {
+        errors.push("Es darf keine leeren Gruppen geben");
+      }
+
+      // Check if all students are assigned
+      const assignedStudentIds = new Set(studentGroups.flatMap((g) => g.students.map((s) => s.id)));
+      const unassignedStudents = keycloakMembers.filter((s) => !assignedStudentIds.has(s.id));
+      if (unassignedStudents.length > 0) {
+        errors.push(`${unassignedStudents.length} Student(en) müssen einer Gruppe zugeordnet werden`);
+      }
+    }
+
+    setValidationErrors(errors);
+    return errors.length === 0;
+  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups]);
+
+  // Update validation errors whenever relevant data changes (on current step)
+  useEffect(() => {
+    if (currentStep === 0) {
+      validateStep0();
+    }
+  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups, currentStep, validateStep0]);
+
   // Auto-update group names when only one student is in a group
   useEffect(() => {
     const updatedGroups = studentGroups.map((group, groupIndex) => {
@@ -498,6 +543,12 @@ export function DeploymentWizard({
   }, [parametersByStep]);
 
   const handleNext = () => {
+    // Validate step 0 before proceeding
+    if (currentStep === 0) {
+      if (!validateStep0()) {
+        return; // Don't proceed if validation fails
+      }
+    }
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
     }
@@ -1463,6 +1514,21 @@ export function DeploymentWizard({
         <CardContent>{renderStepContent()}</CardContent>
       </Card>
 
+      {/* Validation Errors - only shown on step 0 */}
+      {currentStep === 0 && validationErrors.length > 0 && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+          <h4 className="font-medium text-red-900 mb-2">Vor dem Weiter müssen folgende Probleme behoben werden:</h4>
+          <ul className="space-y-1">
+            {validationErrors.map((error, idx) => (
+              <li key={idx} className="text-sm text-red-800 flex items-start gap-2">
+                <span className="text-red-500 mt-0.5">•</span>
+                <span>{error}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Navigation Buttons */}
       <div className="flex justify-between">
         <Button
@@ -1493,22 +1559,18 @@ export function DeploymentWizard({
             </Button>
           )}
 
-          {currentStep < steps.length - 1 ? (
+          {currentStep < steps.length - 1 && (
             <Button
               onClick={handleNext}
               className="bg-teal-500 hover:bg-teal-600 text-white"
-              disabled={
-                (currentStep === 0 &&
-                  (!selectedVersionId ||
-                    !selectedKeycloakGroupId ||
-                    !deploymentName)) ||
-                isDeploying
-              }
+              disabled={isDeploying || validationErrors.length > 0}
             >
               Weiter
               <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
-          ) : (
+          )}
+
+          {currentStep === steps.length - 1 && (
             <Button
               onClick={handleDeploy}
               disabled={isDeploying}

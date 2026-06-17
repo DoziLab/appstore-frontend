@@ -216,7 +216,7 @@ export function GroupManager({
                         onChange={(e) =>
                           renameGroup(group.groupId, e.target.value)
                         }
-                        className="text-sm font-medium border-0 focus-visible:ring-0 px-3 py-1"
+                        className="text-sm font-medium border-0 focus-visible:ring-0 px-0"
                       />
                       <Badge variant="secondary" className="text-xs">
                         {group.students.length} Student

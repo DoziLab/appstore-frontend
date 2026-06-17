@@ -295,14 +295,27 @@ export function DeploymentWizard({
     // Constrain to valid range
     value = Math.max(1, Math.min(50, value));
     setNumberOfGroups(value);
-    // Initialize groups
-    const groups = Array.from({ length: value }).map((_, i) => ({
-      groupId: `group-${i + 1}`,
-      groupName: `Gruppe ${i + 1}`,
-      students: [],
-    }));
-    setStudentGroups(groups);
-  }, [numberOfGroups]);
+    
+    // Update studentGroups to match the new count
+    const currentGroupCount = studentGroups.length;
+    let updatedGroups = [...studentGroups];
+    
+    if (value > currentGroupCount) {
+      // Add new empty groups
+      for (let i = currentGroupCount; i < value; i++) {
+        updatedGroups.push({
+          groupId: `group-${i + 1}`,
+          groupName: `Gruppe ${i + 1}`,
+          students: [],
+        });
+      }
+    } else if (value < currentGroupCount) {
+      // Remove groups from the end
+      updatedGroups = updatedGroups.slice(0, value);
+    }
+    
+    setStudentGroups(updatedGroups);
+  }, [numberOfGroups, studentGroups]);
 
   // Helper function to validate and apply stack count
   const validateAndApplyStackCount = useCallback(() => {
@@ -367,6 +380,11 @@ export function DeploymentWizard({
       validateStep0();
     }
   }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups, currentStep, validateStep0]);
+
+  // Update numberOfGroups when studentGroups changes (for UI consistency)
+  useEffect(() => {
+    setNumberOfGroups(studentGroups.length);
+  }, [studentGroups.length]);
 
   // Auto-update group names when only one student is in a group
   useEffect(() => {

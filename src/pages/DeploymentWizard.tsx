@@ -72,7 +72,6 @@ export function DeploymentWizard({
 }: DeploymentWizardProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isDeploying, setIsDeploying] = useState(false);
-  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   // Data loading states
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDto | null>(
@@ -227,7 +226,7 @@ export function DeploymentWizard({
       const groups = keycloakMembers.map((student) => ({
         groupId: `group-${student.id}`,
         groupName:
-          `G_${student.firstName || student.username || "Student"} ${student.lastName || ""}`.trim(),
+          `${student.firstName || student.username || "Student"} ${student.lastName || ""}`.trim(),
         students: [student],
       }));
       setStudentGroups(groups);
@@ -283,119 +282,6 @@ export function DeploymentWizard({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deploymentMode, keycloakMembers, numberOfStacks, numberOfGroups]);
-
-  // Helper function to validate and apply group count
-  const validateAndApplyGroupCount = useCallback(() => {
-    let value = numberOfGroups;
-    if (typeof value === "string") {
-      value = parseInt(value) || 1;
-    }
-    // Round down if decimal
-    value = Math.floor(value);
-    // Constrain to valid range
-    value = Math.max(1, Math.min(50, value));
-    setNumberOfGroups(value);
-    // Initialize groups
-    const groups = Array.from({ length: value }).map((_, i) => ({
-      groupId: `group-${i + 1}`,
-      groupName: `Gruppe ${i + 1}`,
-      students: [],
-    }));
-    setStudentGroups(groups);
-  }, [numberOfGroups]);
-
-  // Helper function to validate and apply stack count
-  const validateAndApplyStackCount = useCallback(() => {
-    let value = numberOfStacks;
-    if (typeof value === "string") {
-      value = parseInt(value) || 1;
-    }
-    // Round down if decimal
-    value = Math.floor(value);
-    // Constrain to valid range
-    value = Math.max(1, Math.min(50, value));
-    setNumberOfStacks(value);
-    // Initialize stacks
-    const stacks = Array.from({ length: value }).map((_, i) => ({
-      stackId: `stack-${i + 1}`,
-      stackName: `Stack ${i + 1}`,
-      assignedGroups: [],
-    }));
-    setGroupStackAssignments(stacks);
-  }, [numberOfStacks]);
-
-  // Validation function for step 0
-  const validateStep0 = useCallback((): boolean => {
-    const errors: string[] = [];
-
-    // Check deployment name
-    if (!deploymentName || deploymentName.trim() === "") {
-      errors.push("Ein Deployment-Name ist erforderlich");
-    }
-
-    // Check if template and group are selected
-    if (!selectedVersionId) {
-      errors.push("Eine Template-Version muss ausgewählt werden");
-    }
-    if (!selectedKeycloakGroupId) {
-      errors.push("Ein Kurs muss ausgewählt werden");
-    }
-
-    // Check if we need to validate groups (only in per_group mode)
-    if (deploymentMode === "per_group" && selectedKeycloakGroupId && keycloakMembers.length > 0) {
-      // Check if there are any empty groups
-      const emptyGroups = studentGroups.filter((g) => g.students.length === 0);
-      if (emptyGroups.length > 0) {
-        errors.push("Es darf keine leeren Gruppen geben");
-      }
-
-      // Check if all students are assigned
-      const assignedStudentIds = new Set(studentGroups.flatMap((g) => g.students.map((s) => s.id)));
-      const unassignedStudents = keycloakMembers.filter((s) => !assignedStudentIds.has(s.id));
-      if (unassignedStudents.length > 0) {
-        errors.push(`${unassignedStudents.length} Student(en) müssen einer Gruppe zugeordnet werden`);
-      }
-    }
-
-    setValidationErrors(errors);
-    return errors.length === 0;
-  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups]);
-
-  // Update validation errors whenever relevant data changes (on current step)
-  useEffect(() => {
-    if (currentStep === 0) {
-      validateStep0();
-    }
-  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups, currentStep, validateStep0]);
-
-  // Auto-update group names when only one student is in a group
-  useEffect(() => {
-    const updatedGroups = studentGroups.map((group, groupIndex) => {
-      // If group has exactly one student
-      if (group.students.length === 1) {
-        const student = group.students[0];
-        const firstName = student.firstName || student.username || "Student";
-        const lastName = student.lastName || "";
-        const studentName = `G_${firstName}${lastName ? "_" + lastName : ""}`;
-        // Update name if it doesn't match the student name pattern
-        if (!(student.firstName && group.groupName.includes(student.firstName)) && 
-            !(student.lastName && group.groupName.includes(student.lastName))) {
-          return { ...group, groupName: studentName };
-        }
-      } else if ((group.students.length !== 1 && group.groupName.startsWith("G_"))) {
-        // If group doesn't have exactly one student and name starts with "G_", revert to generic name
-        // Use the group index + 1 as the group number
-        return { ...group, groupName: `Gruppe ${groupIndex + 1}` };
-      }
-      return group;
-    });
-
-    // Only update if something changed
-    const hasChanges = updatedGroups.some((group, idx) => group.groupName !== studentGroups[idx].groupName);
-    if (hasChanges) {
-      setStudentGroups(updatedGroups);
-    }
-  }, [studentGroups]);
 
   // Auto-assign groups to stacks (balanced distribution in background)
   useEffect(() => {
@@ -543,12 +429,6 @@ export function DeploymentWizard({
   }, [parametersByStep]);
 
   const handleNext = () => {
-    // Validate step 0 before proceeding
-    if (currentStep === 0) {
-      if (!validateStep0()) {
-        return; // Don't proceed if validation fails
-      }
-    }
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
     }
@@ -932,14 +812,7 @@ export function DeploymentWizard({
             )}
           </div>
 
-
-          {/* Section 1: Basics */}
-          <Card className="border-slate-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-slate-900">Grundeinstellungen</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-2 space-y-6">
-            <div>
+          <div>
             <Label>Version</Label>
             <Select
               value={selectedVersionId}
@@ -989,210 +862,170 @@ export function DeploymentWizard({
             />
           </div>
 
-              <div>
-                <Label>Laufzeit</Label>
-                <Select value={runtime} onValueChange={setRuntime}>
-                  <SelectTrigger className="mt-2">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1 Monat</SelectItem>
-                    <SelectItem value="3">3 Monate</SelectItem>
-                    <SelectItem value="6">6 Monate</SelectItem>
-                    <SelectItem value="12">1 Jahr</SelectItem>
-                    <SelectItem value="24">2 Jahre</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  Nach Ablauf werden die Ressourcen automatisch freigegeben
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <div>
+            <Label>Kurs auswählen</Label>
+            <Select
+              value={selectedKeycloakGroupId}
+              onValueChange={setSelectedKeycloakGroupId}
+              disabled={loading.groups}
+            >
+              <SelectTrigger className="mt-2">
+                <SelectValue placeholder="Gruppe auswählen" />
+              </SelectTrigger>
+              <SelectContent>
+                {keycloakGroups.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-500 mt-2">
+              Wählen Sie eine Keycloak-Gruppe (Kurs) aus
+            </p>
+          </div>
 
-          {/* Section 2: Groups */}
-          <Card className="border-slate-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-black">Gruppen & Kurszuordnung</CardTitle>
-            </CardHeader>
-            <CardContent className="bg-white rounded-lg p-4 space-y-6">
-              <div>
-                <Label>Anzahl der Gruppen</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="50"
-                  className="mt-2"
-                  value={numberOfGroups}
-                  onChange={(e) => {
-                    // Allow empty input while typing
-                    const inputValue = e.target.value;
-                    if (inputValue === "") {
-                      setNumberOfGroups(0); // Temporarily allow 0 for empty state
-                      return;
-                    }
-                    const parsed = parseInt(inputValue);
-                    if (!isNaN(parsed)) {
-                      setNumberOfGroups(parsed);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    // Validate and apply when Enter is pressed
-                    if (e.key === "Enter") {
-                      validateAndApplyGroupCount();
-                    }
-                  }}
-                  onBlur={() => {
-                    // Validate and apply when field loses focus
-                    validateAndApplyGroupCount();
-                  }}
-                />
-                <p className="text-xs text-slate-500 mt-2">
-                  Legen Sie fest, in wie viele Gruppen die Studenten aufgeteilt
-                  werden
-                </p>
-              </div>
+          <div>
+            <Label>Anzahl der Gruppen</Label>
+            <Input
+              type="number"
+              min="1"
+              max="50"
+              className="mt-2"
+              value={numberOfGroups}
+              onChange={(e) => {
+                const value = parseInt(e.target.value) || 1;
+                setNumberOfGroups(Math.max(1, Math.min(50, value)));
+                // Initialize groups
+                const groups = Array.from({ length: value }).map((_, i) => ({
+                  groupId: `group-${i + 1}`,
+                  groupName: `Gruppe ${i + 1}`,
+                  students: [],
+                }));
+                setStudentGroups(groups);
+              }}
+            />
+            <p className="text-xs text-slate-500 mt-2">
+              Legen Sie fest, in wie viele Gruppen die Studenten aufgeteilt
+              werden
+            </p>
+          </div>
 
-              <div>
-                <Label>Kurs auswählen</Label>
-                <Select
-                  value={selectedKeycloakGroupId}
-                  onValueChange={setSelectedKeycloakGroupId}
-                  disabled={loading.groups}
-                >
-                  <SelectTrigger className="mt-2">
-                    <SelectValue placeholder="z.B. WWI23SEB" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {keycloakGroups.map((group) => (
-                      <SelectItem key={group.id} value={group.id}>
-                        {group.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-slate-500 mt-2">
-                  Wählen Sie eine Keycloak-Gruppe (Kurs) aus
-                </p>
-              </div>
+          <div>
+            <Label>Anzahl der Server</Label>
+            <Input
+              type="number"
+              min="1"
+              max="50"
+              className="mt-2"
+              value={numberOfStacks}
+              onChange={(e) => {
+                const value = parseInt(e.target.value) || 1;
+                setNumberOfStacks(Math.max(1, Math.min(50, value)));
+                // Initialize stacks
+                const stacks = Array.from({ length: value }).map((_, i) => ({
+                  stackId: `stack-${i + 1}`,
+                  stackName: `Stack ${i + 1}`,
+                  assignedGroups: [],
+                }));
+                setGroupStackAssignments(stacks);
+              }}
+            />
+            <p className="text-xs text-slate-500 mt-2">
+              Geben Sie an, wie viele Stack-Instanzen Sie benötigen
+            </p>
+          </div>
 
-              {/* Group and Stack Assignment */}
-              {selectedKeycloakGroupId && keycloakMembers.length > 0 && (
-                <div>
-                  {deploymentMode === "per_student" ? (
-                    <Card className="border-teal-200 bg-teal-50">
-                      <CardContent className="pt-2">
-                        <div className="flex items-center gap-3 text-teal-900">
-                          <CheckCircle2 className="w-5 h-5" />
-                          <div>
-                            <p className="text-sm font-medium">
-                              Automatische Stack-Zuweisung aktiviert
-                            </p>
-                            <p className="text-xs text-teal-700 mt-1">
-                              {keycloakMembers.length} Stack
-                              {keycloakMembers.length !== 1 ? "s" : ""} werden
-                              erstellt - ein Stack pro Student mit individuellen
-                              Credentials
-                            </p>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ) : deploymentMode === "per_course" ? (
-                    <Card className="border-blue-200 bg-blue-50">
-                      <CardContent className="pt-6">
-                        <div className="flex items-center gap-3 text-blue-900">
-                          <CheckCircle2 className="w-5 h-5" />
-                          <div>
-                            <p className="text-sm font-medium">
-                              Kurs-weites Deployment aktiviert
-                            </p>
-                            <p className="text-xs text-blue-700 mt-1">
-                              1 Stack wird erstellt - alle {keycloakMembers.length}{" "}
-                              Studenten teilen sich die gleichen Credentials
-                            </p>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ) : (
-                    <div className="space-y-6">
-                      {/* Gruppenverwaltung - Stack-Zuweisung erfolgt automatisch im Hintergrund */}
-                      <GroupManager
-                        students={keycloakMembers}
-                        groups={studentGroups}
-                        onGroupsChange={setStudentGroups}
-                      />
+          {/* Group and Stack Assignment */}
+          {selectedKeycloakGroupId && keycloakMembers.length > 0 && (
+            <div>
+              {deploymentMode === "per_student" ? (
+                <Card className="border-teal-200 bg-teal-50">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3 text-teal-900">
+                      <CheckCircle2 className="w-5 h-5" />
+                      <div>
+                        <p className="text-sm font-medium">
+                          Automatische Stack-Zuweisung aktiviert
+                        </p>
+                        <p className="text-xs text-teal-700 mt-1">
+                          {keycloakMembers.length} Stack
+                          {keycloakMembers.length !== 1 ? "s" : ""} werden
+                          erstellt - ein Stack pro Student mit individuellen
+                          Credentials
+                        </p>
+                      </div>
                     </div>
-                  )}
+                  </CardContent>
+                </Card>
+              ) : deploymentMode === "per_course" ? (
+                <Card className="border-blue-200 bg-blue-50">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3 text-blue-900">
+                      <CheckCircle2 className="w-5 h-5" />
+                      <div>
+                        <p className="text-sm font-medium">
+                          Kurs-weites Deployment aktiviert
+                        </p>
+                        <p className="text-xs text-blue-700 mt-1">
+                          1 Stack wird erstellt - alle {keycloakMembers.length}{" "}
+                          Studenten teilen sich die gleichen Credentials
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-6">
+                  {/* Gruppenverwaltung - Stack-Zuweisung erfolgt automatisch im Hintergrund */}
+                  <GroupManager
+                    students={keycloakMembers}
+                    groups={studentGroups}
+                    onGroupsChange={setStudentGroups}
+                  />
                 </div>
               )}
+            </div>
+          )}
 
-              {/* Loading state for members */}
-              {selectedKeycloakGroupId && loading.members && (
-                <div className="flex items-center gap-2 text-slate-500">
-                  <div className="w-4 h-4 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-sm">Lade Studenten...</span>
-                </div>
-              )}
+          {/* Loading state for members */}
+          {selectedKeycloakGroupId && loading.members && (
+            <div className="flex items-center gap-2 text-slate-500">
+              <div className="w-4 h-4 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm">Lade Studenten...</span>
+            </div>
+          )}
 
-              {/* No members warning */}
-              {selectedKeycloakGroupId &&
-                !loading.members &&
-                keycloakMembers.length === 0 && (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                    <span className="text-xs text-amber-800 block">
-                      Keine Studenten in dieser Gruppe gefunden.
-                    </span>
-                  </div>
-                )}
-            </CardContent>
-          </Card>
-
-          {/* Section 3: Server & Runtime */}
-          <Card className="border-slate-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-slate-900">Server-Konfiguration</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-2 space-y-6">
-              <div>
-                <Label>Anzahl der Server</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="50"
-                  className="mt-2"
-                  value={numberOfStacks}
-                  onChange={(e) => {
-                    // Allow empty input while typing
-                    const inputValue = e.target.value;
-                    if (inputValue === "") {
-                      setNumberOfStacks(0); // Temporarily allow 0 for empty state
-                      return;
-                    }
-                    const parsed = parseInt(inputValue);
-                    if (!isNaN(parsed)) {
-                      setNumberOfStacks(parsed);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    // Validate and apply when Enter is pressed
-                    if (e.key === "Enter") {
-                      validateAndApplyStackCount();
-                    }
-                  }}
-                  onBlur={() => {
-                    // Validate and apply when field loses focus
-                    validateAndApplyStackCount();
-                  }}
-                />
-                <p className="text-xs text-slate-500 mt-2">
-                  Geben Sie an, wie viele Stack-Instanzen Sie benötigen
-                </p>
+          {/* No members warning */}
+          {selectedKeycloakGroupId &&
+            !loading.members &&
+            keycloakMembers.length === 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <span className="text-xs text-amber-800 block">
+                  Keine Studenten in dieser Gruppe gefunden.
+                </span>
               </div>
-            </CardContent>
-          </Card>
+            )}
+
+          <div>
+            <Label>Laufzeit</Label>
+            <Select value={runtime} onValueChange={setRuntime}>
+              <SelectTrigger className="mt-2">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">1 Monat</SelectItem>
+                <SelectItem value="3">3 Monate</SelectItem>
+                <SelectItem value="6">6 Monate</SelectItem>
+                <SelectItem value="12">1 Jahr</SelectItem>
+                <SelectItem value="24">2 Jahre</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              Nach Ablauf werden die Ressourcen automatisch freigegeben
+            </p>
+          </div>
 
           {loading.version && (
             <div className="flex items-center gap-2 text-slate-500">
@@ -1539,21 +1372,6 @@ export function DeploymentWizard({
         <CardContent>{renderStepContent()}</CardContent>
       </Card>
 
-      {/* Validation Errors - only shown on step 0 */}
-      {currentStep === 0 && validationErrors.length > 0 && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-          <h4 className="font-medium text-red-900 mb-2">Vor dem Weiter müssen folgende Probleme behoben werden:</h4>
-          <ul className="space-y-1">
-            {validationErrors.map((error, idx) => (
-              <li key={idx} className="text-sm text-red-800 flex items-start gap-2">
-                <span className="text-red-500 mt-0.5">•</span>
-                <span>{error}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       {/* Navigation Buttons */}
       <div className="flex justify-between">
         <Button
@@ -1584,18 +1402,22 @@ export function DeploymentWizard({
             </Button>
           )}
 
-          {currentStep < steps.length - 1 && (
+          {currentStep < steps.length - 1 ? (
             <Button
               onClick={handleNext}
               className="bg-teal-500 hover:bg-teal-600 text-white"
-              disabled={isDeploying || validationErrors.length > 0}
+              disabled={
+                (currentStep === 0 &&
+                  (!selectedVersionId ||
+                    !selectedKeycloakGroupId ||
+                    !deploymentName)) ||
+                isDeploying
+              }
             >
               Weiter
               <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
-          )}
-
-          {currentStep === steps.length - 1 && (
+          ) : (
             <Button
               onClick={handleDeploy}
               disabled={isDeploying}

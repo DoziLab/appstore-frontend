@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Server, Database, GitBranch, Container, Shield, Code, Laptop, Boxes, Search, Plus, AlertCircle } from 'lucide-react';
+import { Server, Database, GitBranch, Container, Shield, Code, Laptop, Boxes, Search, Plus, AlertCircle, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { AddTemplateDialog } from '../components/AddTemplateDialog';
 import { getTemplates, type TemplateDto } from '../api/templates';
 import type { LucideIcon } from 'lucide-react';
@@ -84,6 +85,8 @@ export function AppStore({ onDeploy }: AppStoreProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('Alle');
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateDto | null>(null);
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
 
   // Fetch templates from backend
   useEffect(() => {
@@ -231,7 +234,8 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                         className="text-teal-600 hover:text-teal-700 text-xs ml-1 font-medium"
                         onClick={(e) => {
                           e.stopPropagation();
-                          // Could open a modal or expand description
+                          setSelectedTemplate(template);
+                          setDetailsModalOpen(true);
                         }}
                       >
                         weiter lesen
@@ -288,6 +292,115 @@ export function AppStore({ onDeploy }: AppStoreProps) {
         open={addTemplateOpen}
         onOpenChange={setAddTemplateOpen}
       />
+
+      {/* Template Details Modal */}
+      {selectedTemplate && (
+        <Dialog open={detailsModalOpen} onOpenChange={setDetailsModalOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${getTemplateStyle(selectedTemplate.name).color} flex items-center justify-center text-white`}>
+                  {React.createElement(getTemplateStyle(selectedTemplate.name).icon, { className: "w-5 h-5" })}
+                </div>
+                <span>{selectedTemplate.name}</span>
+              </DialogTitle>
+              <DialogDescription>
+                Template-Details und Informationen
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-6 mt-4">
+              {/* Badges */}
+              <div className="flex gap-2 flex-wrap">
+                {selectedTemplate.approval_status === 'approved' && (
+                  <Badge className="bg-green-100 text-green-700">Genehmigt</Badge>
+                )}
+                {selectedTemplate.visibility === 'public' && (
+                  <Badge className="bg-blue-100 text-blue-700">Öffentlich</Badge>
+                )}
+              </div>
+
+              {/* Description */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 mb-2">Beschreibung</h3>
+                <p className="text-sm text-slate-600 leading-relaxed">
+                  {selectedTemplate.description || 'Keine Beschreibung verfügbar'}
+                </p>
+              </div>
+
+              {/* Versions */}
+              {selectedTemplate.versions && selectedTemplate.versions.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 mb-3">Verfügbare Versionen</h3>
+                  <div className="space-y-2">
+                    {selectedTemplate.versions.map((version) => (
+                      <div key={version.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className={version.is_active ? 'bg-green-50 border-green-200 text-green-700' : 'bg-slate-50 border-slate-200'}>
+                            {version.version}
+                          </Badge>
+                          {version.is_active && (
+                            <span className="text-xs text-green-600 font-medium">Aktiv</span>
+                          )}
+                        </div>
+                        {version.created_at && (
+                          <span className="text-xs text-slate-500">
+                            {new Date(version.created_at).toLocaleDateString('de-DE')}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Meta Information */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-slate-900 mb-2">Informationen</h3>
+                {selectedTemplate.repo_url && (
+                  <div className="text-sm">
+                    <span className="text-slate-600">Repository: </span>
+                    <a 
+                      href={selectedTemplate.repo_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-teal-600 hover:text-teal-700 underline"
+                    >
+                      {selectedTemplate.repo_url}
+                    </a>
+                  </div>
+                )}
+                {selectedTemplate.icon_url && (
+                  <div className="text-sm">
+                    <span className="text-slate-600">Icon: </span>
+                    <span className="text-slate-700">{selectedTemplate.icon_url}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Button */}
+              <div className="flex gap-3 pt-4">
+                <Button
+                  onClick={() => {
+                    onDeploy(selectedTemplate.id);
+                    setDetailsModalOpen(false);
+                  }}
+                  className="flex-1 bg-teal-500 hover:bg-teal-600 text-white"
+                  disabled={(selectedTemplate.versions?.filter(v => v.is_active) || []).length === 0}
+                >
+                  Jetzt deployen
+                </Button>
+                <Button
+                  onClick={() => setDetailsModalOpen(false)}
+                  variant="outline"
+                >
+                  Schließen
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

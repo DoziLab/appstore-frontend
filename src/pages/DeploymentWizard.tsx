@@ -98,6 +98,7 @@ export function DeploymentWizard({
     members: false,
   });
   const [error, setError] = useState<string | null>(null);
+  
 
   // Selection states
   const [selectedVersionId, setSelectedVersionId] = useState<string>("");
@@ -284,8 +285,7 @@ export function DeploymentWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deploymentMode, keycloakMembers, numberOfStacks, numberOfGroups]);
 
-
-  // Helper function to validate and apply group count
+ // Helper function to validate and apply group count
   const validateAndApplyGroupCount = useCallback(() => {
     let value = numberOfGroups;
     if (typeof value === "string") {
@@ -415,7 +415,6 @@ export function DeploymentWizard({
       setStudentGroups(updatedGroups);
     }
   }, [studentGroups]);
-
 
   // Auto-assign groups to stacks (balanced distribution in background)
   useEffect(() => {

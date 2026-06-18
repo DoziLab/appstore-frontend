@@ -51,6 +51,7 @@ import {
 } from "../api/deployments";
 import { GroupManager, type StudentGroup } from "../components/GroupManager";
 import keycloak from "../auth/keycloak";
+import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
 
 // GroupStackAssignment type (no UI component needed, auto-assignment in background)
 export interface GroupStackAssignment {
@@ -70,6 +71,7 @@ export function DeploymentWizard({
   onCancel,
   onComplete,
 }: DeploymentWizardProps) {
+  const { activeProjectId } = useActiveOpenstackProject();
   const [currentStep, setCurrentStep] = useState(0);
   const [isDeploying, setIsDeploying] = useState(false);
 
@@ -558,6 +560,16 @@ export function DeploymentWizard({
         return;
       }
 
+      // Backend pins the deployment to the user's active OpenStack project so
+      // later restart/delete uses the right credentials even if the user
+      // switches their clouds.yaml. Teachers must have one — the App-level
+      // setup gate normally prevents this branch, but be defensive.
+      if (!activeProjectId) {
+        setError("Kein aktives OpenStack-Projekt. Bitte richten Sie zuerst ein OpenStack-Projekt ein.");
+        setIsDeploying(false);
+        return;
+      }
+
       // Convert uploaded files to base64
       const userFilesPayload: Record<string, string> = {};
       for (const [name, file] of Object.entries(uploadedFiles)) {
@@ -575,6 +587,7 @@ export function DeploymentWizard({
         name: deploymentName.trim(),
         template_version_id: selectedVersionId,
         course_id: selectedKeycloakGroupId,
+        openstack_project_id: activeProjectId,
         parameters: heatParameters,
         ...(Object.keys(userFilesPayload).length > 0 && { user_files: userFilesPayload }),
         stack_assignments: groupStackAssignments.map((stack, stackIndex) => ({

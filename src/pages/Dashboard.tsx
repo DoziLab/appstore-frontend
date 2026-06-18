@@ -5,12 +5,14 @@ import { Progress } from '../components/ui/progress';
 import { Badge } from '../components/ui/badge';
 import { getQuotas, type QuotasResponse } from '../api/quotas';
 import { getAllDeployments, type DeploymentDto } from '../api/deployments';
+import { useActiveOpenstackProject } from '../contexts/OpenstackProjectContext';
 
 interface DashboardProps {
   onSelectDeployment?: (deploymentId: string) => void;
 }
 
 export function Dashboard({ onSelectDeployment }: DashboardProps) {
+  const { activeProjectId } = useActiveOpenstackProject();
   const [quotas, setQuotas] = useState<QuotasResponse | null>(null);
   const [quotasError, setQuotasError] = useState<string | null>(null);
   const [quotasLoading, setQuotasLoading] = useState<boolean>(false);
@@ -46,7 +48,7 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
     let mounted = true;
     // Show loading only if we don't already have data (e.g., after Fast Refresh)
     setDeploymentsLoading(recentDeployments.length === 0);
-    getAllDeployments()
+    getAllDeployments(activeProjectId)
       .then((items) => {
         if (!mounted) return;
         // Count all deployments using the length of the data
@@ -86,7 +88,7 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
         if (mounted) setDeploymentsLoading(false);
       });
     return () => { mounted = false; };
-  }, []);
+  }, [activeProjectId]);
 
   const percent = (used?: number, limit?: number) => {
     if (!used || !limit || limit === 0) return 0;

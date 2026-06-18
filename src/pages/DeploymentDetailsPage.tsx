@@ -10,6 +10,7 @@ import {
 } from "../api/deployments";
 import { getMyCourses, type CourseDto } from "../api/courses";
 import { getKeycloakGroups, type KeycloakGroup } from "../api/keycloak";
+import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
 
 // ── Phase definitions ─────────────────────────────────────────────────────────
 
@@ -169,6 +170,7 @@ const ACTIVE_STATUSES = new Set(["deploying"]);
 export function DeploymentDetailsPage() {
   const { deploymentId } = useParams<{ deploymentId: string }>();
   const navigate = useNavigate();
+  const { activeProjectId } = useActiveOpenstackProject();
   const [deploymentData, setDeploymentData] = useState<any>(null);
   const [loadingDeployment, setLoadingDeployment] = useState(false);
   const isDeletingRef = useRef(false);
@@ -189,7 +191,7 @@ export function DeploymentDetailsPage() {
     setDeploymentData((prev: any) => prev ? { ...prev, status: "deleting" } : prev);
 
     try {
-      await deleteDeployment(id);
+      await deleteDeployment(id, activeProjectId);
     } catch (err) {
       console.error("Failed to initiate delete", err);
     }
@@ -199,7 +201,7 @@ export function DeploymentDetailsPage() {
     const poll = async () => {
       attempts++;
       try {
-        const resp = await getDeployment(id);
+        const resp = await getDeployment(id, activeProjectId);
         const s = resp.data.status.toUpperCase();
         if (s === "DELETED" || s === "DELETE_COMPLETE") {
           navigate("/dashboard");
@@ -297,8 +299,8 @@ export function DeploymentDetailsPage() {
     Promise.all([
       getMyCourses({ page: 1, page_size: 100 }).catch(() => ({ data: [] as CourseDto[] })),
       getKeycloakGroups().catch(() => ({ data: [] as KeycloakGroup[] })),
-      getDeployment(deploymentId),
-      getDeploymentLogs(deploymentId).catch(() => ({ data: [] as DeploymentLogDto[] })),
+      getDeployment(deploymentId, activeProjectId),
+      getDeploymentLogs(deploymentId, activeProjectId).catch(() => ({ data: [] as DeploymentLogDto[] })),
     ]).then(([coursesResp, groupsResp, depResp, logsResp]) => {
       coursesCacheRef.current = (coursesResp as any)?.data || [];
       groupsCacheRef.current = (groupsResp as any)?.data || [];
@@ -315,6 +317,7 @@ export function DeploymentDetailsPage() {
       const stopStream = streamDeploymentLogs(
         deploymentId,
         lastLogId,
+        activeProjectId,
         (log) => {
           if (isDeletingRef.current) return;
           logsRef.current = [...logsRef.current, log];
@@ -324,7 +327,7 @@ export function DeploymentDetailsPage() {
         },
         () => {
           if (isDeletingRef.current) return;
-          getDeployment(deploymentId).then((depResp) => {
+          getDeployment(deploymentId, activeProjectId).then((depResp) => {
             backendDeploymentRef.current = depResp.data;
             setDeploymentData(buildDeploymentData(depResp.data, logsRef.current));
           }).catch(() => {});
@@ -334,7 +337,7 @@ export function DeploymentDetailsPage() {
     }).catch(() => setLoadingDeployment(false));
 
     return () => { stopStreamRef.current?.(); stopStreamRef.current = null; };
-  }, [deploymentId, buildDeploymentData]);
+  }, [deploymentId, activeProjectId, buildDeploymentData]);
 
   if (!deploymentId) return <Navigate to="/dashboard" replace />;
   if (loadingDeployment) return <div className="p-6">Lade Deployment...</div>;

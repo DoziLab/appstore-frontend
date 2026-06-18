@@ -11,14 +11,21 @@ import { AppStorePage } from "./pages/AppStorePage";
 import { DeploymentWizardPage } from "./pages/DeploymentWizardPage";
 import { DeploymentDetailsPage } from "./pages/DeploymentDetailsPage";
 import { OpenStackSetup } from "./pages/OpenStackSetup";
-import { listOpenstackProjects } from "./api/openstackProjects";
+import { listOpenstackProjects, type OpenstackProjectResponse } from "./api/openstackProjects";
+import { OpenstackProjectProvider } from "./contexts/OpenstackProjectContext";
 import logo from "figma:asset/5c87f57a05de8f8018669c9004318908d006dcd5.png";
 
 export default function App() {
   const { keycloak, initialized } = useKeycloak();
   const [initTimedOut, setInitTimedOut] = useState(false);
   const [projectsChecked, setProjectsChecked] = useState(false);
-  const [hasProjects, setHasProjects] = useState(false);
+  // We hold the full project (not just a boolean): the authenticated routes
+  // need it via OpenstackProjectProvider so that any deployment-related
+  // request can attach ?openstack_project_id=<local-DB-id>.
+  const [activeProject, setActiveProject] = useState<OpenstackProjectResponse | null>(null);
+  // Admins don't need a project to use the app, so we don't push them into the
+  // OpenStack-setup route. We resolve this once after auth and keep it sticky.
+  const [isLecturer, setIsLecturer] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -33,17 +40,32 @@ export default function App() {
   useEffect(() => {
     if (!keycloak.authenticated) return;
     const roles: string[] = (keycloak.tokenParsed as Record<string, any>)?.realm_access?.roles ?? [];
-    const isLecturer = roles.includes("lecturer") || roles.includes("teacher");
-    if (!isLecturer) {
-      setHasProjects(true);
+    const lecturer = roles.includes("lecturer") || roles.includes("teacher");
+    setIsLecturer(lecturer);
+    if (!lecturer) {
+      // Admins don't need a project to use the app — keep activeProject null;
+      // the deployment endpoints accept admins without the query param.
+      setActiveProject(null);
       setProjectsChecked(true);
       return;
     }
     listOpenstackProjects()
-      .then((projects) => setHasProjects(projects.length > 0))
-      .catch(() => setHasProjects(false))
+      .then((projects) => setActiveProject(projects[0] ?? null))
+      .catch(() => setActiveProject(null))
       .finally(() => setProjectsChecked(true));
   }, [keycloak.authenticated]);
+
+  // Lecturer must have an OpenStack project before using the rest of the app.
+  // For admins this is always false (we never gate them on project setup).
+  const needsSetup = isLecturer && activeProject === null;
+
+  // Re-fetch the active project after the user finishes OpenStack setup.
+  // (Setup writes credentials and returns a fresh project row.)
+  const refreshActiveProject = () => {
+    listOpenstackProjects()
+      .then((projects) => setActiveProject(projects[0] ?? null))
+      .catch(() => setActiveProject(null));
+  };
 
   console.log("[Keycloak] initialized:", initialized, "authenticated:", keycloak?.authenticated);
 
@@ -89,31 +111,33 @@ export default function App() {
   }
 
   // Lecturer without projects → setup
-  if (!hasProjects) {
+  if (needsSetup) {
     return (
       <Routes>
-        <Route path="/setup" element={<OpenStackSetup onSuccess={() => { setHasProjects(true); }} />} />
+        <Route path="/setup" element={<OpenStackSetup onSuccess={refreshActiveProject} />} />
         <Route path="*" element={<Navigate to="/setup" replace />} />
       </Routes>
     );
   }
 
   return (
-    <div className="flex h-screen bg-slate-50">
-      <Sidebar logo={logo} />
-      <main className="flex-1 overflow-auto">
-        <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/setup" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/courses" element={<Courses />} />
-          <Route path="/appstore" element={<AppStorePage />} />
-          <Route path="/deploy/:templateId" element={<DeploymentWizardPage />} />
-          <Route path="/deployment/:deploymentId" element={<DeploymentDetailsPage />} />
-          <Route path="/config" element={<OpenStackConfig />} />
-          <Route path="/admin" element={<AdminMonitoring />} />
-        </Routes>
-      </main>
-    </div>
+    <OpenstackProjectProvider project={activeProject}>
+      <div className="flex h-screen bg-slate-50">
+        <Sidebar logo={logo} />
+        <main className="flex-1 overflow-auto">
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/setup" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/courses" element={<Courses />} />
+            <Route path="/appstore" element={<AppStorePage />} />
+            <Route path="/deploy/:templateId" element={<DeploymentWizardPage />} />
+            <Route path="/deployment/:deploymentId" element={<DeploymentDetailsPage />} />
+            <Route path="/config" element={<OpenStackConfig />} />
+            <Route path="/admin" element={<AdminMonitoring />} />
+          </Routes>
+        </main>
+      </div>
+    </OpenstackProjectProvider>
   );
 }

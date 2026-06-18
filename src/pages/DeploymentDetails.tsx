@@ -40,6 +40,7 @@ import {
   getDeploymentCredentials,
 } from "../api/deployments";
 import { type LogPhase, type PhaseStatus } from "./DeploymentDetailsPage";
+import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
 
 interface DeploymentStep {
   id: string;
@@ -80,6 +81,7 @@ interface DeploymentDetailsProps {
 }
 
 export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDetailsProps) {
+  const { activeProjectId } = useActiveOpenstackProject();
   const [credentialsVisible, setCredentialsVisible] = useState(false);
   const [credentialsLoading, setCredentialsLoading] = useState(false);
   const [credentialsError, setCredentialsError] = useState<string | null>(null);
@@ -127,7 +129,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
     setCredentialsError(null);
 
     try {
-      const response = await getDeploymentCredentials(deployment.id);
+      const response = await getDeploymentCredentials(deployment.id, activeProjectId);
       setCredentialsData(response.data);
     } catch (err) {
       const error = err as Error & { status?: number };
@@ -139,7 +141,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
     } finally {
       setCredentialsLoading(false);
     }
-  }, [credentialsLoading, deployment.id]);
+  }, [credentialsLoading, deployment.id, activeProjectId]);
 
   const handleToggleCredentials = () => {
     const nextVisible = !credentialsVisible;

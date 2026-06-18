@@ -65,15 +65,8 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-<<<<<<< HEAD
+
         target: "https://141.72.12.147",
-=======
-<<<<<<< HEAD
-        target: "http://localhost:8000",
-=======
-        target: "https://141.72.12.147",
->>>>>>> 434e8ed (anpassungen links in vite.config und env)
->>>>>>> 9dece67 (anpassungen links in vite.config und env)
         changeOrigin: true,
         secure: false,
       },

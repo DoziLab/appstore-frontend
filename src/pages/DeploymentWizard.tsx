@@ -416,7 +416,6 @@ export function DeploymentWizard({
     }
   }, [studentGroups]);
 
-
   // Auto-assign groups to stacks (balanced distribution in background)
   useEffect(() => {
     if (

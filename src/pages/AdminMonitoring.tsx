@@ -82,7 +82,8 @@ export function AdminMonitoring() {
   };
 
   useEffect(() => {
-    getAllDeployments()
+    // Admin view: pass null → backend doesn't apply the project filter.
+    getAllDeployments(null)
       .then(setDeployments)
       .catch(console.error);
   }, []);
@@ -91,7 +92,8 @@ export function AdminMonitoring() {
     if (!selectedDeployment) return;
 
     setLogsLoading(true);
-    getDeploymentLogs(selectedDeployment.id)
+    // Same rationale: admin reads any deployment's logs regardless of project.
+    getDeploymentLogs(selectedDeployment.id, null)
       .then((resp) => setDeploymentLogs(resp.data ?? []))
       .catch(console.error)
       .finally(() => setLogsLoading(false));

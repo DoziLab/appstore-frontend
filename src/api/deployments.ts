@@ -87,6 +87,10 @@ export type DeploymentCreateRequest = {
   name?: string;
   template_version_id: string;
   course_id: string;
+  // Local DB id of the active OpenstackProject (NOT the Keystone tenant UUID).
+  // Backend pins the deployment to this project so later restart/delete uses
+  // the right credentials even if the user later switches their clouds.yaml.
+  openstack_project_id: string;
   deployment_mode?: string;
   config_json?: string;
   parameters?: Record<string, any>;
@@ -132,11 +136,20 @@ export async function createDeployment(data: DeploymentCreateRequest) {
   });
 }
 
-export async function getDeployment(deploymentId: string) {
-  return apiFetch<DeploymentResponse>(`/api/v1/deployments/${deploymentId}`);
+// All deployment endpoints below take `openstackProjectId` (local DB id of
+// the active OpenstackProject). Lecturers MUST pass it — backend returns 400
+// otherwise. Admins may pass null to skip the filter and see everything.
+function projectQuery(openstackProjectId: string | null): string {
+  return openstackProjectId ? `?openstack_project_id=${encodeURIComponent(openstackProjectId)}` : "";
 }
 
-export async function getDeploymentCredentials(deploymentId: string) {
+export async function getDeployment(deploymentId: string, openstackProjectId: string | null) {
+  return apiFetch<DeploymentResponse>(
+    `/api/v1/deployments/${deploymentId}${projectQuery(openstackProjectId)}`,
+  );
+}
+
+export async function getDeploymentCredentials(deploymentId: string, openstackProjectId: string | null) {
   return apiFetch<{
     success: boolean;
     message?: string;
@@ -144,10 +157,10 @@ export async function getDeploymentCredentials(deploymentId: string) {
     errors: unknown;
     timestamp?: string;
     request_id?: string;
-  }>(`/api/v1/deployments/${deploymentId}/credentials`);
+  }>(`/api/v1/deployments/${deploymentId}/credentials${projectQuery(openstackProjectId)}`);
 }
 
-export async function getDeploymentLogs(deploymentId: string) {
+export async function getDeploymentLogs(deploymentId: string, openstackProjectId: string | null) {
   return apiFetch<{
     success: boolean;
     message: string;
@@ -155,7 +168,7 @@ export async function getDeploymentLogs(deploymentId: string) {
     errors: unknown;
     timestamp: string;
     request_id: string;
-  }>(`/api/v1/deployments/${deploymentId}/logs`);
+  }>(`/api/v1/deployments/${deploymentId}/logs${projectQuery(openstackProjectId)}`);
 }
 
 /**
@@ -166,6 +179,7 @@ export async function getDeploymentLogs(deploymentId: string) {
 export function streamDeploymentLogs(
   deploymentId: string,
   sinceId: string | undefined,
+  openstackProjectId: string | null,
   onLog: (log: DeploymentLogDto) => void,
   onDone: () => void,
 ): () => void {
@@ -175,7 +189,12 @@ export function streamDeploymentLogs(
     try {
       try { await keycloak.updateToken(30); } catch {}
       const token = keycloak.token;
-      const url = `/api/v1/deployments/${deploymentId}/logs/stream${sinceId ? `?since_id=${sinceId}` : ""}`;
+      // Build query string with both since_id (optional) and openstack_project_id (required for lecturers).
+      const params = new URLSearchParams();
+      if (sinceId) params.set("since_id", sinceId);
+      if (openstackProjectId) params.set("openstack_project_id", openstackProjectId);
+      const qs = params.toString();
+      const url = `/api/v1/deployments/${deploymentId}/logs/stream${qs ? `?${qs}` : ""}`;
 
       const res = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -210,13 +229,16 @@ export function streamDeploymentLogs(
   return () => controller.abort();
 }
 
-export async function deleteDeployment(deploymentId: string) {
+export async function deleteDeployment(deploymentId: string, openstackProjectId: string | null) {
   // Backend returns 204 No Content — don't call res.json()
   await keycloak.updateToken(30).catch(() => {});
-  const res = await fetch(`/api/v1/deployments/${deploymentId}`, {
-    method: "DELETE",
-    headers: keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {},
-  });
+  const res = await fetch(
+    `/api/v1/deployments/${deploymentId}${projectQuery(openstackProjectId)}`,
+    {
+      method: "DELETE",
+      headers: keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {},
+    },
+  );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(text || res.statusText);
@@ -239,8 +261,10 @@ type DeploymentsListEnvelope = {
   request_id: string;
 };
 
-export async function getAllDeployments(): Promise<DeploymentDto[]> {
-  const resp = await apiFetch<DeploymentsListEnvelope | DeploymentDto[]>("/api/v1/deployments");
+export async function getAllDeployments(openstackProjectId: string | null): Promise<DeploymentDto[]> {
+  const resp = await apiFetch<DeploymentsListEnvelope | DeploymentDto[]>(
+    `/api/v1/deployments${projectQuery(openstackProjectId)}`,
+  );
   if (resp && typeof resp === "object" && "data" in resp) {
     return (resp as DeploymentsListEnvelope).data || [];
   }

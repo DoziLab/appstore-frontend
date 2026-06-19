@@ -6,6 +6,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { getMyCourses, CourseDto } from "../api/courses";
 import { getKeycloakGroups, KeycloakGroup } from "../api/keycloak";
+import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
 
 type CourseUi = {
   id: string;
@@ -17,6 +18,7 @@ type CourseUi = {
 
 export function Courses() {
   const navigate = useNavigate();
+  const { activeProjectId } = useActiveOpenstackProject();
   const [items, setItems] = useState<CourseDto[]>([]);
   const [keycloakGroups, setKeycloakGroups] = useState<KeycloakGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,11 +32,16 @@ export function Courses() {
         setLoading(true);
         setError(null);
 
+        // Pass the active OpenStack project to the courses API so the
+        // backend can scope each course's embedded `deployments` collection
+        // to (project = activeProjectId) AND (teacher.id = caller). Without
+        // this param the backend rejects non-admins with 400 — matches the
+        // contract introduced in PR #137 for /api/v1/deployments.
         const [coursesRes, groupsRes] = await Promise.all([
-          getMyCourses({ page: 1, page_size: 10}),
+          getMyCourses({ page: 1, page_size: 10, openstack_project_id: activeProjectId }),
           getKeycloakGroups(),
         ]);
-        
+
         if (!alive) return;
 
         setItems(coursesRes.data || []);
@@ -51,7 +58,7 @@ export function Courses() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [activeProjectId]);
 
   const courses: CourseUi[] = useMemo(() => {
     return items.map((c) => {

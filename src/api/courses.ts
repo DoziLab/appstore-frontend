@@ -62,12 +62,17 @@ export async function getMyCourses(params?: {
   page_size?: number;
   search?: string;
   lecturer_id?: string;
+  // Active OpenStack project (local DB id). The backend requires this for
+  // non-admin callers; without it embedded `course.deployments` would leak
+  // across owners again. Pass `null` to omit (admin context only).
+  openstack_project_id?: string | null;
 }) {
   const sp = new URLSearchParams();
   if (params?.page) sp.set("page", String(params.page));
   if (params?.page_size) sp.set("page_size", String(params.page_size));
   if (params?.search) sp.set("search", params.search);
   if (params?.lecturer_id) sp.set("lecturer_id", params.lecturer_id);
+  if (params?.openstack_project_id) sp.set("openstack_project_id", params.openstack_project_id);
 
   const qs = sp.toString();
   return apiFetch<CoursesResponse>(`/api/v1/courses${qs ? `?${qs}` : ""}`);

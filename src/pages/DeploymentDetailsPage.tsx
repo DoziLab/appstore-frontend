@@ -296,6 +296,10 @@ export function DeploymentDetailsPage() {
         phases,
         logs,
         error: failedLog?.message || undefined,
+        // Lifecycle (B6) — passed through verbatim; presentational decisions
+        // (banner / icon / 'läuft ab in X Tagen') happen in DeploymentDetails.
+        expires_at: backendDeployment.expires_at ?? null,
+        expiry_warning_at: backendDeployment.expiry_warning_at ?? null,
         resources: { cpu, ram, storage },
       };
     },

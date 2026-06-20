@@ -42,6 +42,13 @@ export type TemplateDto = {
   name: string;
   description: string | null;
   owner_id: string;
+  // Cached display fields refreshed from the Keycloak token on the owner's
+  // last login. Null for service accounts or users who haven't logged in
+  // since the migration that introduced them — frontend should fall back
+  // through owner_name → owner_username → owner_id.
+  owner_name: string | null;
+  owner_email: string | null;
+  owner_username: string | null;
   repo_url: string;
   icon_url: string | null;
   visibility: string;

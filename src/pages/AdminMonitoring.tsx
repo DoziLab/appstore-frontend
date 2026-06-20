@@ -712,8 +712,9 @@ export function AdminMonitoring() {
                         )}
                         <div className="flex items-center gap-4 text-sm text-slate-500">
                           <span>Eingereicht: {new Date(template.created_at).toLocaleString()}</span>
-                          {/* TODO: owner_id is available but not resolved to a display name.
-                              Needs GET /users/{id} or a user lookup endpoint from the backend. */}
+                          <span title={template.owner_email ?? undefined}>
+                            von {template.owner_name ?? template.owner_username ?? template.owner_id}
+                          </span>
                         </div>
                       </div>
                     </div>

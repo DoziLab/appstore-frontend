@@ -31,6 +31,10 @@ export type DeploymentDto = {
     openstack_instance_id?: string | null;
     status?: string | null;
     ip_address?: string | null;
+    // Nova flavor name the Heat-Stack was created with. Nullable for legacy
+    // rows from before the per-instance flavor migration; new instances
+    // always have it. Resolve against /openstack/flavors for vCPU/RAM/disk.
+    flavor?: string | null;
     access_urls: Array<{
       id: string;
       access_type: string | null;

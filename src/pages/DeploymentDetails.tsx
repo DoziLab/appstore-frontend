@@ -16,6 +16,8 @@ import {
   Flame,
   Terminal,
   Flag,
+  AlertTriangle,
+  AlertOctagon,
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -38,8 +40,10 @@ import {
   DeploymentCredentialsResponse,
   DeploymentLogDto,
   getDeploymentCredentials,
+  extendDeployment,
 } from "../api/deployments";
 import { type LogPhase, type PhaseStatus } from "./DeploymentDetailsPage";
+import { getExpiryState } from "../utils/deployment";
 import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
 
 interface DeploymentStep {
@@ -67,6 +71,10 @@ interface Deployment {
   phases?: LogPhase[];
   logs?: DeploymentLogDto[];
   error?: string;
+  // Lifecycle (B6) — null for legacy deployments without expiry tracking.
+  // Both passed through from the backend, used by the expiry banner.
+  expires_at?: string | null;
+  expiry_warning_at?: string | null;
   resources: {
     cpu: number;
     ram: number;
@@ -87,6 +95,35 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
   const [credentialsError, setCredentialsError] = useState<string | null>(null);
   const [credentialsData, setCredentialsData] = useState<DeploymentCredentialsResponse | null>(null);
   const [passwordVisibility, setPasswordVisibility] = useState<Record<string, boolean>>({});
+  // Inline extend-action state (B6). Pessimistic: button disabled while
+  // request flies, error shown via toast, success refreshes the page so the
+  // new expires_at lands in `deployment` via the parent's data loader.
+  const [extendInFlight, setExtendInFlight] = useState(false);
+
+  const expiryState = getExpiryState(deployment);
+
+  const handleExtend = useCallback(async () => {
+    if (extendInFlight) return;
+    setExtendInFlight(true);
+    try {
+      // Default extension matches the wizard default (4 months). If the UI
+      // ever offers a select for the extend amount, plumb the chosen value
+      // here instead of the hardcoded 4.
+      await extendDeployment(deployment.id, 4, activeProjectId);
+      toast.success("Deployment um 4 Monate verlängert.");
+      // Cheapest correct refresh — the parent route reloads the deployment
+      // on mount, so we don't need a callback prop just for this case.
+      window.location.reload();
+    } catch (err) {
+      const error = err as Error & { status?: number };
+      if (error.status === 403) {
+        toast.error("Keine Berechtigung, dieses Deployment zu verlängern.");
+      } else {
+        toast.error("Verlängern fehlgeschlagen. Bitte später erneut versuchen.");
+      }
+      setExtendInFlight(false);
+    }
+  }, [deployment.id, activeProjectId, extendInFlight]);
 
   const accessTypeLabels: Record<AccessType, string> = {
     ssh: "SSH",
@@ -283,6 +320,72 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
           </div>
         </div>
       </div>
+
+      {/* Expiry banner (B6) — only shows when expires_at is set AND we're past
+          the warning threshold or already expired. Legacy deployments without
+          expiry tracking stay invisible here. */}
+      {expiryState !== "ok" && deployment.expires_at && (
+        <Card
+          className={
+            expiryState === "expired"
+              ? "border-red-200 shadow-sm bg-gradient-to-br from-red-50 to-white"
+              : "border-amber-200 shadow-sm bg-gradient-to-br from-amber-50 to-white"
+          }
+        >
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <div
+                className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  expiryState === "expired" ? "bg-red-100" : "bg-amber-100"
+                }`}
+              >
+                {expiryState === "expired" ? (
+                  <AlertOctagon className="w-6 h-6 text-red-600" />
+                ) : (
+                  <AlertTriangle className="w-6 h-6 text-amber-600" />
+                )}
+              </div>
+              <div className="flex-1">
+                <h3
+                  className={
+                    expiryState === "expired" ? "text-red-900 mb-2" : "text-amber-900 mb-2"
+                  }
+                >
+                  {expiryState === "expired"
+                    ? "Dieses Deployment ist abgelaufen und wird in Kürze gelöscht."
+                    : `Läuft am ${new Date(deployment.expires_at).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })} ab`}
+                </h3>
+                <p
+                  className={
+                    expiryState === "expired"
+                      ? "text-sm text-red-700 mb-3"
+                      : "text-sm text-amber-700 mb-3"
+                  }
+                >
+                  {expiryState === "expired"
+                    ? "Verlängern Sie es jetzt, falls die nächtliche Bereinigung noch nicht gelaufen ist."
+                    : "Verlängern Sie es, bevor der Cleanup-Job es entfernt."}
+                </p>
+                <Button
+                  size="sm"
+                  variant={expiryState === "expired" ? "destructive" : "default"}
+                  disabled={extendInFlight}
+                  onClick={handleExtend}
+                >
+                  {extendInFlight ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Verlängere…
+                    </>
+                  ) : (
+                    "Um 4 Monate verlängern"
+                  )}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Progress Overview für aktive Deployments */}
       {deployment.status === 'deploying' && (

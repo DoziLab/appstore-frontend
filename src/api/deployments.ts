@@ -12,6 +12,10 @@ export type DeploymentDto = {
   config_json?: string | null;
   deployment_parameters?: string | null;
   access_types_json: string;
+  // Lifecycle (B6). Both nullable for legacy rows from before the
+  // expires_at migration. UI: see src/utils/deployment.ts.
+  expires_at?: string | null;
+  expiry_warning_at?: string | null;
   created_at: string;
   updated_at: string;
   template_version?: {
@@ -31,6 +35,10 @@ export type DeploymentDto = {
     openstack_instance_id?: string | null;
     status?: string | null;
     ip_address?: string | null;
+    // Nova flavor name the Heat-Stack was created with. Nullable for legacy
+    // rows from before the per-instance flavor migration; new instances
+    // always have it. Resolve against /openstack/flavors for vCPU/RAM/disk.
+    flavor?: string | null;
     access_urls: Array<{
       id: string;
       access_type: string | null;
@@ -83,6 +91,10 @@ export type DeploymentLogDto = {
   created_at: string;
 };
 
+// Allowed deployment runtimes in months. Must mirror the backend's
+// ALLOWED_RUNTIME_MONTHS — wizard <Select> options must stay in sync.
+export type RuntimeMonths = 1 | 3 | 4 | 6 | 12 | 24;
+
 export type DeploymentCreateRequest = {
   name?: string;
   template_version_id: string;
@@ -95,6 +107,8 @@ export type DeploymentCreateRequest = {
   config_json?: string;
   parameters?: Record<string, any>;
   user_files?: Record<string, string>;  // file_name -> base64-encoded content
+  // Optional — backend defaults to 4 months if omitted.
+  runtime_months?: RuntimeMonths;
   stack_assignments?: Array<{
     groups: Array<{
       group_name: string;
@@ -269,4 +283,41 @@ export async function getAllDeployments(openstackProjectId: string | null): Prom
     return (resp as DeploymentsListEnvelope).data || [];
   }
   return Array.isArray(resp) ? resp : [];
+}
+
+// ── Lifecycle: extend deployment ─────────────────────────────────────────────
+//
+// PATCH /api/v1/deployments/{id}/extend pushes expires_at and expiry_warning_at
+// into the future by `runtime_months`. Anchored on max(now, current_expires_at)
+// so a user clicking "+4 months" while the deployment still has 60 days left
+// stacks the extension; a user clicking after expiry but before the Beat sweep
+// gets a fresh window from now.
+
+export type DeploymentExtendResponse = {
+  deployment_id: string;
+  expires_at: string;
+  expiry_warning_at: string;
+  runtime_months_added: number;
+};
+
+export async function extendDeployment(
+  deploymentId: string,
+  runtimeMonths: RuntimeMonths,
+  openstackProjectId: string | null,
+): Promise<DeploymentExtendResponse> {
+  const resp = await apiFetch<{
+    success: boolean;
+    message: string;
+    data: DeploymentExtendResponse;
+    errors: unknown;
+    timestamp: string;
+    request_id: string;
+  }>(
+    `/api/v1/deployments/${deploymentId}/extend${projectQuery(openstackProjectId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ runtime_months: runtimeMonths }),
+    },
+  );
+  return resp.data;
 }

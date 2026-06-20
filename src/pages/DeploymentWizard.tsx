@@ -105,7 +105,7 @@ export function DeploymentWizard({
   const [selectedKeycloakGroupId, setSelectedKeycloakGroupId] =
     useState<string>("");
   const [deploymentName, setDeploymentName] = useState<string>("");
-  const [runtime, setRuntime] = useState<string>("3");
+  const [runtime, setRuntime] = useState<string>("4");
   const [deploymentMode, setDeploymentMode] = useState<
     "per_group" | "per_student" | "per_course"
   >("per_group");
@@ -588,6 +588,10 @@ export function DeploymentWizard({
         template_version_id: selectedVersionId,
         course_id: selectedKeycloakGroupId,
         openstack_project_id: activeProjectId,
+        // Wizard runtime select holds a stringified value; backend expects an
+        // integer from ALLOWED_RUNTIME_MONTHS (1/3/4/6/12/24). Cast is safe
+        // because the <Select> options are constrained to those values.
+        runtime_months: parseInt(runtime, 10) as DeploymentCreateRequest["runtime_months"],
         parameters: heatParameters,
         ...(Object.keys(userFilesPayload).length > 0 && { user_files: userFilesPayload }),
         stack_assignments: groupStackAssignments.map((stack, stackIndex) => ({
@@ -1029,6 +1033,7 @@ export function DeploymentWizard({
               <SelectContent>
                 <SelectItem value="1">1 Monat</SelectItem>
                 <SelectItem value="3">3 Monate</SelectItem>
+                <SelectItem value="4">4 Monate (Standard)</SelectItem>
                 <SelectItem value="6">6 Monate</SelectItem>
                 <SelectItem value="12">1 Jahr</SelectItem>
                 <SelectItem value="24">2 Jahre</SelectItem>
@@ -1123,6 +1128,7 @@ export function DeploymentWizard({
       const runtimeLabels: Record<string, string> = {
         "1": "1 Monat",
         "3": "3 Monate",
+        "4": "4 Monate",
         "6": "6 Monate",
         "12": "1 Jahr",
         "24": "2 Jahre",

@@ -38,6 +38,7 @@ import {
 } from '../api/deployments';
 import { getQuotas, QuotasResponse } from '../api/quotas';
 import { getTemplates, approveTemplate, rejectTemplate, TemplateDto } from '../api/templates';
+import { getFlavors, FlavorDto } from '../api/openstack';
 import React from 'react';
 
 
@@ -56,6 +57,11 @@ export function AdminMonitoring() {
 
   const [pendingTemplates, setPendingTemplates] = useState<TemplateDto[]>([]);
   const [templateActionError, setTemplateActionError] = useState<string | null>(null);
+
+  // Nova flavor catalog, keyed by flavor name (matches the value of the
+  // template's `flavor` parameter default). Used to render real vCPU/RAM/Disk
+  // numbers instead of hardcoded multipliers. Empty Map = not loaded yet.
+  const [flavorsByName, setFlavorsByName] = useState<Map<string, FlavorDto>>(new Map());
 
   const handleApprove = async (templateId: string) => {
     try {
@@ -109,6 +115,19 @@ export function AdminMonitoring() {
     getTemplates({ status: 'pending' })
       .then((res) => setPendingTemplates(res.data))
       .catch(console.error);
+  }, []);
+
+  // Load flavor catalog once. Pending templates have no per-lecturer context
+  // here, so we fetch from the admin's own project — flavors are typically
+  // OpenStack-cluster-wide, so this works for the cards' display purpose.
+  useEffect(() => {
+    getFlavors()
+      .then((resp) => {
+        setFlavorsByName(new Map(resp.flavors.map((f) => [f.name, f])));
+      })
+      .catch((err) => {
+        console.error('Failed to load flavors', err);
+      });
   }, []);
 
 
@@ -693,8 +712,9 @@ export function AdminMonitoring() {
                         )}
                         <div className="flex items-center gap-4 text-sm text-slate-500">
                           <span>Eingereicht: {new Date(template.created_at).toLocaleString()}</span>
-                          {/* TODO: owner_id is available but not resolved to a display name.
-                              Needs GET /users/{id} or a user lookup endpoint from the backend. */}
+                          <span title={template.owner_email ?? undefined}>
+                            von {template.owner_name ?? template.owner_username ?? template.owner_id}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -703,10 +723,16 @@ export function AdminMonitoring() {
                     {(() => {
                       const version = template.versions?.[0];
                       const flavorParam = version?.parameters?.find(p => p.name === 'flavor');
-                      // TODO (#73): flavor name (e.g. "gp1.medium") is available but vCPU/RAM/storage
-                      // numbers are not — requires GET /openstack/flavors from backend (Nova API).
-                      // TODO (#74): owner_id is available but not resolved to a display name —
-                      // requires GET /users/{id} or owner_name in TemplateResponse from backend.
+                      const flavorName = flavorParam?.default as string | undefined;
+                      // Resolve flavor name → real vCPU/RAM/Disk from the Nova
+                      // catalog loaded once at mount. If the template's flavor
+                      // default isn't in the catalog (private flavor, typo, or
+                      // catalog not loaded yet) we render '—' rather than
+                      // falling back to a hardcoded number.
+                      const flavor = flavorName ? flavorsByName.get(flavorName) : undefined;
+                      const cpuLabel = flavor ? `${flavor.vcpus} ${flavor.vcpus === 1 ? 'Kern' : 'Kerne'}` : '—';
+                      const ramLabel = flavor ? `${Math.round(flavor.ram_mb / 1024)} GB` : '—';
+                      const diskLabel = flavor ? `${flavor.disk_gb} GB` : '—';
                       return (
                         <div className="grid grid-cols-4 gap-4 mb-4">
                           <div className="p-3 bg-blue-50 rounded-lg">
@@ -714,16 +740,14 @@ export function AdminMonitoring() {
                               <Cpu className="w-4 h-4 text-blue-600" />
                               <span className="text-xs text-blue-600">CPU-Kerne</span>
                             </div>
-                            {/* TODO (#73): replace with vCPU count from flavor endpoint */}
-                            <p className="text-slate-900">8 Kerne</p>
+                            <p className="text-slate-900">{cpuLabel}</p>
                           </div>
                           <div className="p-3 bg-purple-50 rounded-lg">
                             <div className="flex items-center gap-2 mb-1">
                               <Database className="w-4 h-4 text-purple-600" />
                               <span className="text-xs text-purple-600">RAM</span>
                             </div>
-                            {/* TODO (#73): replace with RAM from flavor endpoint */}
-                            <p className="text-slate-900">16 GB</p>
+                            <p className="text-slate-900">{ramLabel}</p>
                           </div>
                           <div className="p-3 bg-teal-50 rounded-lg">
                             <div className="flex items-center gap-2 mb-1">
@@ -731,7 +755,7 @@ export function AdminMonitoring() {
                               <span className="text-xs text-teal-600">Flavor</span>
                             </div>
                             <p className="text-slate-900 text-sm">
-                              {flavorParam?.default ?? '—'}
+                              {flavorName ?? '—'}
                             </p>
                           </div>
                           <div className="p-3 bg-slate-50 rounded-lg">
@@ -739,8 +763,7 @@ export function AdminMonitoring() {
                               <HardDrive className="w-4 h-4 text-slate-600" />
                               <span className="text-xs text-slate-600">Speicher</span>
                             </div>
-                            {/* TODO (#73): replace with disk size from flavor endpoint */}
-                            <p className="text-slate-900">80 GB</p>
+                            <p className="text-slate-900">{diskLabel}</p>
                           </div>
                         </div>
                       );

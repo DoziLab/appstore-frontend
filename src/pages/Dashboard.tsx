@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Server, Cpu, HardDrive, Activity, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { Server, Cpu, HardDrive, Activity, AlertCircle, CheckCircle2, Clock, AlertTriangle, AlertOctagon } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Progress } from '../components/ui/progress';
 import { Badge } from '../components/ui/badge';
 import { getQuotas, type QuotasResponse } from '../api/quotas';
 import { getAllDeployments, type DeploymentDto } from '../api/deployments';
+import { getExpiryState } from '../utils/deployment';
 import { useActiveOpenstackProject } from '../contexts/OpenstackProjectContext';
 
 interface DashboardProps {
@@ -19,7 +20,15 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
   const [activeDeployments, setActiveDeployments] = useState<number | null>(null);
   const [deploymentsError, setDeploymentsError] = useState<string | null>(null);
   const [deploymentsLoading, setDeploymentsLoading] = useState<boolean>(false);
-  const [recentDeployments, setRecentDeployments] = useState<Array<{ id: string; name: string; status: string; course?: string; updated: string }>>([]);
+  const [recentDeployments, setRecentDeployments] = useState<Array<{
+    id: string;
+    name: string;
+    status: string;
+    course?: string;
+    updated: string;
+    expires_at: string | null;
+    expiry_warning_at: string | null;
+  }>>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -77,6 +86,11 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
           status: d.status,
           course: d.course?.name || undefined,
           updated: formatRelativeFromISO(d.updated_at || d.created_at),
+          // B6: thread expiry timestamps through so the row can render an
+          // expiry icon. getExpiryState() handles the null cases for legacy
+          // deployments — no need to filter here.
+          expires_at: d.expires_at ?? null,
+          expiry_warning_at: d.expiry_warning_at ?? null,
         }));
         setRecentDeployments(mapped);
       })
@@ -189,22 +203,41 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
               {deploymentsLoading && (
                 <div className="text-sm text-slate-500">Lädt...</div>
               )}
-              {!deploymentsLoading && recentDeployments.map((deployment, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => onSelectDeployment?.(deployment.id)}
-                  className="flex items-center gap-4 p-4 rounded-lg bg-slate-50 border border-slate-100 hover:bg-slate-100 hover:border-slate-200 cursor-pointer transition-all"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-1">
-                      <p className="text-slate-900 truncate">{deployment.name}</p>
-                      {getStatusBadge(deployment.status)}
+              {!deploymentsLoading && recentDeployments.map((deployment, idx) => {
+                const expiryState = getExpiryState(deployment);
+                const expiryDateLabel = deployment.expires_at
+                  ? new Date(deployment.expires_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                  : null;
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => onSelectDeployment?.(deployment.id)}
+                    className="flex items-center gap-4 p-4 rounded-lg bg-slate-50 border border-slate-100 hover:bg-slate-100 hover:border-slate-200 cursor-pointer transition-all"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 mb-1">
+                        <p className="text-slate-900 truncate">{deployment.name}</p>
+                        {getStatusBadge(deployment.status)}
+                        {/* B6 expiry icon — only when warning/expired. Tooltip via
+                            native title attribute keeps the dependency footprint
+                            tiny on a hot list. */}
+                        {expiryState === 'warning' && (
+                          <span title={`Läuft am ${expiryDateLabel} ab`}>
+                            <AlertTriangle className="w-4 h-4 text-amber-500" />
+                          </span>
+                        )}
+                        {expiryState === 'expired' && (
+                          <span title="Wird in Kürze automatisch gelöscht">
+                            <AlertOctagon className="w-4 h-4 text-red-500" />
+                          </span>
+                        )}
+                      </div>
+                      {deployment.course && <p className="text-sm text-slate-500">{deployment.course}</p>}
+                      <p className="text-xs text-slate-400 mt-1">Aktualisiert {deployment.updated}</p>
                     </div>
-                    {deployment.course && <p className="text-sm text-slate-500">{deployment.course}</p>}
-                    <p className="text-xs text-slate-400 mt-1">Aktualisiert {deployment.updated}</p>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>

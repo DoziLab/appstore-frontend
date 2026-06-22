@@ -266,18 +266,29 @@ export function DeploymentDetailsPage() {
       }
 
       let resolvedCourseName = "Unbekannter Kurs";
-      if (backendDeployment.course?.name) {
-        resolvedCourseName = backendDeployment.course.name;
-      } else if (backendDeployment.course_id) {
+      
+      // Try to resolve course name from course_id first
+      if (backendDeployment.course_id) {
         const course = coursesCacheRef.current.find(
           (c) => c.id === backendDeployment.course_id
         );
         if (course) {
-          const group = groupsCacheRef.current.find(
-            (g) => g.id === (course as any).keycloak_course_id
-          );
-          resolvedCourseName = group?.name || course.name || resolvedCourseName;
+          // If course has keycloak_course_id, try to resolve the Keycloak group name
+          if ((course as any).keycloak_course_id) {
+            const group = groupsCacheRef.current.find(
+              (g) => g.id === (course as any).keycloak_course_id
+            );
+            resolvedCourseName = group?.name || course.name || resolvedCourseName;
+          } else {
+            // Fall back to course name
+            resolvedCourseName = course.name || resolvedCourseName;
+          }
         }
+      }
+      
+      // Fall back to course.name from backend if available
+      if (resolvedCourseName === "Unbekannter Kurs" && backendDeployment.course?.name) {
+        resolvedCourseName = backendDeployment.course.name;
       }
 
       return {
@@ -315,7 +326,7 @@ export function DeploymentDetailsPage() {
     // Fetch reference data + initial deployment + existing logs in parallel.
     // Flavors are merged in even on partial failure (empty Map → fallback '—').
     Promise.all([
-      getMyCourses({ page: 1, page_size: 100 }).catch(() => ({ data: [] as CourseDto[] })),
+      getMyCourses({ page: 1, page_size: 100, openstack_project_id: activeProjectId }).catch(() => ({ data: [] as CourseDto[] })),
       getKeycloakGroups().catch(() => ({ data: [] as KeycloakGroup[] })),
       getDeployment(deploymentId, activeProjectId),
       getDeploymentLogs(deploymentId, activeProjectId).catch(() => ({ data: [] as DeploymentLogDto[] })),

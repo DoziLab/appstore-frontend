@@ -18,6 +18,7 @@ import {
   Flag,
   AlertTriangle,
   AlertOctagon,
+  Calendar,
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -36,11 +37,18 @@ import {
   AlertDialogTrigger,
 } from "../components/ui/alert-dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
+import {
   AccessType,
   DeploymentCredentialsResponse,
   DeploymentLogDto,
   getDeploymentCredentials,
   extendDeployment,
+  type RuntimeMonths,
 } from "../api/deployments";
 import { type LogPhase, type PhaseStatus } from "./DeploymentDetailsPage";
 import { getExpiryState } from "../utils/deployment";
@@ -99,18 +107,19 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
   // request flies, error shown via toast, success refreshes the page so the
   // new expires_at lands in `deployment` via the parent's data loader.
   const [extendInFlight, setExtendInFlight] = useState(false);
+  const [extendDialogOpen, setExtendDialogOpen] = useState(false);
+  const [selectedExtendMonths, setSelectedExtendMonths] = useState<RuntimeMonths | null>(null);
 
   const expiryState = getExpiryState(deployment);
 
-  const handleExtend = useCallback(async () => {
-    if (extendInFlight) return;
+  const handleConfirmExtend = useCallback(async () => {
+    if (!selectedExtendMonths || extendInFlight) return;
     setExtendInFlight(true);
     try {
-      // Default extension matches the wizard default (4 months). If the UI
-      // ever offers a select for the extend amount, plumb the chosen value
-      // here instead of the hardcoded 4.
-      await extendDeployment(deployment.id, 4, activeProjectId);
-      toast.success("Deployment um 4 Monate verlängert.");
+      await extendDeployment(deployment.id, selectedExtendMonths, activeProjectId);
+      toast.success(`Deployment um ${selectedExtendMonths} Monat${selectedExtendMonths > 1 ? 'e' : ''} verlängert.`);
+      setExtendDialogOpen(false);
+      setSelectedExtendMonths(null);
       // Cheapest correct refresh — the parent route reloads the deployment
       // on mount, so we don't need a callback prop just for this case.
       window.location.reload();
@@ -123,7 +132,26 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
       }
       setExtendInFlight(false);
     }
-  }, [deployment.id, activeProjectId, extendInFlight]);
+  }, [deployment.id, activeProjectId, selectedExtendMonths, extendInFlight]);
+
+  // Calculate available months based on expires_at and today
+  const getAvailableExtendMonths = useCallback(() => {
+    if (!deployment.expires_at) return [1, 3, 4, 6, 12, 24];
+    
+    const today = new Date();
+    const expiresDate = new Date(deployment.expires_at);
+    
+    // Calculate months between today and expires_at
+    const monthsDiff = 
+      (expiresDate.getFullYear() - today.getFullYear()) * 12 + 
+      (expiresDate.getMonth() - today.getMonth());
+    
+    // Max extension is 24 months from today
+    const maxExtension = 24 - Math.max(0, monthsDiff);
+    
+    // Return only the months that don't exceed 24 months total
+    return [1, 3, 4, 6, 12, 24].filter(m => m <= maxExtension);
+  }, [deployment.expires_at]);
 
   const accessTypeLabels: Record<AccessType, string> = {
     ssh: "SSH",
@@ -312,11 +340,80 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
             <h1 className="text-slate-900 mb-2">{deployment.name}</h1>
             <p className="text-slate-600">{deployment.course}</p>
           </div>
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-col items-end gap-3">
             {getStatusBadge()}
+            <Calendar className="w-4 h-4 text-slate-400" />
             <p className="text-sm text-slate-500">
               Gestartet: {new Date(deployment.startedAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
             </p>
+            {deployment.expires_at && (
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                  disabled={extendInFlight}
+                  onClick={() => setExtendDialogOpen(true)}
+                >
+                  Verlängern
+                </Button>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm text-slate-500">
+                    Ablaufdatum: {new Date(deployment.expires_at).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                  </p>
+                </div>
+                
+              </div>
+            )}
+
+            {/* Extend Deployment Dialog */}
+            {deployment.expires_at && (
+              <AlertDialog open={extendDialogOpen} onOpenChange={setExtendDialogOpen}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Deployment verlängern</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Wählen Sie aus, um wie viele Monate Sie das Deployment verlängern möchten. Maximal 24 Monate ab heute.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <div className="grid grid-cols-2 gap-2 py-4">
+                    {[1, 3, 4, 6, 12, 24].map((months) => {
+                      const availableMonths = getAvailableExtendMonths();
+                      const isAvailable = availableMonths.includes(months);
+                      return (
+                        <Button
+                          key={months}
+                          variant={selectedExtendMonths === months ? "default" : "outline"}
+                          size="sm"
+                          disabled={!isAvailable}
+                          onClick={() => setSelectedExtendMonths(months as RuntimeMonths)}
+                        >
+                          {months} Monat{months > 1 ? 'e' : ''}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={extendInFlight}>
+                      Abbrechen
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      disabled={!selectedExtendMonths || extendInFlight}
+                      onClick={handleConfirmExtend}
+                    >
+                      {extendInFlight ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Verlängere…
+                        </>
+                      ) : (
+                        "Verlängern"
+                      )}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </div>
         </div>
       </div>
@@ -370,7 +467,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
                   size="sm"
                   variant={expiryState === "expired" ? "destructive" : "default"}
                   disabled={extendInFlight}
-                  onClick={handleExtend}
+                  onClick={() => setExtendDialogOpen(true)}
                 >
                   {extendInFlight ? (
                     <>
@@ -378,7 +475,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
                       Verlängere…
                     </>
                   ) : (
-                    "Um 4 Monate verlängern"
+                    "Verlängern"
                   )}
                 </Button>
               </div>

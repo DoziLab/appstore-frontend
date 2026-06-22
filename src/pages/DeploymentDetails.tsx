@@ -342,6 +342,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
           </div>
           <div className="flex flex-col items-end gap-3">
             {getStatusBadge()}
+            <Calendar className="w-4 h-4 text-slate-400" />
             <p className="text-sm text-slate-500">
               Gestartet: {new Date(deployment.startedAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
             </p>
@@ -357,7 +358,6 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
                   Verlängern
                 </Button>
                 <div className="flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-slate-400" />
                   <p className="text-sm text-slate-500">
                     Ablaufdatum: {new Date(deployment.expires_at).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}
                   </p>

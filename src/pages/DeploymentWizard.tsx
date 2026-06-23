@@ -107,7 +107,7 @@ export function DeploymentWizard({
   const [selectedKeycloakGroupId, setSelectedKeycloakGroupId] =
     useState<string>("");
   const [deploymentName, setDeploymentName] = useState<string>("");
-  const [runtime, setRuntime] = useState<string>("4");
+  const [runtime, setRuntime] = useState<string>("3");
   const [deploymentMode, setDeploymentMode] = useState<
     "per_group" | "per_student" | "per_course"
   >("per_group");
@@ -1095,9 +1095,32 @@ export function DeploymentWizard({
           {/* Section 2: Groups */}
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-black">Gruppen & Kurszuordnung</CardTitle>
+              <CardTitle className="text-slate-900">Gruppen & Kurszuordnung</CardTitle>
             </CardHeader>
-            <CardContent className="bg-white rounded-lg p-4 space-y-6">
+            <CardContent className="pt-2 space-y-6">
+              <div>
+                <Label>Kurs auswählen</Label>
+                <Select
+                  value={selectedKeycloakGroupId}
+                  onValueChange={setSelectedKeycloakGroupId}
+                  disabled={loading.groups}
+                >
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="z.B. WWI23SEB" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {keycloakGroups.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500 mt-2">
+                  Wählen Sie eine Keycloak-Gruppe (Kurs) aus
+                </p>
+              </div>
+
               <div>
                 <Label>Anzahl der Gruppen</Label>
                 <Input
@@ -1130,31 +1153,7 @@ export function DeploymentWizard({
                   }}
                 />
                 <p className="text-xs text-slate-500 mt-2">
-                  Legen Sie fest, in wie viele Gruppen die Studenten aufgeteilt
-                  werden
-                </p>
-              </div>
-
-              <div>
-                <Label>Kurs auswählen</Label>
-                <Select
-                  value={selectedKeycloakGroupId}
-                  onValueChange={setSelectedKeycloakGroupId}
-                  disabled={loading.groups}
-                >
-                  <SelectTrigger className="mt-2">
-                    <SelectValue placeholder="z.B. WWI23SEB" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {keycloakGroups.map((group) => (
-                      <SelectItem key={group.id} value={group.id}>
-                        {group.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-slate-500 mt-2">
-                  Wählen Sie eine Keycloak-Gruppe (Kurs) aus
+                  In wie viele Gruppen sollen die Studierenden aufgeteilt werden? Geben Sie eine Zahl von 1–50 an.
                 </p>
               </div>
 
@@ -1269,7 +1268,7 @@ export function DeploymentWizard({
                   }}
                 />
                 <p className="text-xs text-slate-500 mt-2">
-                  Geben Sie an, wie viele Stack-Instanzen Sie benötigen
+                  Wie viele separate Arbeitsumgebungen sollen erstellt werden? (1 = alle teilen sich eine Umgebung; mehrere = getrennte Umgebungen für Gruppen/Studierende)
                 </p>
               </div>
             </CardContent>
@@ -1672,7 +1671,7 @@ export function DeploymentWizard({
               className="bg-teal-500 hover:bg-teal-600 text-white"
               disabled={isDeploying || validationErrors.length > 0}
             >
-              Weiter
+              Detaillierte Konfiguration
               <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           )}

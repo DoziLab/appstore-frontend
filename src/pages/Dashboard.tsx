@@ -247,8 +247,8 @@ export function Dashboard({ onSelectDeployment }: DashboardProps) {
           {/* Resource Quotas */}
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Ressourcenkontingente</CardTitle>
-              <CardDescription>Ihre aktuellen Ressourcengrenzen</CardDescription>
+              <CardTitle>Quick Actions</CardTitle>
+              <CardDescription>Wählen Sie eine Aktion</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
                 {quotasError && (

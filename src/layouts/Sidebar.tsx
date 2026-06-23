@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 import { useKeycloak } from "@react-keycloak/web";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 
 interface SidebarProps {
   logo: string;
@@ -31,7 +31,6 @@ export function Sidebar({ logo }: SidebarProps) {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
     { id: 'courses', label: 'Kurse', icon: BookOpen, path: '/courses' },
     { id: 'appstore', label: 'App Store', icon: Store, path: '/appstore' },
-    { id: 'config', label: 'Einstellungen', icon: Settings, path: '/config' },
     { id: 'admin', label: 'Admin Monitoring', icon: Shield, path: '/admin' },
   ];
 
@@ -63,6 +62,8 @@ export function Sidebar({ logo }: SidebarProps) {
     const redirectUri = window.location.origin;
     await keycloak.logout({ redirectUri });
   };
+
+  const navigate = useNavigate();
 
   // Check if we're in a deployment wizard to disable navigation
   const deploymentActive = location.pathname.startsWith('/deploy/');
@@ -100,7 +101,7 @@ export function Sidebar({ logo }: SidebarProps) {
 
       {/* User Profile */}
       <div className="p-4 border-t border-slate-200">
-        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center text-white">
             {initials}
           </div>
@@ -110,15 +111,28 @@ export function Sidebar({ logo }: SidebarProps) {
             <p className="text-xs text-slate-500 truncate">{roleLabel}</p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            disabled={!initialized || !keycloak.authenticated}
-            className="text-slate-400 hover:text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Logout"
-          >
-            <LogOut className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/config')}
+              disabled={!initialized || !keycloak.authenticated}
+              className="text-slate-400 hover:text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Einstellungen"
+              aria-label="Einstellungen"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={!initialized || !keycloak.authenticated}
+              className="text-slate-400 hover:text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Logout"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </div>
     </aside>

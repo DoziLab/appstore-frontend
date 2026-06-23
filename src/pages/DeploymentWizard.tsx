@@ -408,6 +408,29 @@ export function DeploymentWizard({
     return errors.length === 0;
   }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups]);
 
+  // Pure check for whether step 0 is sufficiently filled to allow navigation
+  const isStep0ValidPure = useCallback((): boolean => {
+    // basic required fields
+    if (!deploymentName || deploymentName.trim() === "") return false;
+    if (!selectedVersionId) return false;
+    if (!selectedKeycloakGroupId) return false;
+
+    // validate name pattern
+    if (!validateDeploymentNamePattern(deploymentName).valid) return false;
+
+    // additional checks for per_group mode
+    if (deploymentMode === "per_group" && selectedKeycloakGroupId && keycloakMembers.length > 0) {
+      const emptyGroups = studentGroups.filter((g) => g.students.length === 0);
+      if (emptyGroups.length > 0) return false;
+
+      const assignedStudentIds = new Set(studentGroups.flatMap((g) => g.students.map((s) => s.id)));
+      const unassignedStudents = keycloakMembers.filter((s) => !assignedStudentIds.has(s.id));
+      if (unassignedStudents.length > 0) return false;
+    }
+
+    return true;
+  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups]);
+
   // Update validation errors whenever relevant data changes (on current step)
   useEffect(() => {
     if (currentStep === 0) {
@@ -1562,53 +1585,81 @@ export function DeploymentWizard({
     );
   }
 
+  const nextButtonLabel = (() => {
+    if (currentStep === 0) return "Detaillierte Konfiguration";
+    if (currentStep === steps.length - 2) return "Zur Übersicht";
+    return "Weiter";
+  })();
+
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-8">
       {/* Progress Steps */}
-      <div className="flex items-center justify-between">
-        {steps.map((step, index) => {
-          const StepIcon = step.icon;
-          const isActive = index === currentStep;
-          const isCompleted = index < currentStep;
+      <div className="flex items-start justify-between">
+        <div className="flex items-center flex-1">
+          {steps.map((step, index) => {
+            const StepIcon = step.icon;
+            const isActive = index === currentStep;
+            const isCompleted = index < currentStep;
+            const canNavigate = index <= currentStep || isStep0ValidPure();
 
-          return (
-            <div key={step.stepKey} className="flex items-center flex-1">
-              <div className="flex flex-col items-center">
-                <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                    isCompleted
-                      ? "bg-teal-500 text-white"
-                      : isActive
-                        ? "bg-teal-100 text-teal-600 border-2 border-teal-500"
-                        : "bg-slate-100 text-slate-400"
-                  }`}
-                >
-                  {isCompleted ? (
-                    <Check className="w-6 h-6" />
-                  ) : (
-                    <StepIcon className="w-6 h-6" />
-                  )}
+            return (
+              <div
+                key={step.stepKey}
+                className={`flex items-center flex-1 ${canNavigate ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  if (canNavigate) setCurrentStep(index);
+                }}
+                onKeyDown={(e) => {
+                  if ((e.key === 'Enter' || e.key === ' ') && canNavigate) {
+                    setCurrentStep(index);
+                  }
+                }}
+              >
+                <div className="flex flex-col items-center">
+                  <div
+                    className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                      isCompleted
+                        ? "bg-teal-500 text-white"
+                        : isActive
+                          ? "bg-teal-100 text-teal-600 border-2 border-teal-500"
+                          : "bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    {isCompleted ? (
+                      <Check className="w-6 h-6" />
+                    ) : (
+                      <StepIcon className="w-6 h-6" />
+                    )}
+                  </div>
+                  <p
+                    className={`text-xs mt-2 text-center ${
+                      isActive
+                        ? "text-teal-600 font-medium"
+                        : isCompleted
+                          ? "text-slate-600"
+                          : "text-slate-400"
+                    }`}
+                  >
+                    {step.name}
+                  </p>
                 </div>
-                <p
-                  className={`text-xs mt-2 text-center ${
-                    isActive
-                      ? "text-teal-600 font-medium"
-                      : isCompleted
-                        ? "text-slate-600"
-                        : "text-slate-400"
-                  }`}
-                >
-                  {step.name}
-                </p>
+                {index < steps.length - 1 && (
+                  <div
+                    className={`h-0.5 flex-1 -mt-6 ${isCompleted ? "bg-teal-500" : "bg-slate-200"}`}
+                  />
+                )}
               </div>
-              {index < steps.length - 1 && (
-                <div
-                  className={`h-0.5 flex-1 -mt-6 ${isCompleted ? "bg-teal-500" : "bg-slate-200"}`}
-                />
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+
+        <div className="pl-4">
+          <Button variant="outline" onClick={onCancel} disabled={isDeploying}>
+            Deployment abbrechen
+          </Button>
+        </div>
       </div>
 
       {/* Content */}
@@ -1671,7 +1722,7 @@ export function DeploymentWizard({
               className="bg-teal-500 hover:bg-teal-600 text-white"
               disabled={isDeploying || validationErrors.length > 0}
             >
-              Detaillierte Konfiguration
+              {nextButtonLabel}
               <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           )}
@@ -1690,7 +1741,7 @@ export function DeploymentWizard({
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Application deployen
+                  Anwendung deployen
                 </>
               )}
             </Button>

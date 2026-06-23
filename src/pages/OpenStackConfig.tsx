@@ -19,6 +19,7 @@ import {
   type OpenstackCredentialsCreate,
 } from '../api/openstackProjects';
 import { getQuotas, type QuotasResponse } from '../api/quotas';
+import { GithubIntegrationCard } from '../components/GithubIntegrationCard';
 
 const percent = (used?: number, limit?: number) => {
   if (!used || !limit || limit === 0) return 0;
@@ -237,6 +238,9 @@ export function OpenStackConfig() {
               </div>
             </CardContent>
           </Card>
+
+          {/* GitHub-Integration */}
+          <GithubIntegrationCard />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Authentication Settings */}

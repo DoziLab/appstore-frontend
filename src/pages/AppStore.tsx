@@ -89,24 +89,24 @@ export function AppStore({ onDeploy }: AppStoreProps) {
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
 
   // Fetch templates from backend
-  useEffect(() => {
-    const fetchTemplates = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const response = await getTemplates({
-          status: 'approved', // Only show approved templates
-          page_size: 100, // Get all templates
-        });
-        setTemplates(response.data);
-      } catch (err) {
-        console.error('Failed to fetch templates:', err);
-        setError(err instanceof Error ? err.message : 'Fehler beim Laden der Templates');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const fetchTemplates = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await getTemplates({
+        status: 'approved', // Only show approved templates
+        page_size: 100, // Get all templates
+      });
+      setTemplates(response.data);
+    } catch (err) {
+      console.error('Failed to fetch templates:', err);
+      setError(err instanceof Error ? err.message : 'Fehler beim Laden der Templates');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchTemplates();
   }, []);
 
@@ -288,6 +288,7 @@ export function AppStore({ onDeploy }: AppStoreProps) {
       <AddTemplateDialog
         open={addTemplateOpen}
         onOpenChange={setAddTemplateOpen}
+        onImported={fetchTemplates}
       />
 
       {/* Template Details Modal */}

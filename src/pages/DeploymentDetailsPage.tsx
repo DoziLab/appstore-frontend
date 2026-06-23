@@ -10,6 +10,8 @@ import {
 } from "../api/deployments";
 import { getMyCourses, type CourseDto } from "../api/courses";
 import { getKeycloakGroups, type KeycloakGroup } from "../api/keycloak";
+import { getFlavors, type FlavorDto } from "../api/openstack";
+import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
 
 // ── Phase definitions ─────────────────────────────────────────────────────────
 
@@ -169,6 +171,7 @@ const ACTIVE_STATUSES = new Set(["deploying"]);
 export function DeploymentDetailsPage() {
   const { deploymentId } = useParams<{ deploymentId: string }>();
   const navigate = useNavigate();
+  const { activeProjectId } = useActiveOpenstackProject();
   const [deploymentData, setDeploymentData] = useState<any>(null);
   const [loadingDeployment, setLoadingDeployment] = useState(false);
   const isDeletingRef = useRef(false);
@@ -176,6 +179,11 @@ export function DeploymentDetailsPage() {
   // Stable reference data fetched once
   const coursesCacheRef = useRef<CourseDto[]>([]);
   const groupsCacheRef = useRef<KeycloakGroup[]>([]);
+  // Nova flavor catalog keyed by name. Loaded once at mount; used to turn
+  // each instance's `flavor` string into real vCPU/RAM/disk for the resource
+  // block. Empty Map until the request resolves — instances with unknown
+  // flavors fall back to '—' rather than a hardcoded multiplier.
+  const flavorsByNameRef = useRef<Map<string, FlavorDto>>(new Map());
   // Accumulate logs from SSE
   const logsRef = useRef<DeploymentLogDto[]>([]);
   const backendDeploymentRef = useRef<any>(null);
@@ -189,7 +197,7 @@ export function DeploymentDetailsPage() {
     setDeploymentData((prev: any) => prev ? { ...prev, status: "deleting" } : prev);
 
     try {
-      await deleteDeployment(id);
+      await deleteDeployment(id, activeProjectId);
     } catch (err) {
       console.error("Failed to initiate delete", err);
     }
@@ -199,7 +207,7 @@ export function DeploymentDetailsPage() {
     const poll = async () => {
       attempts++;
       try {
-        const resp = await getDeployment(id);
+        const resp = await getDeployment(id, activeProjectId);
         const s = resp.data.status.toUpperCase();
         if (s === "DELETED" || s === "DELETE_COMPLETE") {
           navigate("/dashboard");
@@ -244,25 +252,43 @@ export function DeploymentDetailsPage() {
       }));
 
       let cpu = 0, ram = 0, storage = 0;
-      if (backendDeployment.instances?.length > 0) {
-        cpu = backendDeployment.instances.length * 2;
-        ram = backendDeployment.instances.length * 4;
-        storage = backendDeployment.instances.length * 20;
+      // Sum vCPU/RAM/disk from each instance's actual Nova flavor. Instances
+      // whose flavor isn't in the catalog (legacy rows with `flavor === null`,
+      // private flavors not visible to the caller) are silently skipped — we
+      // do NOT fall back to length*N multipliers, because that masks the gap.
+      const flavorsByName = flavorsByNameRef.current;
+      for (const inst of backendDeployment.instances ?? []) {
+        const f = inst.flavor ? flavorsByName.get(inst.flavor) : undefined;
+        if (!f) continue;
+        cpu += f.vcpus;
+        ram += Math.round(f.ram_mb / 1024);
+        storage += f.disk_gb;
       }
 
       let resolvedCourseName = "Unbekannter Kurs";
-      if (backendDeployment.course?.name) {
-        resolvedCourseName = backendDeployment.course.name;
-      } else if (backendDeployment.course_id) {
+      
+      // Try to resolve course name from course_id first
+      if (backendDeployment.course_id) {
         const course = coursesCacheRef.current.find(
           (c) => c.id === backendDeployment.course_id
         );
         if (course) {
-          const group = groupsCacheRef.current.find(
-            (g) => g.id === (course as any).keycloak_course_id
-          );
-          resolvedCourseName = group?.name || course.name || resolvedCourseName;
+          // If course has keycloak_course_id, try to resolve the Keycloak group name
+          if ((course as any).keycloak_course_id) {
+            const group = groupsCacheRef.current.find(
+              (g) => g.id === (course as any).keycloak_course_id
+            );
+            resolvedCourseName = group?.name || course.name || resolvedCourseName;
+          } else {
+            // Fall back to course name
+            resolvedCourseName = course.name || resolvedCourseName;
+          }
         }
+      }
+      
+      // Fall back to course.name from backend if available
+      if (resolvedCourseName === "Unbekannter Kurs" && backendDeployment.course?.name) {
+        resolvedCourseName = backendDeployment.course.name;
       }
 
       return {
@@ -281,6 +307,10 @@ export function DeploymentDetailsPage() {
         phases,
         logs,
         error: failedLog?.message || undefined,
+        // Lifecycle (B6) — passed through verbatim; presentational decisions
+        // (banner / icon / 'läuft ab in X Tagen') happen in DeploymentDetails.
+        expires_at: backendDeployment.expires_at ?? null,
+        expiry_warning_at: backendDeployment.expiry_warning_at ?? null,
         resources: { cpu, ram, storage },
       };
     },
@@ -293,15 +323,20 @@ export function DeploymentDetailsPage() {
     setLoadingDeployment(true);
     logsRef.current = [];
 
-    // Fetch reference data + initial deployment + existing logs in parallel
+    // Fetch reference data + initial deployment + existing logs in parallel.
+    // Flavors are merged in even on partial failure (empty Map → fallback '—').
     Promise.all([
-      getMyCourses({ page: 1, page_size: 100 }).catch(() => ({ data: [] as CourseDto[] })),
+      getMyCourses({ page: 1, page_size: 100, openstack_project_id: activeProjectId }).catch(() => ({ data: [] as CourseDto[] })),
       getKeycloakGroups().catch(() => ({ data: [] as KeycloakGroup[] })),
-      getDeployment(deploymentId),
-      getDeploymentLogs(deploymentId).catch(() => ({ data: [] as DeploymentLogDto[] })),
-    ]).then(([coursesResp, groupsResp, depResp, logsResp]) => {
+      getDeployment(deploymentId, activeProjectId),
+      getDeploymentLogs(deploymentId, activeProjectId).catch(() => ({ data: [] as DeploymentLogDto[] })),
+      getFlavors().catch(() => ({ flavors: [] as FlavorDto[] })),
+    ]).then(([coursesResp, groupsResp, depResp, logsResp, flavorsResp]) => {
       coursesCacheRef.current = (coursesResp as any)?.data || [];
       groupsCacheRef.current = (groupsResp as any)?.data || [];
+      flavorsByNameRef.current = new Map(
+        ((flavorsResp as any)?.flavors ?? []).map((f: FlavorDto) => [f.name, f])
+      );
       backendDeploymentRef.current = depResp.data;
 
       const existingLogs: DeploymentLogDto[] = (logsResp as any).data || [];
@@ -315,6 +350,7 @@ export function DeploymentDetailsPage() {
       const stopStream = streamDeploymentLogs(
         deploymentId,
         lastLogId,
+        activeProjectId,
         (log) => {
           if (isDeletingRef.current) return;
           logsRef.current = [...logsRef.current, log];
@@ -324,7 +360,7 @@ export function DeploymentDetailsPage() {
         },
         () => {
           if (isDeletingRef.current) return;
-          getDeployment(deploymentId).then((depResp) => {
+          getDeployment(deploymentId, activeProjectId).then((depResp) => {
             backendDeploymentRef.current = depResp.data;
             setDeploymentData(buildDeploymentData(depResp.data, logsRef.current));
           }).catch(() => {});
@@ -334,7 +370,7 @@ export function DeploymentDetailsPage() {
     }).catch(() => setLoadingDeployment(false));
 
     return () => { stopStreamRef.current?.(); stopStreamRef.current = null; };
-  }, [deploymentId, buildDeploymentData]);
+  }, [deploymentId, activeProjectId, buildDeploymentData]);
 
   if (!deploymentId) return <Navigate to="/dashboard" replace />;
   if (loadingDeployment) return <div className="p-6">Lade Deployment...</div>;

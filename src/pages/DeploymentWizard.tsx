@@ -51,6 +51,7 @@ import {
 } from "../api/deployments";
 import { GroupManager, type StudentGroup } from "../components/GroupManager";
 import keycloak from "../auth/keycloak";
+import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
 
 // GroupStackAssignment type (no UI component needed, auto-assignment in background)
 export interface GroupStackAssignment {
@@ -70,6 +71,7 @@ export function DeploymentWizard({
   onCancel,
   onComplete,
 }: DeploymentWizardProps) {
+  const { activeProjectId } = useActiveOpenstackProject();
   const [currentStep, setCurrentStep] = useState(0);
   const [isDeploying, setIsDeploying] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -105,7 +107,7 @@ export function DeploymentWizard({
   const [selectedKeycloakGroupId, setSelectedKeycloakGroupId] =
     useState<string>("");
   const [deploymentName, setDeploymentName] = useState<string>("");
-  const [runtime, setRuntime] = useState<string>("3");
+  const [runtime, setRuntime] = useState<string>("4");
   const [deploymentMode, setDeploymentMode] = useState<
     "per_group" | "per_student" | "per_course"
   >("per_group");
@@ -697,6 +699,16 @@ export function DeploymentWizard({
         return;
       }
 
+      // Backend pins the deployment to the user's active OpenStack project so
+      // later restart/delete uses the right credentials even if the user
+      // switches their clouds.yaml. Teachers must have one — the App-level
+      // setup gate normally prevents this branch, but be defensive.
+      if (!activeProjectId) {
+        setError("Kein aktives OpenStack-Projekt. Bitte richten Sie zuerst ein OpenStack-Projekt ein.");
+        setIsDeploying(false);
+        return;
+      }
+
       // Convert uploaded files to base64
       const userFilesPayload: Record<string, string> = {};
       for (const [name, file] of Object.entries(uploadedFiles)) {
@@ -714,6 +726,11 @@ export function DeploymentWizard({
         name: deploymentName.trim(),
         template_version_id: selectedVersionId,
         course_id: selectedKeycloakGroupId,
+        openstack_project_id: activeProjectId,
+        // Wizard runtime select holds a stringified value; backend expects an
+        // integer from ALLOWED_RUNTIME_MONTHS (1/3/4/6/12/24). Cast is safe
+        // because the <Select> options are constrained to those values.
+        runtime_months: parseInt(runtime, 10) as DeploymentCreateRequest["runtime_months"],
         parameters: heatParameters,
         ...(Object.keys(userFilesPayload).length > 0 && { user_files: userFilesPayload }),
         stack_assignments: groupStackAssignments.map((stack, stackIndex) => ({
@@ -1296,6 +1313,7 @@ export function DeploymentWizard({
       const runtimeLabels: Record<string, string> = {
         "1": "1 Monat",
         "3": "3 Monate",
+        "4": "4 Monate",
         "6": "6 Monate",
         "12": "1 Jahr",
         "24": "2 Jahre",

@@ -12,6 +12,10 @@ export type DeploymentDto = {
   config_json?: string | null;
   deployment_parameters?: string | null;
   access_types_json: string;
+  // Lifecycle (B6). Both nullable for legacy rows from before the
+  // expires_at migration. UI: see src/utils/deployment.ts.
+  expires_at?: string | null;
+  expiry_warning_at?: string | null;
   created_at: string;
   updated_at: string;
   template_version?: {
@@ -31,6 +35,10 @@ export type DeploymentDto = {
     openstack_instance_id?: string | null;
     status?: string | null;
     ip_address?: string | null;
+    // Nova flavor name the Heat-Stack was created with. Nullable for legacy
+    // rows from before the per-instance flavor migration; new instances
+    // always have it. Resolve against /openstack/flavors for vCPU/RAM/disk.
+    flavor?: string | null;
     access_urls: Array<{
       id: string;
       access_type: string | null;
@@ -83,14 +91,24 @@ export type DeploymentLogDto = {
   created_at: string;
 };
 
+// Allowed deployment runtimes in months. Must mirror the backend's
+// ALLOWED_RUNTIME_MONTHS — wizard <Select> options must stay in sync.
+export type RuntimeMonths = 1 | 3 | 4 | 6 | 12 | 24;
+
 export type DeploymentCreateRequest = {
   name?: string;
   template_version_id: string;
   course_id: string;
+  // Local DB id of the active OpenstackProject (NOT the Keystone tenant UUID).
+  // Backend pins the deployment to this project so later restart/delete uses
+  // the right credentials even if the user later switches their clouds.yaml.
+  openstack_project_id: string;
   deployment_mode?: string;
   config_json?: string;
   parameters?: Record<string, any>;
   user_files?: Record<string, string>;  // file_name -> base64-encoded content
+  // Optional — backend defaults to 4 months if omitted.
+  runtime_months?: RuntimeMonths;
   stack_assignments?: Array<{
     groups: Array<{
       group_name: string;
@@ -132,11 +150,20 @@ export async function createDeployment(data: DeploymentCreateRequest) {
   });
 }
 
-export async function getDeployment(deploymentId: string) {
-  return apiFetch<DeploymentResponse>(`/api/v1/deployments/${deploymentId}`);
+// All deployment endpoints below take `openstackProjectId` (local DB id of
+// the active OpenstackProject). Lecturers MUST pass it — backend returns 400
+// otherwise. Admins may pass null to skip the filter and see everything.
+function projectQuery(openstackProjectId: string | null): string {
+  return openstackProjectId ? `?openstack_project_id=${encodeURIComponent(openstackProjectId)}` : "";
 }
 
-export async function getDeploymentCredentials(deploymentId: string) {
+export async function getDeployment(deploymentId: string, openstackProjectId: string | null) {
+  return apiFetch<DeploymentResponse>(
+    `/api/v1/deployments/${deploymentId}${projectQuery(openstackProjectId)}`,
+  );
+}
+
+export async function getDeploymentCredentials(deploymentId: string, openstackProjectId: string | null) {
   return apiFetch<{
     success: boolean;
     message?: string;
@@ -144,10 +171,10 @@ export async function getDeploymentCredentials(deploymentId: string) {
     errors: unknown;
     timestamp?: string;
     request_id?: string;
-  }>(`/api/v1/deployments/${deploymentId}/credentials`);
+  }>(`/api/v1/deployments/${deploymentId}/credentials${projectQuery(openstackProjectId)}`);
 }
 
-export async function getDeploymentLogs(deploymentId: string) {
+export async function getDeploymentLogs(deploymentId: string, openstackProjectId: string | null) {
   return apiFetch<{
     success: boolean;
     message: string;
@@ -155,7 +182,7 @@ export async function getDeploymentLogs(deploymentId: string) {
     errors: unknown;
     timestamp: string;
     request_id: string;
-  }>(`/api/v1/deployments/${deploymentId}/logs`);
+  }>(`/api/v1/deployments/${deploymentId}/logs${projectQuery(openstackProjectId)}`);
 }
 
 /**
@@ -166,6 +193,7 @@ export async function getDeploymentLogs(deploymentId: string) {
 export function streamDeploymentLogs(
   deploymentId: string,
   sinceId: string | undefined,
+  openstackProjectId: string | null,
   onLog: (log: DeploymentLogDto) => void,
   onDone: () => void,
 ): () => void {
@@ -175,7 +203,12 @@ export function streamDeploymentLogs(
     try {
       try { await keycloak.updateToken(30); } catch {}
       const token = keycloak.token;
-      const url = `/api/v1/deployments/${deploymentId}/logs/stream${sinceId ? `?since_id=${sinceId}` : ""}`;
+      // Build query string with both since_id (optional) and openstack_project_id (required for lecturers).
+      const params = new URLSearchParams();
+      if (sinceId) params.set("since_id", sinceId);
+      if (openstackProjectId) params.set("openstack_project_id", openstackProjectId);
+      const qs = params.toString();
+      const url = `/api/v1/deployments/${deploymentId}/logs/stream${qs ? `?${qs}` : ""}`;
 
       const res = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -210,13 +243,16 @@ export function streamDeploymentLogs(
   return () => controller.abort();
 }
 
-export async function deleteDeployment(deploymentId: string) {
+export async function deleteDeployment(deploymentId: string, openstackProjectId: string | null) {
   // Backend returns 204 No Content — don't call res.json()
   await keycloak.updateToken(30).catch(() => {});
-  const res = await fetch(`/api/v1/deployments/${deploymentId}`, {
-    method: "DELETE",
-    headers: keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {},
-  });
+  const res = await fetch(
+    `/api/v1/deployments/${deploymentId}${projectQuery(openstackProjectId)}`,
+    {
+      method: "DELETE",
+      headers: keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {},
+    },
+  );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(text || res.statusText);
@@ -239,10 +275,49 @@ type DeploymentsListEnvelope = {
   request_id: string;
 };
 
-export async function getAllDeployments(): Promise<DeploymentDto[]> {
-  const resp = await apiFetch<DeploymentsListEnvelope | DeploymentDto[]>("/api/v1/deployments");
+export async function getAllDeployments(openstackProjectId: string | null): Promise<DeploymentDto[]> {
+  const resp = await apiFetch<DeploymentsListEnvelope | DeploymentDto[]>(
+    `/api/v1/deployments${projectQuery(openstackProjectId)}`,
+  );
   if (resp && typeof resp === "object" && "data" in resp) {
     return (resp as DeploymentsListEnvelope).data || [];
   }
   return Array.isArray(resp) ? resp : [];
+}
+
+// ── Lifecycle: extend deployment ─────────────────────────────────────────────
+//
+// PATCH /api/v1/deployments/{id}/extend pushes expires_at and expiry_warning_at
+// into the future by `runtime_months`. Anchored on max(now, current_expires_at)
+// so a user clicking "+4 months" while the deployment still has 60 days left
+// stacks the extension; a user clicking after expiry but before the Beat sweep
+// gets a fresh window from now.
+
+export type DeploymentExtendResponse = {
+  deployment_id: string;
+  expires_at: string;
+  expiry_warning_at: string;
+  runtime_months_added: number;
+};
+
+export async function extendDeployment(
+  deploymentId: string,
+  runtimeMonths: RuntimeMonths,
+  openstackProjectId: string | null,
+): Promise<DeploymentExtendResponse> {
+  const resp = await apiFetch<{
+    success: boolean;
+    message: string;
+    data: DeploymentExtendResponse;
+    errors: unknown;
+    timestamp: string;
+    request_id: string;
+  }>(
+    `/api/v1/deployments/${deploymentId}/extend${projectQuery(openstackProjectId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ runtime_months: runtimeMonths }),
+    },
+  );
+  return resp.data;
 }

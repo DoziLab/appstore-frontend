@@ -16,6 +16,9 @@ import {
   Flame,
   Terminal,
   Flag,
+  AlertTriangle,
+  AlertOctagon,
+  Calendar,
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -34,12 +37,22 @@ import {
   AlertDialogTrigger,
 } from "../components/ui/alert-dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
+import {
   AccessType,
   DeploymentCredentialsResponse,
   DeploymentLogDto,
   getDeploymentCredentials,
+  extendDeployment,
+  type RuntimeMonths,
 } from "../api/deployments";
 import { type LogPhase, type PhaseStatus } from "./DeploymentDetailsPage";
+import { getExpiryState } from "../utils/deployment";
+import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
 
 interface DeploymentStep {
   id: string;
@@ -66,6 +79,10 @@ interface Deployment {
   phases?: LogPhase[];
   logs?: DeploymentLogDto[];
   error?: string;
+  // Lifecycle (B6) — null for legacy deployments without expiry tracking.
+  // Both passed through from the backend, used by the expiry banner.
+  expires_at?: string | null;
+  expiry_warning_at?: string | null;
   resources: {
     cpu: number;
     ram: number;
@@ -80,11 +97,61 @@ interface DeploymentDetailsProps {
 }
 
 export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDetailsProps) {
+  const { activeProjectId } = useActiveOpenstackProject();
   const [credentialsVisible, setCredentialsVisible] = useState(false);
   const [credentialsLoading, setCredentialsLoading] = useState(false);
   const [credentialsError, setCredentialsError] = useState<string | null>(null);
   const [credentialsData, setCredentialsData] = useState<DeploymentCredentialsResponse | null>(null);
   const [passwordVisibility, setPasswordVisibility] = useState<Record<string, boolean>>({});
+  // Inline extend-action state (B6). Pessimistic: button disabled while
+  // request flies, error shown via toast, success refreshes the page so the
+  // new expires_at lands in `deployment` via the parent's data loader.
+  const [extendInFlight, setExtendInFlight] = useState(false);
+  const [extendDialogOpen, setExtendDialogOpen] = useState(false);
+  const [selectedExtendMonths, setSelectedExtendMonths] = useState<RuntimeMonths | null>(null);
+
+  const expiryState = getExpiryState(deployment);
+
+  const handleConfirmExtend = useCallback(async () => {
+    if (!selectedExtendMonths || extendInFlight) return;
+    setExtendInFlight(true);
+    try {
+      await extendDeployment(deployment.id, selectedExtendMonths, activeProjectId);
+      toast.success(`Deployment um ${selectedExtendMonths} Monat${selectedExtendMonths > 1 ? 'e' : ''} verlängert.`);
+      setExtendDialogOpen(false);
+      setSelectedExtendMonths(null);
+      // Cheapest correct refresh — the parent route reloads the deployment
+      // on mount, so we don't need a callback prop just for this case.
+      window.location.reload();
+    } catch (err) {
+      const error = err as Error & { status?: number };
+      if (error.status === 403) {
+        toast.error("Keine Berechtigung, dieses Deployment zu verlängern.");
+      } else {
+        toast.error("Verlängern fehlgeschlagen. Bitte später erneut versuchen.");
+      }
+      setExtendInFlight(false);
+    }
+  }, [deployment.id, activeProjectId, selectedExtendMonths, extendInFlight]);
+
+  // Calculate available months based on expires_at and today
+  const getAvailableExtendMonths = useCallback(() => {
+    if (!deployment.expires_at) return [1, 3, 4, 6, 12, 24];
+    
+    const today = new Date();
+    const expiresDate = new Date(deployment.expires_at);
+    
+    // Calculate months between today and expires_at
+    const monthsDiff = 
+      (expiresDate.getFullYear() - today.getFullYear()) * 12 + 
+      (expiresDate.getMonth() - today.getMonth());
+    
+    // Max extension is 24 months from today
+    const maxExtension = 24 - Math.max(0, monthsDiff);
+    
+    // Return only the months that don't exceed 24 months total
+    return [1, 3, 4, 6, 12, 24].filter(m => m <= maxExtension);
+  }, [deployment.expires_at]);
 
   const accessTypeLabels: Record<AccessType, string> = {
     ssh: "SSH",
@@ -127,7 +194,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
     setCredentialsError(null);
 
     try {
-      const response = await getDeploymentCredentials(deployment.id);
+      const response = await getDeploymentCredentials(deployment.id, activeProjectId);
       setCredentialsData(response.data);
     } catch (err) {
       const error = err as Error & { status?: number };
@@ -139,7 +206,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
     } finally {
       setCredentialsLoading(false);
     }
-  }, [credentialsLoading, deployment.id]);
+  }, [credentialsLoading, deployment.id, activeProjectId]);
 
   const handleToggleCredentials = () => {
     const nextVisible = !credentialsVisible;
@@ -273,14 +340,149 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
             <h1 className="text-slate-900 mb-2">{deployment.name}</h1>
             <p className="text-slate-600">{deployment.course}</p>
           </div>
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-col items-end gap-3">
             {getStatusBadge()}
+            <Calendar className="w-4 h-4 text-slate-400" />
             <p className="text-sm text-slate-500">
               Gestartet: {new Date(deployment.startedAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
             </p>
+            {deployment.expires_at && (
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                  disabled={extendInFlight}
+                  onClick={() => setExtendDialogOpen(true)}
+                >
+                  Verlängern
+                </Button>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm text-slate-500">
+                    Ablaufdatum: {new Date(deployment.expires_at).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                  </p>
+                </div>
+                
+              </div>
+            )}
+
+            {/* Extend Deployment Dialog */}
+            {deployment.expires_at && (
+              <AlertDialog open={extendDialogOpen} onOpenChange={setExtendDialogOpen}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Deployment verlängern</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Wählen Sie aus, um wie viele Monate Sie das Deployment verlängern möchten. Maximal 24 Monate ab heute.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <div className="grid grid-cols-2 gap-2 py-4">
+                    {[1, 3, 4, 6, 12, 24].map((months) => {
+                      const availableMonths = getAvailableExtendMonths();
+                      const isAvailable = availableMonths.includes(months);
+                      return (
+                        <Button
+                          key={months}
+                          variant={selectedExtendMonths === months ? "default" : "outline"}
+                          size="sm"
+                          disabled={!isAvailable}
+                          onClick={() => setSelectedExtendMonths(months as RuntimeMonths)}
+                        >
+                          {months} Monat{months > 1 ? 'e' : ''}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={extendInFlight}>
+                      Abbrechen
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      disabled={!selectedExtendMonths || extendInFlight}
+                      onClick={handleConfirmExtend}
+                    >
+                      {extendInFlight ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Verlängere…
+                        </>
+                      ) : (
+                        "Verlängern"
+                      )}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Expiry banner (B6) — only shows when expires_at is set AND we're past
+          the warning threshold or already expired. Legacy deployments without
+          expiry tracking stay invisible here. */}
+      {expiryState !== "ok" && deployment.expires_at && (
+        <Card
+          className={
+            expiryState === "expired"
+              ? "border-red-200 shadow-sm bg-gradient-to-br from-red-50 to-white"
+              : "border-amber-200 shadow-sm bg-gradient-to-br from-amber-50 to-white"
+          }
+        >
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <div
+                className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  expiryState === "expired" ? "bg-red-100" : "bg-amber-100"
+                }`}
+              >
+                {expiryState === "expired" ? (
+                  <AlertOctagon className="w-6 h-6 text-red-600" />
+                ) : (
+                  <AlertTriangle className="w-6 h-6 text-amber-600" />
+                )}
+              </div>
+              <div className="flex-1">
+                <h3
+                  className={
+                    expiryState === "expired" ? "text-red-900 mb-2" : "text-amber-900 mb-2"
+                  }
+                >
+                  {expiryState === "expired"
+                    ? "Dieses Deployment ist abgelaufen und wird in Kürze gelöscht."
+                    : `Läuft am ${new Date(deployment.expires_at).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })} ab`}
+                </h3>
+                <p
+                  className={
+                    expiryState === "expired"
+                      ? "text-sm text-red-700 mb-3"
+                      : "text-sm text-amber-700 mb-3"
+                  }
+                >
+                  {expiryState === "expired"
+                    ? "Verlängern Sie es jetzt, falls die nächtliche Bereinigung noch nicht gelaufen ist."
+                    : "Verlängern Sie es, bevor der Cleanup-Job es entfernt."}
+                </p>
+                <Button
+                  size="sm"
+                  variant={expiryState === "expired" ? "destructive" : "default"}
+                  disabled={extendInFlight}
+                  onClick={() => setExtendDialogOpen(true)}
+                >
+                  {extendInFlight ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Verlängere…
+                    </>
+                  ) : (
+                    "Verlängern"
+                  )}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Progress Overview für aktive Deployments */}
       {deployment.status === 'deploying' && (
@@ -852,7 +1054,7 @@ function PhaseRow({ phase, isLive, defaultOpen }: { phase: LogPhase; isLive: boo
 
       {/* Log entries */}
       {open && (
-        <div style={{ borderTop: "1px solid #1e293b", backgroundColor: "#0f172a" }}>
+        <div style={{ borderTop: "1px solid #1e293b", backgroundColor: "#0f172a", maxHeight: "400px", overflowY: "auto" }}>
           {phase.logs.length === 0 ? (
             <p className="px-4 py-3 text-xs italic font-mono" style={{ color: "#475569" }}>
               {phase.status === "pending" ? "// Noch nicht gestartet" : "// Keine Einträge"}

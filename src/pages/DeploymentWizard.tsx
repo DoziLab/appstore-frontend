@@ -340,13 +340,44 @@ export function DeploymentWizard({
     setGroupStackAssignments(stacks);
   }, [numberOfStacks]);
 
+  // Helper function to sanitize deployment name (replace umlauts)
+  const sanitizeDeploymentName = (name: string): string => {
+    return name
+      .replace(/ä/g, "ae")
+      .replace(/ö/g, "oe")
+      .replace(/ü/g, "ue")
+      .replace(/Ä/g, "AE")
+      .replace(/Ö/g, "OE")
+      .replace(/Ü/g, "UE")
+      .replace(/ß/g, "ss");
+  };
+
+  // Helper function to validate deployment name pattern
+  const validateDeploymentNamePattern = (name: string): { valid: boolean; message?: string } => {
+    const pattern = /^[a-zA-Z][a-zA-Z0-9_.-]{0,254}$/;
+    
+    if (!name || name.trim() === "") {
+      return { valid: false, message: "Ein Deployment-Name ist erforderlich" };
+    }
+
+    if (!pattern.test(name)) {
+      return {
+        valid: false,
+        message: "Deployment-Name muss mit einem Buchstaben beginnen und darf nur Buchstaben, Zahlen, Unterstriche, Punkte und Bindestriche enthalten (max. 255 Zeichen)",
+      };
+    }
+
+    return { valid: true };
+  };
+
   // Validation function for step 0
   const validateStep0 = useCallback((): boolean => {
     const errors: string[] = [];
 
     // Check deployment name
-    if (!deploymentName || deploymentName.trim() === "") {
-      errors.push("Ein Deployment-Name ist erforderlich");
+    const nameValidation = validateDeploymentNamePattern(deploymentName);
+    if (!nameValidation.valid) {
+      errors.push(nameValidation.message || "Ein Deployment-Name ist erforderlich");
     }
 
     // Check if template and group are selected
@@ -1019,10 +1050,24 @@ export function DeploymentWizard({
             <Input
               id="deployment-name"
               placeholder="z.B. CS101-Jupyter-Herbst2024"
-              className="mt-2"
+              className={`mt-2 ${
+                deploymentName && !validateDeploymentNamePattern(deploymentName).valid
+                  ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                  : ""
+              }`}
               value={deploymentName}
-              onChange={(e) => setDeploymentName(e.target.value)}
+              onChange={(e) => {
+                // Sanitize umlauts
+                const sanitized = sanitizeDeploymentName(e.target.value);
+                setDeploymentName(sanitized);
+              }}
             />
+            {deploymentName && !validateDeploymentNamePattern(deploymentName).valid && (
+              <p className="text-xs text-red-600 mt-1 flex items-start gap-2">
+                <span className="text-red-500 mt-0.5">•</span>
+                <span>{validateDeploymentNamePattern(deploymentName).message}</span>
+              </p>
+            )}
           </div>
 
               <div>

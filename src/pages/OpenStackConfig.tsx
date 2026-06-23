@@ -143,38 +143,26 @@ export function OpenStackConfig() {
   const connectionRef = useRef<HTMLElement | null>(null);
   const authRef = useRef<HTMLElement | null>(null);
   const quotasRef = useRef<HTMLElement | null>(null);
-  const [activeSection, setActiveSection] = useState<'connection' | 'authentication' | 'quotas'>('connection');
+  const [hoveredSection, setHoveredSection] = useState<'connection' | 'authentication' | 'quotas' | null>(null);
+  const activeSection = hoveredSection; // only hover determines active section
 
   const scrollToRef = useCallback((ref: typeof connectionRef) => {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
-  useEffect(() => {
-    const obs = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        const id = entry.target.getAttribute('data-section') as string | null;
-        if (id === 'connection' || id === 'authentication' || id === 'quotas') {
-          setActiveSection(id);
-        }
-      });
-    }, { root: null, threshold: 0.6 });
-
-    [connectionRef.current, authRef.current, quotasRef.current].forEach((el) => { if (el) obs.observe(el); });
-    return () => { obs.disconnect(); };
-  }, []);
+  // Hover-only behaviour: no scroll-based observer
 
   return (
-    <div className="p-8">
-      <div className="mb-6">
+    <div className="p-8 h-screen box-border flex flex-col">
+      <div className="mb-6 flex-none">
         <h1 className="text-slate-900 mb-2">Einstellungen</h1>
         <p className="text-slate-600">Verwalten Sie Ihre OpenStack-Konfiguration und Systemeinstellungen</p>
       </div>
 
-      <div className="flex gap-8">
+      <div className="flex gap-8 flex-1 overflow-hidden">
         {/* Left: internal nav (approx 20% width, visible from md up) */}
-        <aside className="md:block flex-shrink-0 w-1/5 min-w-[200px] max-w-[280px]">
-          <nav className="sticky top-28 space-y-2">
+        <aside className="md:block flex-shrink-0 w-1/7 min-w-[100px] max-w-[280px]">
+          <nav className="space-y-2">
             <button
               onClick={() => scrollToRef(connectionRef)}
               className={`w-full text-left px-3 py-2 rounded-md transition ${activeSection === 'connection' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
@@ -202,10 +190,16 @@ export function OpenStackConfig() {
         </aside>
 
         {/* Right: content */}
-        <main className="flex-1">
-          <div className="max-h-[calc(100vh-4rem)] overflow-auto pr-4 space-y-6">
+        <main className="flex-1 overflow-auto pr-4 space-y-6">
           {/* Connection Status Card */}
-          <section ref={connectionRef} data-section="connection" className="min-h-[120px]" aria-labelledby="connection-heading">
+          <section
+            ref={connectionRef}
+            data-section="connection"
+            className="min-h-[120px]"
+            aria-labelledby="connection-heading"
+            onMouseEnter={() => setHoveredSection('connection')}
+            onMouseLeave={() => setHoveredSection(null)}
+          >
             <Card className="border-slate-200 shadow-sm">
               <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -247,7 +241,13 @@ export function OpenStackConfig() {
               </CardContent>
             </Card>
           </section>
-          <section ref={authRef} data-section="authentication" className="min-h-[320px]">
+          <section
+            ref={authRef}
+            data-section="authentication"
+            className="min-h-[320px]"
+            onMouseEnter={() => setHoveredSection('authentication')}
+            onMouseLeave={() => setHoveredSection(null)}
+          >
             <Card className="border-slate-200 shadow-sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2" id="authentication-heading">
@@ -413,7 +413,13 @@ export function OpenStackConfig() {
             </Card>
           </section>
 
-          <section ref={quotasRef} data-section="quotas" className="min-h-[240px]">
+          <section
+            ref={quotasRef}
+            data-section="quotas"
+            className="min-h-[240px]"
+            onMouseEnter={() => setHoveredSection('quotas')}
+            onMouseLeave={() => setHoveredSection(null)}
+          >
             <Card className="border-slate-200 shadow-sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2" id="quotas-heading">
@@ -485,7 +491,6 @@ export function OpenStackConfig() {
               </Card>
             </section>
 
-          </div>
         </main>
       </div>
     </div>

@@ -69,7 +69,6 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
-
     },
     port: 3000,
     open: true,

@@ -8,6 +8,19 @@ on:
   workflow_dispatch:
 
 jobs:
+  check-source-branch:
+    name: Only staging can merge into main
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    steps:
+      - name: Check source branch
+        run: |
+          if [ "${{ github.head_ref }}" != "staging" ]; then
+            echo "PRs to main are only allowed from 'staging' branch!"
+            echo "Current branch: ${{ github.head_ref }}"
+            exit 1
+          fi
+
   test:
     name: Lint, Format & Build
     runs-on: ubuntu-latest

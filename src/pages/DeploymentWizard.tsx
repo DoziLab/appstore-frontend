@@ -107,7 +107,7 @@ export function DeploymentWizard({
   const [selectedKeycloakGroupId, setSelectedKeycloakGroupId] =
     useState<string>("");
   const [deploymentName, setDeploymentName] = useState<string>("");
-  const [runtime, setRuntime] = useState<string>("3");
+  const [runtime, setRuntime] = useState<string>("4");
   const [deploymentMode, setDeploymentMode] = useState<
     "per_group" | "per_student" | "per_course"
   >("per_group");
@@ -340,22 +340,35 @@ export function DeploymentWizard({
     setGroupStackAssignments(stacks);
   }, [numberOfStacks]);
 
-  // Helper function to sanitize deployment name (replace umlauts)
+  // Helper function to sanitize deployment name. We mirror the backend's stack
+  // naming rules (deploy_tasks.py: lowercases the value and appends a
+  // ``-s{idx}-{deploymentId[:4]}`` suffix before truncating to 64 chars), so we
+  // lowercase here and replace umlauts / underscores / whitespace inline. Names
+  // typed by lecturers are converted to ASCII-only kebab-case as they type,
+  // making the eventual Heat stack name predictable.
   const sanitizeDeploymentName = (name: string): string => {
     return name
       .replace(/ä/g, "ae")
       .replace(/ö/g, "oe")
       .replace(/ü/g, "ue")
-      .replace(/Ä/g, "AE")
-      .replace(/Ö/g, "OE")
-      .replace(/Ü/g, "UE")
-      .replace(/ß/g, "ss");
+      .replace(/Ä/g, "ae")
+      .replace(/Ö/g, "oe")
+      .replace(/Ü/g, "ue")
+      .replace(/ß/g, "ss")
+      .toLowerCase()
+      .replace(/[\s_]+/g, "-");
   };
 
-  // Helper function to validate deployment name pattern
+  // Backend appends ``-s{idx}-{deploymentId[:4]}`` (8 chars) then truncates the
+  // resulting Heat stack name to 64. Cap user input well below that so multiple
+  // stacks remain distinguishable.
+  const DEPLOYMENT_NAME_MAX = 55;
+
+  // Helper function to validate deployment name pattern. Aligned with the
+  // DNS-1123 shape Heat ultimately accepts after backend lowercasing.
   const validateDeploymentNamePattern = (name: string): { valid: boolean; message?: string } => {
-    const pattern = /^[a-zA-Z][a-zA-Z0-9_.-]{0,254}$/;
-    
+    const pattern = new RegExp(`^[a-z][a-z0-9-]{0,${DEPLOYMENT_NAME_MAX - 1}}$`);
+
     if (!name || name.trim() === "") {
       return { valid: false, message: "Ein Deployment-Name ist erforderlich" };
     }
@@ -363,7 +376,7 @@ export function DeploymentWizard({
     if (!pattern.test(name)) {
       return {
         valid: false,
-        message: "Deployment-Name muss mit einem Buchstaben beginnen und darf nur Buchstaben, Zahlen, Unterstriche, Punkte und Bindestriche enthalten (max. 255 Zeichen)",
+        message: `Deployment-Name muss mit einem Kleinbuchstaben beginnen und darf nur Kleinbuchstaben, Zahlen und Bindestriche enthalten (max. ${DEPLOYMENT_NAME_MAX} Zeichen)`,
       };
     }
 
@@ -1070,27 +1083,35 @@ export function DeploymentWizard({
 
           <div>
             <Label htmlFor="deployment-name">Deployment-Name</Label>
-            <Input
-              id="deployment-name"
-              placeholder="z.B. CS101-Jupyter-Herbst2024"
-              className={`mt-2 ${
-                deploymentName && !validateDeploymentNamePattern(deploymentName).valid
-                  ? "border-red-500 focus:border-red-500 focus:ring-red-500"
-                  : ""
-              }`}
-              value={deploymentName}
-              onChange={(e) => {
-                // Sanitize umlauts
-                const sanitized = sanitizeDeploymentName(e.target.value);
-                setDeploymentName(sanitized);
-              }}
-            />
-            {deploymentName && !validateDeploymentNamePattern(deploymentName).valid && (
-              <p className="text-xs text-red-600 mt-1 flex items-start gap-2">
-                <span className="text-red-500 mt-0.5">•</span>
-                <span>{validateDeploymentNamePattern(deploymentName).message}</span>
-              </p>
-            )}
+            {(() => {
+              const nameValidation = validateDeploymentNamePattern(deploymentName);
+              const showError = !!deploymentName && !nameValidation.valid;
+              return (
+                <>
+                  <Input
+                    id="deployment-name"
+                    placeholder="z.B. cs101-jupyter-herbst2024"
+                    maxLength={DEPLOYMENT_NAME_MAX}
+                    className={`mt-2 ${
+                      showError
+                        ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                        : ""
+                    }`}
+                    value={deploymentName}
+                    onChange={(e) => {
+                      // Sanitize as the user types (umlauts, casing, spaces).
+                      setDeploymentName(sanitizeDeploymentName(e.target.value));
+                    }}
+                  />
+                  {showError && (
+                    <p className="text-xs text-red-600 mt-1 flex items-start gap-2">
+                      <span className="text-red-500 mt-0.5">•</span>
+                      <span>{nameValidation.message}</span>
+                    </p>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
               <div>
@@ -1102,6 +1123,7 @@ export function DeploymentWizard({
                   <SelectContent>
                     <SelectItem value="1">1 Monat</SelectItem>
                     <SelectItem value="3">3 Monate</SelectItem>
+                    <SelectItem value="4">4 Monate</SelectItem>
                     <SelectItem value="6">6 Monate</SelectItem>
                     <SelectItem value="12">1 Jahr</SelectItem>
                     <SelectItem value="24">2 Jahre</SelectItem>

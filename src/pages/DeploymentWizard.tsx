@@ -107,7 +107,7 @@ export function DeploymentWizard({
   const [selectedKeycloakGroupId, setSelectedKeycloakGroupId] =
     useState<string>("");
   const [deploymentName, setDeploymentName] = useState<string>("");
-  const [runtime, setRuntime] = useState<string>("4");
+  const [runtime, setRuntime] = useState<string>("3");
   const [deploymentMode, setDeploymentMode] = useState<
     "per_group" | "per_student" | "per_course"
   >("per_group");
@@ -340,13 +340,44 @@ export function DeploymentWizard({
     setGroupStackAssignments(stacks);
   }, [numberOfStacks]);
 
+  // Helper function to sanitize deployment name (replace umlauts)
+  const sanitizeDeploymentName = (name: string): string => {
+    return name
+      .replace(/ä/g, "ae")
+      .replace(/ö/g, "oe")
+      .replace(/ü/g, "ue")
+      .replace(/Ä/g, "AE")
+      .replace(/Ö/g, "OE")
+      .replace(/Ü/g, "UE")
+      .replace(/ß/g, "ss");
+  };
+
+  // Helper function to validate deployment name pattern
+  const validateDeploymentNamePattern = (name: string): { valid: boolean; message?: string } => {
+    const pattern = /^[a-zA-Z][a-zA-Z0-9_.-]{0,254}$/;
+    
+    if (!name || name.trim() === "") {
+      return { valid: false, message: "Ein Deployment-Name ist erforderlich" };
+    }
+
+    if (!pattern.test(name)) {
+      return {
+        valid: false,
+        message: "Deployment-Name muss mit einem Buchstaben beginnen und darf nur Buchstaben, Zahlen, Unterstriche, Punkte und Bindestriche enthalten (max. 255 Zeichen)",
+      };
+    }
+
+    return { valid: true };
+  };
+
   // Validation function for step 0
   const validateStep0 = useCallback((): boolean => {
     const errors: string[] = [];
 
     // Check deployment name
-    if (!deploymentName || deploymentName.trim() === "") {
-      errors.push("Ein Deployment-Name ist erforderlich");
+    const nameValidation = validateDeploymentNamePattern(deploymentName);
+    if (!nameValidation.valid) {
+      errors.push(nameValidation.message || "Ein Deployment-Name ist erforderlich");
     }
 
     // Check if template and group are selected
@@ -375,6 +406,29 @@ export function DeploymentWizard({
 
     setValidationErrors(errors);
     return errors.length === 0;
+  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups]);
+
+  // Pure check for whether step 0 is sufficiently filled to allow navigation
+  const isStep0ValidPure = useCallback((): boolean => {
+    // basic required fields
+    if (!deploymentName || deploymentName.trim() === "") return false;
+    if (!selectedVersionId) return false;
+    if (!selectedKeycloakGroupId) return false;
+
+    // validate name pattern
+    if (!validateDeploymentNamePattern(deploymentName).valid) return false;
+
+    // additional checks for per_group mode
+    if (deploymentMode === "per_group" && selectedKeycloakGroupId && keycloakMembers.length > 0) {
+      const emptyGroups = studentGroups.filter((g) => g.students.length === 0);
+      if (emptyGroups.length > 0) return false;
+
+      const assignedStudentIds = new Set(studentGroups.flatMap((g) => g.students.map((s) => s.id)));
+      const unassignedStudents = keycloakMembers.filter((s) => !assignedStudentIds.has(s.id));
+      if (unassignedStudents.length > 0) return false;
+    }
+
+    return true;
   }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups]);
 
   // Update validation errors whenever relevant data changes (on current step)
@@ -1019,10 +1073,24 @@ export function DeploymentWizard({
             <Input
               id="deployment-name"
               placeholder="z.B. CS101-Jupyter-Herbst2024"
-              className="mt-2"
+              className={`mt-2 ${
+                deploymentName && !validateDeploymentNamePattern(deploymentName).valid
+                  ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                  : ""
+              }`}
               value={deploymentName}
-              onChange={(e) => setDeploymentName(e.target.value)}
+              onChange={(e) => {
+                // Sanitize umlauts
+                const sanitized = sanitizeDeploymentName(e.target.value);
+                setDeploymentName(sanitized);
+              }}
             />
+            {deploymentName && !validateDeploymentNamePattern(deploymentName).valid && (
+              <p className="text-xs text-red-600 mt-1 flex items-start gap-2">
+                <span className="text-red-500 mt-0.5">•</span>
+                <span>{validateDeploymentNamePattern(deploymentName).message}</span>
+              </p>
+            )}
           </div>
 
               <div>
@@ -1050,9 +1118,32 @@ export function DeploymentWizard({
           {/* Section 2: Groups */}
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-black">Gruppen & Kurszuordnung</CardTitle>
+              <CardTitle className="text-slate-900">Gruppen & Kurszuordnung</CardTitle>
             </CardHeader>
-            <CardContent className="bg-white rounded-lg p-4 space-y-6">
+            <CardContent className="pt-2 space-y-6">
+              <div>
+                <Label>Kurs auswählen</Label>
+                <Select
+                  value={selectedKeycloakGroupId}
+                  onValueChange={setSelectedKeycloakGroupId}
+                  disabled={loading.groups}
+                >
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="z.B. WWI23SEB" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {keycloakGroups.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500 mt-2">
+                  Wählen Sie eine Keycloak-Gruppe (Kurs) aus
+                </p>
+              </div>
+
               <div>
                 <Label>Anzahl der Gruppen</Label>
                 <Input
@@ -1085,31 +1176,7 @@ export function DeploymentWizard({
                   }}
                 />
                 <p className="text-xs text-slate-500 mt-2">
-                  Legen Sie fest, in wie viele Gruppen die Studenten aufgeteilt
-                  werden
-                </p>
-              </div>
-
-              <div>
-                <Label>Kurs auswählen</Label>
-                <Select
-                  value={selectedKeycloakGroupId}
-                  onValueChange={setSelectedKeycloakGroupId}
-                  disabled={loading.groups}
-                >
-                  <SelectTrigger className="mt-2">
-                    <SelectValue placeholder="z.B. WWI23SEB" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {keycloakGroups.map((group) => (
-                      <SelectItem key={group.id} value={group.id}>
-                        {group.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-slate-500 mt-2">
-                  Wählen Sie eine Keycloak-Gruppe (Kurs) aus
+                  In wie viele Gruppen sollen die Studierenden aufgeteilt werden? Geben Sie eine Zahl von 1–50 an.
                 </p>
               </div>
 
@@ -1224,7 +1291,7 @@ export function DeploymentWizard({
                   }}
                 />
                 <p className="text-xs text-slate-500 mt-2">
-                  Geben Sie an, wie viele Stack-Instanzen Sie benötigen
+                  Wie viele separate Arbeitsumgebungen sollen erstellt werden? (1 = alle teilen sich eine Umgebung; mehrere = getrennte Umgebungen für Gruppen/Studierende)
                 </p>
               </div>
             </CardContent>
@@ -1518,53 +1585,81 @@ export function DeploymentWizard({
     );
   }
 
+  const nextButtonLabel = (() => {
+    if (currentStep === 0) return "Detaillierte Konfiguration";
+    if (currentStep === steps.length - 2) return "Zur Übersicht";
+    return "Weiter";
+  })();
+
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-8">
       {/* Progress Steps */}
-      <div className="flex items-center justify-between">
-        {steps.map((step, index) => {
-          const StepIcon = step.icon;
-          const isActive = index === currentStep;
-          const isCompleted = index < currentStep;
+      <div className="flex items-start justify-between">
+        <div className="flex items-center flex-1">
+          {steps.map((step, index) => {
+            const StepIcon = step.icon;
+            const isActive = index === currentStep;
+            const isCompleted = index < currentStep;
+            const canNavigate = index <= currentStep || isStep0ValidPure();
 
-          return (
-            <div key={step.stepKey} className="flex items-center flex-1">
-              <div className="flex flex-col items-center">
-                <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                    isCompleted
-                      ? "bg-teal-500 text-white"
-                      : isActive
-                        ? "bg-teal-100 text-teal-600 border-2 border-teal-500"
-                        : "bg-slate-100 text-slate-400"
-                  }`}
-                >
-                  {isCompleted ? (
-                    <Check className="w-6 h-6" />
-                  ) : (
-                    <StepIcon className="w-6 h-6" />
-                  )}
+            return (
+              <div
+                key={step.stepKey}
+                className={`flex items-center flex-1 ${canNavigate ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  if (canNavigate) setCurrentStep(index);
+                }}
+                onKeyDown={(e) => {
+                  if ((e.key === 'Enter' || e.key === ' ') && canNavigate) {
+                    setCurrentStep(index);
+                  }
+                }}
+              >
+                <div className="flex flex-col items-center">
+                  <div
+                    className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                      isCompleted
+                        ? "bg-teal-500 text-white"
+                        : isActive
+                          ? "bg-teal-100 text-teal-600 border-2 border-teal-500"
+                          : "bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    {isCompleted ? (
+                      <Check className="w-6 h-6" />
+                    ) : (
+                      <StepIcon className="w-6 h-6" />
+                    )}
+                  </div>
+                  <p
+                    className={`text-xs mt-2 text-center ${
+                      isActive
+                        ? "text-teal-600 font-medium"
+                        : isCompleted
+                          ? "text-slate-600"
+                          : "text-slate-400"
+                    }`}
+                  >
+                    {step.name}
+                  </p>
                 </div>
-                <p
-                  className={`text-xs mt-2 text-center ${
-                    isActive
-                      ? "text-teal-600 font-medium"
-                      : isCompleted
-                        ? "text-slate-600"
-                        : "text-slate-400"
-                  }`}
-                >
-                  {step.name}
-                </p>
+                {index < steps.length - 1 && (
+                  <div
+                    className={`h-0.5 flex-1 -mt-6 ${isCompleted ? "bg-teal-500" : "bg-slate-200"}`}
+                  />
+                )}
               </div>
-              {index < steps.length - 1 && (
-                <div
-                  className={`h-0.5 flex-1 -mt-6 ${isCompleted ? "bg-teal-500" : "bg-slate-200"}`}
-                />
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+
+        <div className="pl-4">
+          <Button variant="outline" onClick={onCancel} disabled={isDeploying}>
+            Deployment abbrechen
+          </Button>
+        </div>
       </div>
 
       {/* Content */}
@@ -1627,7 +1722,7 @@ export function DeploymentWizard({
               className="bg-teal-500 hover:bg-teal-600 text-white"
               disabled={isDeploying || validationErrors.length > 0}
             >
-              Weiter
+              {nextButtonLabel}
               <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           )}
@@ -1646,7 +1741,7 @@ export function DeploymentWizard({
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Application deployen
+                  Anwendung deployen
                 </>
               )}
             </Button>

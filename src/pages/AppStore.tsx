@@ -110,10 +110,9 @@ export function AppStore({ onDeploy }: AppStoreProps) {
     fetchTemplates();
   }, []);
 
-  // Filter templates by search query
-  const filteredTemplates = templates.filter(template =>
-    template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (template.description && template.description.toLowerCase().includes(searchQuery.toLowerCase()))
+  // Filter templates by search query (only by name)
+  const filteredTemplates = templates.filter((template) =>
+    template.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   // Get unique categories from templates
@@ -197,84 +196,82 @@ export function AppStore({ onDeploy }: AppStoreProps) {
             const style = getTemplateStyle(template.name);
             const Icon = style.icon;
             const activeVersions = template.versions?.filter(v => v.is_active) || [];
-            
-            // Truncate description to max 120 characters
-            const maxDescLength = 120;
-            const description = template.description || 'Keine Beschreibung verfügbar';
-            const truncatedDesc = description.length > maxDescLength 
-              ? description.substring(0, maxDescLength) + '...' 
-              : description;
-            const showReadMore = description.length > maxDescLength;
-            
-            return (
-              <Card key={template.id} className="border-slate-200 shadow-sm hover:shadow-md transition-all hover:border-teal-200 flex flex-col h-full">
-                <CardHeader className="flex-shrink-0">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${style.color} flex items-center justify-center text-white shadow-lg`}>
-                      <Icon className="w-6 h-6" />
+
+            function TemplateCard({ template }: { template: TemplateDto }) {
+              return (
+                <Card key={template.id} className="border-slate-200 shadow-sm hover:shadow-md transition-all hover:border-teal-200 flex flex-col h-full">
+                  <CardHeader className="flex-shrink-0">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${style.color} flex items-center justify-center text-white shadow-lg`}>
+                        <Icon className="w-6 h-6" />
+                      </div>
+                      <div className="flex gap-2">
+                        {template.approval_status === 'approved' && (
+                          <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+                            Genehmigt
+                          </Badge>
+                        )}
+                        {template.visibility === 'public' && (
+                          <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
+                            Öffentlich
+                          </Badge>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      {template.approval_status === 'approved' && (
-                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                          Genehmigt
-                        </Badge>
+                    <CardTitle className="text-slate-900 line-clamp-2 min-h-[3.5rem]">{template.name}</CardTitle>
+                    <CardDescription className="text-slate-600 min-h-[4.5rem]">
+                      <p className="line-clamp-3 text-sm leading-relaxed">
+                        {template.description || 'Keine Beschreibung verfügbar'}
+                      </p>
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex-grow flex flex-col justify-end space-y-4">
+                    <div className="min-h-[4rem]">
+                      {activeVersions.length > 0 && (
+                        <div className="space-y-2">
+                          <span className="text-xs text-slate-500">Verfügbare Versionen:</span>
+                          <div className="flex flex-wrap gap-2">
+                            {activeVersions.map((version) => (
+                              <Badge key={version.id} variant="secondary" className="text-xs bg-slate-100 text-slate-700">
+                                {version.version}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
                       )}
-                      {template.visibility === 'public' && (
-                        <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
-                          Öffentlich
-                        </Badge>
+
+                      {activeVersions.length === 0 && (
+                        <div className="text-xs text-slate-500 italic">
+                          Keine aktiven Versionen verfügbar
+                        </div>
                       )}
                     </div>
-                  </div>
-                  <CardTitle className="text-slate-900 line-clamp-2 min-h-[3.5rem]">{template.name}</CardTitle>
-                  <CardDescription className="text-slate-600 min-h-[4.5rem]">
-                    {truncatedDesc}
-                    {showReadMore && (
-                      <button 
-                        className="text-teal-600 hover:text-teal-700 text-xs ml-1 font-medium"
-                        onClick={(e) => {
-                          e.stopPropagation();
+
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
                           setSelectedTemplate(template);
                           setDetailsModalOpen(true);
                         }}
+                        className="w-full"
                       >
-                        weiter lesen
-                      </button>
-                    )}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="flex-grow flex flex-col justify-end space-y-4">
-                  <div className="min-h-[4rem]">
-                    {activeVersions.length > 0 && (
-                      <div className="space-y-2">
-                        <span className="text-xs text-slate-500">Verfügbare Versionen:</span>
-                        <div className="flex flex-wrap gap-2">
-                          {activeVersions.map((version) => (
-                            <Badge key={version.id} variant="secondary" className="text-xs bg-slate-100 text-slate-700">
-                              {version.version}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                        Details
+                      </Button>
+                      <Button
+                        onClick={() => onDeploy(template.id)}
+                        className="w-full bg-teal-500 hover:bg-teal-600 text-white"
+                        disabled={activeVersions.length === 0}
+                      >
+                        Deploy
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            }
 
-                    {activeVersions.length === 0 && (
-                      <div className="text-xs text-slate-500 italic">
-                        Keine aktiven Versionen verfügbar
-                      </div>
-                    )}
-                  </div>
-
-                  <Button 
-                    onClick={() => onDeploy(template.id)}
-                    className="w-full bg-teal-500 hover:bg-teal-600 text-white"
-                    disabled={activeVersions.length === 0}
-                  >
-                    Deploy
-                  </Button>
-                </CardContent>
-              </Card>
-            );
+            return <TemplateCard key={template.id} template={template} />;
           })}
         </div>
       )}

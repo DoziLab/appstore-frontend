@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { BookOpen, ChevronRight, Server } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { getMyCourses, CourseDto } from "../api/courses";
@@ -23,6 +24,7 @@ export function Courses() {
   const [keycloakGroups, setKeycloakGroups] = useState<KeycloakGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [prefixQuery, setPrefixQuery] = useState<string>("");
 
   useEffect(() => {
     let alive = true;
@@ -79,6 +81,18 @@ export function Courses() {
       };
     });
   }, [items, keycloakGroups]);
+
+  // Derive available prefix suggestions — restrict to canonical prefixes
+  const prefixSuggestions = useMemo(() => {
+    // Only show these canonical prefixes (order matters)
+    return ["WWI", "WI", "INF", "WIN"];
+  }, [items, keycloakGroups]);
+
+  const filteredCourses = useMemo(() => {
+    if (!prefixQuery) return courses;
+    const q = prefixQuery.toUpperCase();
+    return courses.filter((c) => (c.keycloakGroupName || c.name || "").toUpperCase().startsWith(q));
+  }, [courses, prefixQuery]);
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "running":
@@ -99,7 +113,40 @@ export function Courses() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-slate-900 mb-2">Kurse</h1>
-          <p className="text-slate-600">Verwalten Sie Anwendungen für Ihre Kurse</p>
+          <p className="text-slate-600">Übersicht über Ihre Anwendungen nach Kursen geordnet</p>
+        </div>
+      </div>
+
+      {/* Prefix filter input + suggestions */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <Input
+            type="text"
+            placeholder="Präfix suchen (z.B. WWI, INF, WIN)"
+            className="flex-1 min-w-0 pl-3"
+            value={prefixQuery}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setPrefixQuery(e.target.value.toUpperCase())}
+          />
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setPrefixQuery("")}>Alle</Button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-slate-500">Schnellfilter:</div>
+          <div className="flex gap-2 flex-wrap">
+            {prefixSuggestions.map((p) => (
+              <button
+                key={p}
+                type="button"
+                aria-pressed={prefixQuery === p}
+                onClick={() => setPrefixQuery(p)}
+                className={`text-xs px-2 py-1 rounded ${prefixQuery === p ? 'bg-teal-500 text-white' : 'bg-white border border-slate-200'}`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -123,7 +170,7 @@ export function Courses() {
 
       {!loading && !error && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {courses.map((course) => (
+          {filteredCourses.map((course) => (
             <Card key={course.id} className="border-slate-200 shadow-sm hover:shadow-md transition-shadow">
               <CardHeader>
                 <div className="flex items-start justify-between">

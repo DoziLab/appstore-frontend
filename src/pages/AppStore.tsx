@@ -110,10 +110,9 @@ export function AppStore({ onDeploy }: AppStoreProps) {
     fetchTemplates();
   }, []);
 
-  // Filter templates by search query
-  const filteredTemplates = templates.filter(template =>
-    template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (template.description && template.description.toLowerCase().includes(searchQuery.toLowerCase()))
+  // Filter templates by search query (only by name)
+  const filteredTemplates = templates.filter((template) =>
+    template.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   // Get unique categories from templates

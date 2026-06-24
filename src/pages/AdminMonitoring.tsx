@@ -37,6 +37,8 @@ import React from 'react';
 
 export function AdminMonitoring() {
   const [deployments, setDeployments] = useState<DeploymentDto[]>([]);
+  const [view, setView] = useState<'lecturer' | 'course' | 'date'>('lecturer');
+  const [selectedTeacher, setSelectedTeacher] = useState<TeacherInfo | null>(null);
   const [pendingTemplates, setPendingTemplates] = useState<any[]>([]);
 
   // Nova flavor catalog, keyed by flavor name (matches the value of the
@@ -136,31 +138,63 @@ export function AdminMonitoring() {
     return 'healthy';
   };
 
-  type ProjectAggregate = {
-    courseId: string;
-    projectName: string;
+  // Group by teacher for "lecturer" view
+  type TeacherAggregate = {
     teacher: TeacherInfo;
     deployments: DeploymentDto[];
   };
 
-  const projects: ProjectAggregate[] = Object.values(
-    deployments.reduce<Record<string, ProjectAggregate>>((acc, deployment) => {
-      const courseId = deployment.course_id;
+  const projects: TeacherAggregate[] = Object.values(
+    deployments.reduce<Record<string, TeacherAggregate>>((acc, deployment) => {
       const teacher = extractTeacher(deployment);
+      const key = teacher.id;
 
-      if (!acc[courseId]) {
-        acc[courseId] = {
-          courseId,
-          projectName: deployment.name,
+      if (!acc[key]) {
+        acc[key] = {
           teacher,
           deployments: [],
         };
       }
 
-      acc[courseId].deployments.push(deployment);
+      acc[key].deployments.push(deployment);
       return acc;
     }, {})
   );
+
+  // Group by project name for "course" view
+  type CourseAggregate = {
+    projectName: string;
+    teachers: TeacherInfo[];
+    deployments: DeploymentDto[];
+  };
+
+  const courses: CourseAggregate[] = Object.values(
+    deployments.reduce<Record<string, CourseAggregate>>((acc, deployment) => {
+      const name = deployment.name || 'Unbenannt';
+      const teacher = extractTeacher(deployment);
+
+      if (!acc[name]) {
+        acc[name] = {
+          projectName: name,
+          teachers: [],
+          deployments: [],
+        };
+      }
+
+      // avoid duplicate teachers
+      if (!acc[name].teachers.some((t) => t.id === teacher.id)) {
+        acc[name].teachers.push(teacher);
+      }
+
+      acc[name].deployments.push(deployment);
+      return acc;
+    }, {}),
+  );
+
+  // Deployments sorted by date for "date" view
+  const deploymentsByDate = [...deployments].sort((a, b) => {
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
 
   const getDeploymentStats = (deployments: DeploymentDto[]) => ({
     total: deployments.length,
@@ -278,79 +312,158 @@ export function AdminMonitoring() {
                   <CardDescription>
                     Übersicht über alle Dozenten-Projekte und deren Deployments
                   </CardDescription>
-
                 </div>
 
+                <div>
+                  <label className="sr-only">Ansicht</label>
+                  <select
+                    aria-label="Ansicht wählen"
+                    value={view}
+                    onChange={(e) => setView(e.target.value as any)}
+                    className="border rounded px-2 py-1 text-sm"
+                  >
+                    <option value="lecturer">Nach Dozent</option>
+                    <option value="course">Nach Kurs</option>
+                    <option value="date">Nach Datum</option>
+                  </select>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Dozent</TableHead>
-                    <TableHead>Deployments</TableHead>
-                    <TableHead>VMs</TableHead>
-                    <TableHead>Letzte Aktivität</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
+              {view === 'lecturer' && !selectedTeacher && (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Dozent</TableHead>
+                      <TableHead>Deployments</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {projects.map((project) => {
+                      const stats = getDeploymentStats(project.deployments);
+                      const health = getProjectHealth(project.deployments);
 
-                <TableBody>
-                  {projects.map((project) => {
-                    const stats = getDeploymentStats(project.deployments);
-                    const health = getProjectHealth(project.deployments);
+                      return (
+                        <TableRow 
+                          key={project.teacher.id}
+                          className="cursor-pointer hover:bg-slate-50"
+                          onClick={() => setSelectedTeacher(project.teacher)}
+                        >
+                          <TableCell className="text-slate-900">
+                            {project.teacher.name}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {project.deployments.length}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {renderHealthBadge(health)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
 
-                    const lastActivity = new Date(
-                      Math.max(
-                        ...project.deployments.map((d) =>
-                          new Date(d.updated_at).getTime()
-                        )
-                      )
-                    ).toLocaleString();
-
-                    return (
-                      <TableRow key={project.courseId}>
-                        {/* Dozent */}
-                        <TableCell>
-                          <div>
-                            <p className="text-slate-900">{project.teacher.name}</p>
-                            {project.teacher.email && (
-                              <p className="text-xs text-slate-500">
-                                {project.teacher.email}
-                              </p>
-                            )}
-                          </div>
-                        </TableCell>
-
-                        {/* Deployments */}
-                        <TableCell>
-                          <Badge variant="outline">
-                            {stats.running} / {stats.total}
-                          </Badge>
-                        </TableCell>
-
-                        {/* VMs */}
-                        <TableCell>
-                          {stats.total}
-                        </TableCell>
-
-                        {/* Letzte Aktivität */}
-                        <TableCell className="text-sm text-slate-600">
-                          {lastActivity}
-                        </TableCell>
-
-                        {/* Status / Gesundheit */}
-                        <TableCell>
-                          {renderHealthBadge(health)}
-                        </TableCell>
+              {view === 'lecturer' && selectedTeacher && (
+                <div className="space-y-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedTeacher(null)}
+                  >
+                    ← Zurück
+                  </Button>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Deployment-Name</TableHead>
+                        <TableHead>Kurs</TableHead>
+                        <TableHead>Template</TableHead>
+                        <TableHead>Erstellt</TableHead>
                       </TableRow>
-                    );
-                  })}
-                </TableBody>
+                    </TableHeader>
+                    <TableBody>
+                      {deployments
+                        .filter((d) => extractTeacher(d).id === selectedTeacher.id)
+                        .map((d) => (
+                          <TableRow key={d.id}>
+                            <TableCell className="text-slate-900">{d.name}</TableCell>
+                            <TableCell>{d.course?.name || d.course_id}</TableCell>
+                            <TableCell>{d.template_version?.template_name || '—'}</TableCell>
+                            <TableCell className="text-sm text-slate-600">
+                              {new Date(d.created_at).toLocaleString()}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
 
+              {view === 'course' && (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Kurs</TableHead>
+                      <TableHead>Dozenten</TableHead>
+                      <TableHead>Deployments</TableHead>
+                      <TableHead>Letzte Aktivität</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {courses.map((c) => {
+                      const stats = getDeploymentStats(c.deployments);
+                      const health = getProjectHealth(c.deployments);
+                      const lastActivity = new Date(
+                        Math.max(...c.deployments.map((d) => new Date(d.updated_at).getTime()))
+                      ).toLocaleString();
+                      return (
+                        <TableRow key={c.projectName}>
+                          <TableCell>{c.projectName}</TableCell>
+                          <TableCell>
+                            {c.teachers.map((t) => t.name).join(', ')}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{stats.running} / {stats.total}</Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-slate-600">{lastActivity}</TableCell>
+                          <TableCell>{renderHealthBadge(health)}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
 
-
-              </Table>
+              {view === 'date' && (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Kurs</TableHead>
+                      <TableHead>Dozent</TableHead>
+                      <TableHead>Erstellt</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {deploymentsByDate.map((d) => (
+                      <TableRow key={d.id}>
+                        <TableCell>{d.name}</TableCell>
+                        <TableCell>{d.course?.name || d.course_id}</TableCell>
+                        <TableCell>{extractTeacher(d).name}</TableCell>
+                        <TableCell className="text-sm text-slate-600">{new Date(d.created_at).toLocaleString()}</TableCell>
+                        <TableCell><Badge variant="outline">{d.status}</Badge></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
       </div>

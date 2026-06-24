@@ -37,6 +37,8 @@ const formatMBasGB = (v?: number) => {
 
 export function OpenStackConfig() {
   const [showPassword, setShowPassword] = useState(false);
+  const [yamlInput, setYamlInput] = useState("");
+  const [yamlLoading, setYamlLoading] = useState(false);
   
 
   // Credentials state
@@ -96,9 +98,8 @@ export function OpenStackConfig() {
     (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-  const handleSaveCredentials = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.password.trim() && existingProject) {
+  const saveData = async (data: OpenstackCredentialsCreate) => {
+    if (!data.password.trim() && existingProject) {
       setSaveError('Bitte geben Sie das Passwort ein, um die Zugangsdaten zu aktualisieren.');
       return;
     }
@@ -107,9 +108,9 @@ export function OpenStackConfig() {
     setSaveLoading(true);
     try {
       if (existingProject) {
-        await updateOpenstackProject(existingProject.id, form);
+        await updateOpenstackProject(existingProject.id, data);
       } else {
-        await createOpenstackProject(form);
+        await createOpenstackProject(data);
       }
       setSaveSuccess(true);
       setForm((prev) => ({ ...prev, password: '' }));
@@ -120,6 +121,86 @@ export function OpenStackConfig() {
       setSaveError(err instanceof Error ? err.message : 'Fehler beim Speichern der Zugangsdaten');
     } finally {
       setSaveLoading(false);
+    }
+  };
+
+  const handleSaveCredentials = (e: React.FormEvent) => {
+    e.preventDefault();
+    void saveData(form);
+  };
+
+  function parseCloudsYaml(yaml: string): Partial<OpenstackCredentialsCreate> | string {
+    try {
+      const cloudMatch = yaml.match(/clouds:\s*\n([\s\S]*)/);
+      if (!cloudMatch) return "Kein 'clouds:' Block gefunden.";
+
+      const body = cloudMatch[1];
+
+      const get = (key: string) => {
+        const m = body.match(new RegExp(`${key}:\\s*[\"']?([^\"'\\n]+?)[\"']?\\s*$`, "m"));
+        return m ? m[1].trim() : "";
+      };
+
+      const result: Partial<OpenstackCredentialsCreate> = {
+        auth_url: get('auth_url'),
+        username: get('username'),
+        password: get('password'),
+        openstack_project_id: get('project_id'),
+        openstack_project_name: get('project_name'),
+        user_domain_name: get('user_domain_name') || 'Default',
+        region_name: get('region_name'),
+      };
+
+      if (!result.auth_url) return 'auth_url nicht gefunden.';
+      if (!result.username) return 'username nicht gefunden.';
+
+      return result;
+    } catch {
+      return 'Fehler beim Lesen der YAML-Datei.';
+    }
+  }
+
+  const handleYamlSubmit = () => {
+    setSaveError(null);
+    const result = parseCloudsYaml(yamlInput);
+    if (typeof result === 'string') {
+      setSaveError(result);
+      return;
+    }
+    const merged: OpenstackCredentialsCreate = {
+      auth_url: result.auth_url ?? form.auth_url,
+      username: result.username ?? form.username,
+      password: result.password ?? form.password,
+      user_domain_name: result.user_domain_name ?? form.user_domain_name ?? 'Default',
+      region_name: result.region_name ?? form.region_name,
+      openstack_project_id: result.openstack_project_id ?? form.openstack_project_id,
+      openstack_project_name: result.openstack_project_name ?? form.openstack_project_name,
+    };
+    void saveYamlData(merged);
+  };
+
+  const saveYamlData = async (data: OpenstackCredentialsCreate) => {
+    if (!data.password.trim() && existingProject) {
+      setSaveError('Bitte geben Sie das Passwort ein, um die Zugangsdaten zu aktualisieren.');
+      return;
+    }
+    setSaveError(null);
+    setSaveSuccess(false);
+    setYamlLoading(true);
+    try {
+      if (existingProject) {
+        await updateOpenstackProject(existingProject.id, data);
+      } else {
+        await createOpenstackProject(data);
+      }
+      setSaveSuccess(true);
+      setForm((prev) => ({ ...prev, password: '' }));
+      const projects = await listOpenstackProjects();
+      if (projects.length > 0) setExistingProject(projects[0]);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Fehler beim Speichern der Zugangsdaten');
+    } finally {
+      setYamlLoading(false);
     }
   };
 
@@ -366,6 +447,26 @@ export function OpenStackConfig() {
                     </div>
                   </div>
 
+                  <div>
+                    <Label>clouds.yaml (optional)</Label>
+                    <Textarea
+                      className="font-mono text-sm h-40 resize-none mt-2"
+                      placeholder={`clouds:\n  openstack:\n    auth:\n      auth_url: https://...\n      username: "user"\n      password: "pass"\n      project_id: abc123\n      project_name: "mein-projekt"\n      user_domain_name: "Default"\n    region_name: "RegionOne"`}
+                      value={yamlInput}
+                      onChange={(e) => setYamlInput(e.target.value)}
+                      spellCheck={false}
+                      disabled={yamlLoading || credentialsLoading}
+                    />
+                    <Button
+                      type="button"
+                      className="w-full bg-teal-500 hover:bg-teal-600 text-white mt-2"
+                      onClick={handleYamlSubmit}
+                      disabled={!yamlInput.trim() || yamlLoading || credentialsLoading}
+                    >
+                      {yamlLoading ? 'Wird gespeichert...' : 'Einlesen & speichern'}
+                    </Button>
+                  </div>
+
                   <Button
                     type="submit"
                     className="w-full bg-teal-500 hover:bg-teal-600 text-white"
@@ -436,11 +537,11 @@ export function OpenStackConfig() {
                     <p className="text-sm text-slate-500">Keine Quota-Daten verfügbar</p>
                   )}
                   {!quotasLoading && quotas && (() => {
-                    const qc = quotas.compute.cores;
-                    const qram = quotas.compute.ram;
-                    const qvol = quotas.volume.gigabytes;
-                    const qinst = quotas.compute.instances;
-                    const qfip = quotas.network.floatingip;
+                    const qc = quotas.compute?.cores ?? { used: 0, limit: 0 };
+                    const qram = quotas.compute?.ram ?? { used: 0, limit: 0 };
+                    const qvol = quotas.volume?.gigabytes ?? { used: 0, limit: 0 };
+                    const qinst = quotas.compute?.instances ?? { used: 0, limit: 0 };
+                    const qfip = quotas.network?.floatingip ?? { used: 0, limit: 0 };
                     return (
                       <div className="space-y-4">
                         <div>

@@ -28,6 +28,7 @@ import {
   TableRow,
 } from '../components/ui/table';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getAllDeployments, DeploymentDto } from '../api/deployments';
 import { getFlavors, FlavorDto } from '../api/openstack';
 import { getMyCourses, type CourseDto } from '../api/courses';
@@ -38,6 +39,7 @@ import React from 'react';
 
 
 export function AdminMonitoring() {
+  const navigate = useNavigate();
   const [deployments, setDeployments] = useState<DeploymentDto[]>([]);
   const [view, setView] = useState<'lecturer' | 'course' | 'date'>('lecturer');
   const [selectedTeacher, setSelectedTeacher] = useState<TeacherInfo | null>(null);
@@ -435,8 +437,12 @@ export function AdminMonitoring() {
                       {deployments
                         .filter((d) => extractTeacher(d).id === selectedTeacher.id)
                         .map((d) => (
-                          <TableRow key={d.id}>
-                            <TableCell className="text-slate-900">{d.name}</TableCell>
+                          <TableRow 
+                            key={d.id}
+                            className="cursor-pointer hover:bg-slate-50"
+                            onClick={() => navigate(`/deployment/${d.id}`)}
+                          >
+                            <TableCell className="text-slate-900 text-blue-600 hover:underline">{d.name}</TableCell>
                             <TableCell>{extractCourse(d)}</TableCell>
                             <TableCell>{d.template_version?.template_name || '—'}</TableCell>
                             <TableCell className="text-sm text-slate-600">
@@ -468,8 +474,17 @@ export function AdminMonitoring() {
                         Math.max(...c.deployments.map((d) => new Date(d.updated_at).getTime()))
                       ).toLocaleString();
                       return (
-                        <TableRow key={c.projectName}>
-                          <TableCell>{c.projectName}</TableCell>
+                        <TableRow 
+                          key={c.projectName}
+                          className="cursor-pointer hover:bg-slate-50"
+                          onClick={() => {
+                            // Navigate to first deployment of this project
+                            if (c.deployments.length > 0) {
+                              navigate(`/deployment/${c.deployments[0].id}`);
+                            }
+                          }}
+                        >
+                          <TableCell className="text-blue-600 hover:underline">{c.projectName}</TableCell>
                           <TableCell>
                             {c.teachers.map((t) => t.name).join(', ')}
                           </TableCell>
@@ -498,8 +513,12 @@ export function AdminMonitoring() {
                   </TableHeader>
                   <TableBody>
                     {deploymentsByDate.map((d) => (
-                      <TableRow key={d.id}>
-                        <TableCell>{d.name}</TableCell>
+                      <TableRow 
+                        key={d.id}
+                        className="cursor-pointer hover:bg-slate-50"
+                        onClick={() => navigate(`/deployment/${d.id}`)}
+                      >
+                        <TableCell className="text-blue-600 hover:underline">{d.name}</TableCell>
                         <TableCell>{extractCourse(d)}</TableCell>
                         <TableCell>{extractTeacher(d).name}</TableCell>
                         <TableCell className="text-sm text-slate-600">{new Date(d.created_at).toLocaleString()}</TableCell>

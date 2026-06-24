@@ -92,9 +92,16 @@ interface DeploymentDetailsProps {
   deployment: Deployment;
   onBack: () => void;
   onDelete?: (deploymentId: string) => Promise<void> | void;
+  /**
+   * Retry handler used by the "Erneut versuchen" button shown on failed
+   * deployments. Implementation lives in DeploymentDetailsPage — it deletes
+   * the failed deployment and navigates the user to the wizard's overview
+   * step pre-filled with the same configuration.
+   */
+  onRetry?: (deploymentId: string) => Promise<void> | void;
 }
 
-export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDetailsProps) {
+export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: DeploymentDetailsProps) {
   const { activeProjectId } = useActiveOpenstackProject();
   const [credentialsVisible, setCredentialsVisible] = useState(false);
   const [credentialsLoading, setCredentialsLoading] = useState(false);
@@ -104,6 +111,20 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
   const [extendInFlight, setExtendInFlight] = useState(false);
   const [extendDialogOpen, setExtendDialogOpen] = useState(false);
   const [selectedExtendMonths, setSelectedExtendMonths] = useState<RuntimeMonths | null>(null);
+  const [retryInFlight, setRetryInFlight] = useState(false);
+
+  const handleRetry = useCallback(async () => {
+    if (retryInFlight || !onRetry) return;
+    setRetryInFlight(true);
+    try {
+      await onRetry(deployment.id);
+      // Page-level handler navigates away on success; do not reset state.
+    } catch {
+      // Page-level handler is responsible for the error toast — re-enable the
+      // button so the user can retry the retry.
+      setRetryInFlight(false);
+    }
+  }, [retryInFlight, onRetry, deployment.id]);
 
   const expiryState = getExpiryState(deployment);
 
@@ -705,8 +726,20 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
               {/* ── failed ── */}
               {deployment.status === 'failed' && (
                 <>
-                  <Button variant="outline" className="w-full">
-                    Erneut versuchen
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleRetry}
+                    disabled={retryInFlight || !onRetry}
+                  >
+                    {retryInFlight ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Wird vorbereitet…
+                      </>
+                    ) : (
+                      "Erneut versuchen"
+                    )}
                   </Button>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>

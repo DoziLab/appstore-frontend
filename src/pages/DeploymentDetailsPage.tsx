@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, Navigate } from "react-router-dom";
+import { toast } from "sonner@2.0.3";
 import { DeploymentDetails } from "./DeploymentDetails";
 import {
   getDeployment,
@@ -12,6 +13,8 @@ import { getMyCourses, type CourseDto } from "../api/courses";
 import { getKeycloakGroups, type KeycloakGroup } from "../api/keycloak";
 import { getFlavors, type FlavorDto } from "../api/openstack";
 import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
+import type { DeploymentWizardInitialState } from "./DeploymentWizard";
+import type { StudentGroup } from "../components/GroupManager";
 
 // ── Phase definitions ─────────────────────────────────────────────────────────
 
@@ -190,6 +193,138 @@ export function DeploymentDetailsPage() {
   const stopStreamRef = useRef<(() => void) | null>(null);
 
   const handleBackToDashboard = () => navigate("/dashboard");
+
+  // ── Retry flow for failed deployments ─────────────────────────────────────
+  //
+  // Delete the failed deployment, then jump the user to the wizard's overview
+  // step with the exact same configuration pre-filled. Reconstructs the
+  // wizard initial-state payload from `deployment_parameters` JSON (Heat
+  // params, stack assignments) plus a few related-object fields the backend
+  // returns alongside (template_version.template_id, expires_at for runtime).
+  //
+  // No confirmation dialog — the trigger button is explicit and the data is
+  // recoverable until the user re-submits the wizard.
+  const handleRetryDeployment = useCallback(
+    async (id: string) => {
+      const raw = backendDeploymentRef.current;
+      if (!raw) {
+        toast.error("Deployment-Daten nicht geladen. Bitte Seite neu laden.");
+        throw new Error("deployment data missing");
+      }
+
+      const templateId: string | undefined = raw?.template_version?.template_id;
+      if (!templateId) {
+        toast.error("Template konnte nicht ermittelt werden.");
+        throw new Error("template_id missing");
+      }
+
+      // 1. DELETE without confirmation.
+      try {
+        await deleteDeployment(id, activeProjectId);
+      } catch (err) {
+        console.error("Retry: failed to delete deployment", err);
+        toast.error("Löschen fehlgeschlagen. Bitte erneut versuchen.");
+        throw err;
+      }
+
+      // 2. Parse `deployment_parameters` (JSON string) into the wizard's
+      //    initial-state shape. Defensive against legacy rows that lack the
+      //    stack_assignments block.
+      let parsed: any = {};
+      try {
+        parsed = raw.deployment_parameters
+          ? JSON.parse(raw.deployment_parameters)
+          : {};
+      } catch {
+        parsed = {};
+      }
+
+      const storedStackAssignments: Array<{
+        groups: Array<{
+          group_name: string;
+          group_index: number;
+          students: Array<{
+            id: string;
+            username: string;
+            email: string;
+            first_name: string;
+            last_name: string;
+          }>;
+        }>;
+      }> = parsed.stack_assignments ?? [];
+
+      // Hydrate StudentGroup[] from the union of all groups across stacks.
+      // group_index doubles as a stable identifier; map snake_case student
+      // fields back to KeycloakUser's camelCase shape. `enabled`/`emailVerified`
+      // aren't stored — assume true (the user already passed deployment).
+      const seenGroupIds = new Set<string>();
+      const studentGroups: StudentGroup[] = [];
+      const groupStackAssignments = storedStackAssignments.map((sa, stackIdx) => {
+        const assignedGroups: StudentGroup[] = sa.groups.map((g) => {
+          const groupId = `group-${g.group_index}`;
+          const group: StudentGroup = {
+            groupId,
+            groupName: g.group_name,
+            students: (g.students || []).map((s) => ({
+              id: s.id,
+              username: s.username,
+              email: s.email,
+              firstName: s.first_name,
+              lastName: s.last_name,
+              enabled: true,
+              emailVerified: true,
+            })),
+          };
+          if (!seenGroupIds.has(groupId)) {
+            seenGroupIds.add(groupId);
+            studentGroups.push(group);
+          }
+          return group;
+        });
+        return {
+          stackId: `stack-${stackIdx + 1}`,
+          stackName: `Stack ${stackIdx + 1}`,
+          assignedGroups,
+        };
+      });
+
+      // Derive runtime_months from the persisted lifecycle window — backend
+      // doesn't store the original choice on the row, only the resulting
+      // expires_at. We round to the nearest allowed value so the wizard's
+      // <Select> can show it without the user reseating the field.
+      const ALLOWED: Array<1 | 3 | 4 | 6 | 12 | 24> = [1, 3, 4, 6, 12, 24];
+      let runtimeMonths: number | undefined;
+      if (raw.expires_at && raw.created_at) {
+        const createdMs = new Date(raw.created_at).getTime();
+        const expiresMs = new Date(raw.expires_at).getTime();
+        if (
+          Number.isFinite(createdMs) &&
+          Number.isFinite(expiresMs) &&
+          expiresMs > createdMs
+        ) {
+          const months = (expiresMs - createdMs) / (1000 * 60 * 60 * 24 * 30);
+          runtimeMonths = ALLOWED.reduce((best, m) =>
+            Math.abs(m - months) < Math.abs(best - months) ? m : best,
+          );
+        }
+      }
+
+      const initialState: DeploymentWizardInitialState = {
+        deploymentName: raw.name || "",
+        templateVersionId: raw.template_version_id,
+        keycloakGroupId: raw.course_id,
+        runtimeMonths,
+        parameters: parsed.parameters ?? {},
+        studentGroups,
+        groupStackAssignments,
+      };
+
+      // 3. Navigate to wizard with prefill payload. Router state survives
+      //    until the user navigates away from the wizard route.
+      navigate(`/deploy/${templateId}`, { state: { retryFrom: initialState } });
+    },
+    [activeProjectId, navigate],
+  );
 
   const handleDeleteDeployment = async (id: string) => {
     isDeletingRef.current = true;
@@ -381,6 +516,7 @@ export function DeploymentDetailsPage() {
       deployment={deploymentData}
       onBack={handleBackToDashboard}
       onDelete={handleDeleteDeployment}
+      onRetry={handleRetryDeployment}
     />
   );
 }

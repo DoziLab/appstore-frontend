@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Check,
   ChevronRight,
@@ -60,20 +60,48 @@ export interface GroupStackAssignment {
   assignedGroups: StudentGroup[];
 }
 
+// Pre-fill payload used by the "retry failed deployment" flow: we drop the
+// user onto the overview step with everything already wired up so they can
+// confirm without re-entering anything. Reconstructed from the failed
+// deployment's stored `deployment_parameters` JSON by DeploymentDetailsPage.
+export interface DeploymentWizardInitialState {
+  deploymentName: string;
+  templateVersionId: string;
+  keycloakGroupId: string;
+  runtimeMonths?: number;
+  parameters: Record<string, any>;
+  studentGroups: StudentGroup[];
+  groupStackAssignments: GroupStackAssignment[];
+}
+
 interface DeploymentWizardProps {
   templateId: string;
   onCancel: () => void;
   onComplete: (deploymentId: string) => void;
+  /**
+   * If provided, the wizard hydrates state from this payload and jumps the
+   * user directly to the overview step. Used by the "Erneut versuchen" flow
+   * on the deployment details page so a failed deployment can be re-submitted
+   * without re-entering any data.
+   */
+  initialState?: DeploymentWizardInitialState;
 }
 
 export function DeploymentWizard({
   templateId,
   onCancel,
   onComplete,
+  initialState,
 }: DeploymentWizardProps) {
   const { activeProjectId } = useActiveOpenstackProject();
-  const [currentStep, setCurrentStep] = useState(0);
   const [isDeploying, setIsDeploying] = useState(false);
+
+  // Initial-state hydration (retry-failed-deployment flow). When provided we
+  // seed every relevant state slot with the failed deployment's values and
+  // jump straight to the overview step, bypassing the wizard's auto-derive
+  // effects on first render via `hasInitialStateRef`.
+  const hasInitialStateRef = useRef(!!initialState);
+  const [currentStep, setCurrentStep] = useState(0);
 
   // Data loading states
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDto | null>(
@@ -81,12 +109,18 @@ export function DeploymentWizard({
   );
   const [keycloakGroups, setKeycloakGroups] = useState<KeycloakGroup[]>([]);
   const [keycloakMembers, setKeycloakMembers] = useState<KeycloakUser[]>([]);
-  const [studentGroups, setStudentGroups] = useState<StudentGroup[]>([]);
+  const [studentGroups, setStudentGroups] = useState<StudentGroup[]>(
+    () => initialState?.studentGroups ?? [],
+  );
   const [groupStackAssignments, setGroupStackAssignments] = useState<
     GroupStackAssignment[]
-  >([]);
-  const [numberOfStacks, setNumberOfStacks] = useState<number>(1);
-  const [numberOfGroups, setNumberOfGroups] = useState<number>(1);
+  >(() => initialState?.groupStackAssignments ?? []);
+  const [numberOfStacks, setNumberOfStacks] = useState<number>(
+    () => initialState?.groupStackAssignments?.length || 1,
+  );
+  const [numberOfGroups, setNumberOfGroups] = useState<number>(
+    () => initialState?.studentGroups?.length || 1,
+  );
   const [templateVersions, setTemplateVersions] = useState<
     TemplateVersionDto[]
   >([]);
@@ -101,17 +135,25 @@ export function DeploymentWizard({
   const [error, setError] = useState<string | null>(null);
 
   // Selection states
-  const [selectedVersionId, setSelectedVersionId] = useState<string>("");
+  const [selectedVersionId, setSelectedVersionId] = useState<string>(
+    () => initialState?.templateVersionId ?? "",
+  );
   const [selectedKeycloakGroupId, setSelectedKeycloakGroupId] =
-    useState<string>("");
-  const [deploymentName, setDeploymentName] = useState<string>("");
-  const [runtime, setRuntime] = useState<string>("4");
-  const [deploymentMode, setDeploymentMode] = useState<
+    useState<string>(() => initialState?.keycloakGroupId ?? "");
+  const [deploymentName, setDeploymentName] = useState<string>(
+    () => initialState?.deploymentName ?? "",
+  );
+  const [runtime, setRuntime] = useState<string>(
+    () => (initialState?.runtimeMonths ? String(initialState.runtimeMonths) : "4"),
+  );
+  const [deploymentMode] = useState<
     "per_group" | "per_student" | "per_course"
   >("per_group");
 
   // Form values - stores all parameter values
-  const [formValues, setFormValues] = useState<Record<string, any>>({});
+  const [formValues, setFormValues] = useState<Record<string, any>>(
+    () => initialState?.parameters ?? {},
+  );
 
   // Uploaded files - stores File objects keyed by user_file name
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, File>>({});
@@ -168,12 +210,14 @@ export function DeploymentWizard({
         const res = await getTemplateVersions(templateId, false);
         setTemplateVersions(res.data);
 
-        // Auto-select the active version (or latest if no active)
+        // Auto-select the active version (or latest if no active). In the
+        // retry flow `initialState.templateVersionId` already seeded the
+        // selection — leave it alone so we re-deploy with the same version.
         const activeVersion = res.data.find((v) => v.is_active);
         const latestVersion = res.data.length > 0 ? res.data[0] : null;
         const versionToSelect = activeVersion || latestVersion;
 
-        if (versionToSelect) {
+        if (versionToSelect && !initialState?.templateVersionId) {
           setSelectedVersionId(versionToSelect.id);
         }
 
@@ -221,8 +265,15 @@ export function DeploymentWizard({
     loadKeycloakGroupMembers();
   }, [selectedKeycloakGroupId, loadKeycloakGroupMembers]);
 
-  // Auto-create groups and stacks when deployment mode or members change
+  // Auto-create groups and stacks when deployment mode or members change.
+  // Skipped on the very first run when `initialState` was supplied (retry
+  // flow) so the pre-filled student groups / stack assignments survive the
+  // initial members load — the user re-confirms exactly what failed.
   useEffect(() => {
+    if (hasInitialStateRef.current) {
+      hasInitialStateRef.current = false;
+      return;
+    }
     if (deploymentMode === "per_student" && keycloakMembers.length > 0) {
       // One group per student, one stack per group
       const groups = keycloakMembers.map((student) => ({
@@ -316,6 +367,11 @@ export function DeploymentWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentGroups, deploymentMode]);
 
+  // One-shot guard: keep the failed deployment's parameters when the template
+  // version data first loads in the retry flow, otherwise the default-init
+  // loop below would wipe them with the template defaults.
+  const preserveInitialFormValuesRef = useRef(!!initialState);
+
   // Load template version data when version is selected
   useEffect(() => {
     if (!selectedVersionId) {
@@ -330,14 +386,20 @@ export function DeploymentWizard({
         const res = await getTemplateVersion(selectedVersionId);
         setTemplateVersionData(res.data);
 
-        // Initialize form values with defaults
-        const initialValues: Record<string, any> = {};
-        res.data.parameters?.forEach((param: TemplateParameter) => {
-          if (param.default !== undefined && param.default !== null) {
-            initialValues[param.name] = param.default;
-          }
-        });
-        setFormValues(initialValues);
+        if (preserveInitialFormValuesRef.current) {
+          // Retry flow: parameters are already seeded from the failed
+          // deployment; don't overwrite with template defaults.
+          preserveInitialFormValuesRef.current = false;
+        } else {
+          // Initialize form values with defaults
+          const initialValues: Record<string, any> = {};
+          res.data.parameters?.forEach((param: TemplateParameter) => {
+            if (param.default !== undefined && param.default !== null) {
+              initialValues[param.name] = param.default;
+            }
+          });
+          setFormValues(initialValues);
+        }
 
         setLoading((prev) => ({ ...prev, version: false }));
       } catch (err) {
@@ -429,6 +491,16 @@ export function DeploymentWizard({
 
     return baseSteps;
   }, [parametersByStep]);
+
+  // Retry flow: as soon as the wizard knows how many steps exist, jump to
+  // the overview (last step) so the user just has to confirm.
+  const didJumpToOverviewRef = useRef(false);
+  useEffect(() => {
+    if (initialState && !didJumpToOverviewRef.current && steps.length > 1) {
+      setCurrentStep(steps.length - 1);
+      didJumpToOverviewRef.current = true;
+    }
+  }, [initialState, steps.length]);
 
   const handleNext = () => {
     if (currentStep < steps.length - 1) {

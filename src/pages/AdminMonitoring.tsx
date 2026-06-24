@@ -361,19 +361,21 @@ export function AdminMonitoring() {
                   </CardDescription>
                 </div>
 
-                <div>
-                  <label className="sr-only">Ansicht</label>
-                  <select
-                    aria-label="Ansicht wählen"
-                    value={view}
-                    onChange={(e) => setView(e.target.value as any)}
-                    className="border rounded px-2 py-1 text-sm"
-                  >
-                    <option value="lecturer">Nach Dozent</option>
-                    <option value="course">Nach Kurs</option>
-                    <option value="date">Nach Datum</option>
-                  </select>
-                </div>
+                {!selectedTeacher && (
+                  <div>
+                    <label className="sr-only">Ansicht</label>
+                    <select
+                      aria-label="Ansicht wählen"
+                      value={view}
+                      onChange={(e) => setView(e.target.value as any)}
+                      className="border rounded px-2 py-1 text-sm"
+                    >
+                      <option value="lecturer">Nach Dozent</option>
+                      <option value="course">Nach Kurs</option>
+                      <option value="date">Nach Datum</option>
+                    </select>
+                  </div>
+                )}
               </div>
             </CardHeader>
             <CardContent>

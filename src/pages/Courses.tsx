@@ -39,8 +39,12 @@ export function Courses() {
         // to (project = activeProjectId) AND (teacher.id = caller). Without
         // this param the backend rejects non-admins with 400 — matches the
         // contract introduced in PR #137 for /api/v1/deployments.
+        //
+        // Backend caps page_size at 100 (src/core/dependencies.py); request the
+        // max so the client-side prefix filter operates over the full course
+        // set rather than only the first page.
         const [coursesRes, groupsRes] = await Promise.all([
-          getMyCourses({ page: 1, page_size: 10, openstack_project_id: activeProjectId }),
+          getMyCourses({ page: 1, page_size: 100, openstack_project_id: activeProjectId }),
           getKeycloakGroups(),
         ]);
 
@@ -192,10 +196,20 @@ export function Courses() {
 
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm mb-3">
+                  <div className="flex items-center justify-between text-sm mb-1">
                     <span className="text-slate-600">Bereitgestellte Anwendungen</span>
                     <span className="text-slate-900">{course.applications.length}</span>
                   </div>
+                  {/*
+                    The backend silently filters out deployments whose teacher.id
+                    no longer resolves to a local user (see appstore-backend
+                    src/api/courses.py:_filter_deployments_by_owner). Make that
+                    behaviour visible so a lecturer who expects more apps knows
+                    the count is scoped, not authoritative.
+                  */}
+                  <p className="text-xs text-slate-400 mb-3">
+                    Es werden nur Deployments angezeigt, deren Owner Sie sind.
+                  </p>
 
                   <div className="space-y-2">
                     {course.applications.map((app, idx) => (

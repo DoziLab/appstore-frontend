@@ -45,8 +45,9 @@ export function OpenStackConfig() {
   const [existingProject, setExistingProject] = useState<OpenstackProjectResponse | null>(null);
   const [credentialsLoading, setCredentialsLoading] = useState(true);
   const [saveLoading, setSaveLoading] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [formFeedback, setFormFeedback] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
+  const [yamlFeedback, setYamlFeedback] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
+  const [deleteFeedback, setDeleteFeedback] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [form, setForm] = useState<OpenstackCredentialsCreate>({
@@ -100,11 +101,14 @@ export function OpenStackConfig() {
 
   const saveData = async (data: OpenstackCredentialsCreate) => {
     if (!data.password.trim() && existingProject) {
-      setSaveError('Bitte geben Sie das Passwort ein, um die Zugangsdaten zu aktualisieren.');
+      setFormFeedback({ type: 'error', message: 'Bitte geben Sie das Passwort ein, um die Zugangsdaten zu aktualisieren.' });
+      setYamlFeedback(null);
+      setDeleteFeedback(null);
       return;
     }
-    setSaveError(null);
-    setSaveSuccess(false);
+    setFormFeedback(null);
+    setYamlFeedback(null);
+    setDeleteFeedback(null);
     setSaveLoading(true);
     try {
       if (existingProject) {
@@ -112,13 +116,16 @@ export function OpenStackConfig() {
       } else {
         await createOpenstackProject(data);
       }
-      setSaveSuccess(true);
+      setFormFeedback({ type: 'success', message: 'Zugangsdaten erfolgreich gespeichert.' });
+      setYamlFeedback(null);
+      setDeleteFeedback(null);
       setForm((prev) => ({ ...prev, password: '' }));
       // Refresh project list to get updated data
       const projects = await listOpenstackProjects();
       if (projects.length > 0) setExistingProject(projects[0]);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Fehler beim Speichern der Zugangsdaten');
+      setFormFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Fehler beim Speichern der Zugangsdaten' });
+      setYamlFeedback(null);
     } finally {
       setSaveLoading(false);
     }
@@ -161,10 +168,12 @@ export function OpenStackConfig() {
   }
 
   const handleYamlSubmit = () => {
-    setSaveError(null);
+    setYamlFeedback(null);
     const result = parseCloudsYaml(yamlInput);
     if (typeof result === 'string') {
-      setSaveError(result);
+      setYamlFeedback({ type: 'error', message: result });
+      setFormFeedback(null);
+      setDeleteFeedback(null);
       return;
     }
     const merged: OpenstackCredentialsCreate = {
@@ -181,11 +190,14 @@ export function OpenStackConfig() {
 
   const saveYamlData = async (data: OpenstackCredentialsCreate) => {
     if (!data.password.trim() && existingProject) {
-      setSaveError('Bitte geben Sie das Passwort ein, um die Zugangsdaten zu aktualisieren.');
+      setYamlFeedback({ type: 'error', message: 'Bitte geben Sie das Passwort ein, um die Zugangsdaten zu aktualisieren.' });
+      setFormFeedback(null);
+      setDeleteFeedback(null);
       return;
     }
-    setSaveError(null);
-    setSaveSuccess(false);
+    setYamlFeedback(null);
+    setFormFeedback(null);
+    setDeleteFeedback(null);
     setYamlLoading(true);
     try {
       if (existingProject) {
@@ -193,12 +205,14 @@ export function OpenStackConfig() {
       } else {
         await createOpenstackProject(data);
       }
-      setSaveSuccess(true);
+      setYamlFeedback({ type: 'success', message: 'Zugangsdaten erfolgreich gespeichert.' });
+      setFormFeedback(null);
+      setDeleteFeedback(null);
       setForm((prev) => ({ ...prev, password: '' }));
       const projects = await listOpenstackProjects();
       if (projects.length > 0) setExistingProject(projects[0]);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Fehler beim Speichern der Zugangsdaten');
+      setYamlFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Fehler beim Speichern der Zugangsdaten' });
     } finally {
       setYamlLoading(false);
     }
@@ -213,8 +227,13 @@ export function OpenStackConfig() {
       await deleteOpenstackProject(existingProject.id);
       setExistingProject(null);
       setForm({ auth_url: '', username: '', password: '', user_domain_name: 'Default', region_name: '', openstack_project_id: '', openstack_project_name: '' });
+      setDeleteFeedback({ type: 'success', message: 'Projekt erfolgreich entfernt.' });
+      setFormFeedback(null);
+      setYamlFeedback(null);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Fehler beim Löschen des Projekts');
+      setDeleteFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Fehler beim Löschen des Projekts' });
+      setFormFeedback(null);
+      setYamlFeedback(null);
     } finally {
       setDeleteLoading(false);
     }
@@ -341,17 +360,6 @@ export function OpenStackConfig() {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSaveCredentials} className="space-y-4">
-                  {saveError && (
-                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
-                      {saveError}
-                    </div>
-                  )}
-                  {saveSuccess && (
-                    <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-sm text-green-700">
-                      Zugangsdaten erfolgreich gespeichert.
-                    </div>
-                  )}
-
                   <div>
                     <Label htmlFor="auth-url">Authentifizierungs-URL</Label>
                     <Input
@@ -445,6 +453,18 @@ export function OpenStackConfig() {
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
+                      <Button
+                        type="submit"
+                        className="w-full bg-teal-500 hover:bg-teal-600 text-white mt-4"
+                        disabled={saveLoading || credentialsLoading}
+                      >
+                        {saveLoading ? 'Wird gespeichert...' : 'Zugangsdaten speichern'}
+                      </Button>
+                      {formFeedback && (
+                        <div className={`mt-2 p-3 rounded-lg ${formFeedback.type === 'error' ? 'bg-red-50 border border-red-200 text-sm text-red-700' : 'bg-green-50 border border-green-200 text-sm text-green-700'}`}>
+                          {formFeedback.message}
+                        </div>
+                      )}
                   </div>
 
                   <div>
@@ -459,21 +479,20 @@ export function OpenStackConfig() {
                     />
                     <Button
                       type="button"
-                      className="w-full bg-teal-500 hover:bg-teal-600 text-white mt-2"
+                      className="w-full bg-teal-500 hover:bg-teal-600 text-white mt-4"
                       onClick={handleYamlSubmit}
                       disabled={!yamlInput.trim() || yamlLoading || credentialsLoading}
                     >
                       {yamlLoading ? 'Wird gespeichert...' : 'Einlesen & speichern'}
                     </Button>
+                    {yamlFeedback && (
+                      <div className={`mt-2 p-3 rounded-lg ${yamlFeedback.type === 'error' ? 'bg-red-50 border border-red-200 text-sm text-red-700' : 'bg-green-50 border border-green-200 text-sm text-green-700'}`}>
+                        {yamlFeedback.message}
+                      </div>
+                    )}
                   </div>
 
-                  <Button
-                    type="submit"
-                    className="w-full bg-teal-500 hover:bg-teal-600 text-white"
-                    disabled={saveLoading || credentialsLoading}
-                  >
-                    {saveLoading ? 'Wird gespeichert...' : 'Zugangsdaten speichern'}
-                  </Button>
+
 
                   {existingProject && (
                     <AlertDialog>
@@ -505,6 +524,11 @@ export function OpenStackConfig() {
                           >
                             {deleteLoading ? 'Wird gelöscht...' : 'Entfernen'}
                           </Button>
+                          {deleteFeedback && (
+                            <div className={`w-full mt-3 p-3 rounded-lg ${deleteFeedback.type === 'error' ? 'bg-red-50 border border-red-200 text-sm text-red-700' : 'bg-green-50 border border-green-200 text-sm text-green-700'}`}>
+                              {deleteFeedback.message}
+                            </div>
+                          )}
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>

@@ -30,6 +30,8 @@ import {
 import { useEffect, useState } from 'react';
 import { getAllDeployments, DeploymentDto } from '../api/deployments';
 import { getFlavors, FlavorDto } from '../api/openstack';
+import { getMyCourses, type CourseDto } from '../api/courses';
+import { getKeycloakGroups, type KeycloakGroup } from '../api/keycloak';
 import React from 'react';
 
 
@@ -40,6 +42,8 @@ export function AdminMonitoring() {
   const [view, setView] = useState<'lecturer' | 'course' | 'date'>('lecturer');
   const [selectedTeacher, setSelectedTeacher] = useState<TeacherInfo | null>(null);
   const [pendingTemplates, setPendingTemplates] = useState<any[]>([]);
+  const [coursesData, setCoursesData] = useState<CourseDto[]>([]);
+  const [groups, setGroups] = useState<KeycloakGroup[]>([]);
 
   // Nova flavor catalog, keyed by flavor name (matches the value of the
   // template's `flavor` parameter default). Used to render real vCPU/RAM/Disk
@@ -54,6 +58,19 @@ export function AdminMonitoring() {
       .catch(console.error);
   }, []);
 
+  // Load courses for course name resolution
+  useEffect(() => {
+    getMyCourses()
+      .then((resp) => setCoursesData(resp.data))
+      .catch((err) => console.error('Failed to load courses', err));
+  }, []);
+
+  // Load Keycloak groups for course name resolution
+  useEffect(() => {
+    getKeycloakGroups()
+      .then((resp) => setGroups(resp.data))
+      .catch((err) => console.error('Failed to load groups', err));
+  }, []);
 
   // quotas removed: no longer fetching quotas
 
@@ -124,6 +141,34 @@ export function AdminMonitoring() {
         email: '',
       };
     }
+  };
+
+  const extractCourse = (deployment: DeploymentDto): string => {
+    let resolvedCourseName = 'Unbekannt';
+    
+    // Try to resolve course name from course_id first
+    if (deployment.course_id) {
+      const course = coursesData.find((c) => c.id === deployment.course_id);
+      if (course) {
+        // If course has keycloak_course_id, try to resolve the Keycloak group name
+        if ((course as any).keycloak_course_id) {
+          const group = groups.find(
+            (g) => g.id === (course as any).keycloak_course_id
+          );
+          resolvedCourseName = group?.name || course.name || resolvedCourseName;
+        } else {
+          // Fall back to course name
+          resolvedCourseName = course.name || resolvedCourseName;
+        }
+      }
+    }
+    
+    // Fall back to course.name from backend if available
+    if (resolvedCourseName === 'Unbekannt' && deployment.course?.name) {
+      resolvedCourseName = deployment.course.name;
+    }
+    
+    return resolvedCourseName;
   };
 
 
@@ -392,7 +437,7 @@ export function AdminMonitoring() {
                         .map((d) => (
                           <TableRow key={d.id}>
                             <TableCell className="text-slate-900">{d.name}</TableCell>
-                            <TableCell>{d.course?.name || d.course_id}</TableCell>
+                            <TableCell>{extractCourse(d)}</TableCell>
                             <TableCell>{d.template_version?.template_name || '—'}</TableCell>
                             <TableCell className="text-sm text-slate-600">
                               {new Date(d.created_at).toLocaleString()}
@@ -455,7 +500,7 @@ export function AdminMonitoring() {
                     {deploymentsByDate.map((d) => (
                       <TableRow key={d.id}>
                         <TableCell>{d.name}</TableCell>
-                        <TableCell>{d.course?.name || d.course_id}</TableCell>
+                        <TableCell>{extractCourse(d)}</TableCell>
                         <TableCell>{extractTeacher(d).name}</TableCell>
                         <TableCell className="text-sm text-slate-600">{new Date(d.created_at).toLocaleString()}</TableCell>
                         <TableCell><Badge variant="outline">{d.status}</Badge></TableCell>

@@ -23,6 +23,7 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Label } from "./ui/label";
+import { ApprovalBadge } from "./ApprovalBadge";
 import { activateTemplateVersion, type TemplateVersionDto } from "../api/templates";
 
 interface Props {
@@ -31,19 +32,6 @@ interface Props {
   candidates: TemplateVersionDto[];
   activeVersion: TemplateVersionDto | null;
   onActivated: () => void;
-}
-
-function statusLabel(status: string): { text: string; cls: string } {
-  switch (status) {
-    case "approved":
-      return { text: "genehmigt", cls: "bg-green-100 text-green-700" };
-    case "rejected":
-      return { text: "abgelehnt", cls: "bg-red-100 text-red-700" };
-    case "deprecated":
-      return { text: "veraltet", cls: "bg-slate-100 text-slate-600" };
-    default:
-      return { text: "offen", cls: "bg-amber-100 text-amber-700" };
-  }
 }
 
 export function UpgradeVersionDialog({
@@ -110,7 +98,6 @@ export function UpgradeVersionDialog({
             className="space-y-2 max-h-72 overflow-y-auto pr-1"
           >
             {candidates.map((v) => {
-              const status = statusLabel(v.approval_status as string);
               return (
                 <Label
                   key={v.id}
@@ -121,9 +108,7 @@ export function UpgradeVersionDialog({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge variant="outline">{v.version}</Badge>
-                      <span className={`text-xs px-2 py-0.5 rounded ${status.cls}`}>
-                        {status.text}
-                      </span>
+                      <ApprovalBadge status={v.approval_status} variant="version" />
                     </div>
                     <p className="text-xs text-slate-500 mt-1 font-mono break-all">
                       <GitBranch className="w-3 h-3 inline mr-1" />

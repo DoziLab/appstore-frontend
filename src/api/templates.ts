@@ -25,12 +25,25 @@ export type UserFileDefinition = {
   mode?: "all_stacks" | "per_group";
 };
 
+// Approval lebt ausschließlich auf der Version, nicht mehr auf dem Template
+// (Migration a7c4f2b91d34_per_version_approval_and_github_app). Werte
+// entsprechen 1:1 dem Backend-Enum `TemplateVersionApprovalStatus`.
+export type TemplateVersionApprovalStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "deprecated";
+
 export type TemplateVersionDto = {
   id: string;
   template_id: string;
   version: string;
   git_commit_sha: string;
   is_active: boolean;
+  approval_status: TemplateVersionApprovalStatus;
+  approved_by_id: string | null;
+  approved_at: string | null;
+  rejection_reason: string | null;
   created_at: string;
   parameters?: TemplateParameter[];
   user_files?: UserFileDefinition[];
@@ -52,7 +65,13 @@ export type TemplateDto = {
   repo_url: string;
   icon_url: string | null;
   visibility: string;
-  approval_status: string;
+  // Hinweis: Approval lebt nur noch pro Version. Der Backend-Endpoint
+  // `GET /templates` liefert seit der Per-Version-Migration KEINEN
+  // `approval_status` mehr auf Template-Ebene. Wenn Code früher
+  // `template.approval_status === 'approved'` lesen wollte, war das nach
+  // der Migration immer `undefined` — also stillschweigend falsch.
+  // Den UI-Status fürs Template leitet man jetzt aus `versions[]` ab
+  // (siehe `lib/template-status.ts`).
   versions?: TemplateVersionDto[];
   created_at: string;
   updated_at: string;
@@ -145,16 +164,6 @@ export async function activateTemplateVersion(versionId: string) {
   }>(`/api/v1/template-versions/${versionId}/activate`, { method: "POST" });
 }
 
-export async function approveTemplate(templateId: string, comment?: string) {
-  return apiFetch<{ success: boolean; message: string }>(
-    `/api/v1/templates/${templateId}/approve`,
-    { method: "POST", body: JSON.stringify({ comment: comment ?? "" }) }
-  );
-}
-
-export async function rejectTemplate(templateId: string, comment?: string) {
-  return apiFetch<{ success: boolean; message: string }>(
-    `/api/v1/templates/${templateId}/reject`,
-    { method: "POST", body: JSON.stringify({ comment: comment ?? "" }) }
-  );
-}
+// Approval lebt seit der Per-Version-Migration ausschließlich auf
+// `TemplateVersion`. Die zugehörigen Helfer sind in `api/github.ts`:
+// `approveTemplateVersion` / `rejectTemplateVersion`.

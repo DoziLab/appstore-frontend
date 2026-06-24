@@ -7,7 +7,9 @@ import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { AddTemplateDialog } from '../components/AddTemplateDialog';
 import { TemplateOwnerDetailDialog } from '../components/TemplateOwnerDetailDialog';
+import { ApprovalBadge } from '../components/ApprovalBadge';
 import { getTemplates, type TemplateDto } from '../api/templates';
+import { deriveTemplateOverallStatus } from '../lib/template-status';
 import { useCurrentUser } from '../auth/useCurrentUser';
 import type { LucideIcon } from 'lucide-react';
 
@@ -280,11 +282,11 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                         <Icon className="w-6 h-6" />
                       </div>
                       <div className="flex gap-2">
-                        {template.approval_status === 'approved' && (
-                          <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                            Genehmigt
-                          </Badge>
-                        )}
+                        <ApprovalBadge
+                          status={deriveTemplateOverallStatus(template)}
+                          variant="overall"
+                          showIcon={false}
+                        />
                         {template.visibility === 'public' && (
                           <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
                             Öffentlich
@@ -412,9 +414,10 @@ export function AppStore({ onDeploy }: AppStoreProps) {
             <div className="space-y-6 mt-4">
               {/* Badges */}
               <div className="flex gap-2 flex-wrap">
-                {selectedTemplate.approval_status === 'approved' && (
-                  <Badge className="bg-green-100 text-green-700">Genehmigt</Badge>
-                )}
+                <ApprovalBadge
+                  status={deriveTemplateOverallStatus(selectedTemplate)}
+                  variant="overall"
+                />
                 {selectedTemplate.visibility === 'public' && (
                   <Badge className="bg-blue-100 text-blue-700">Öffentlich</Badge>
                 )}

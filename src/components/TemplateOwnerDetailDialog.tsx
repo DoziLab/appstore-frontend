@@ -28,8 +28,6 @@ import {
   GitBranch,
   Lock,
   MessageSquare,
-  ShieldCheck,
-  ShieldQuestion,
   X,
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
@@ -43,12 +41,14 @@ import {
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
+import { ApprovalBadge } from "./ApprovalBadge";
 import {
   approveTemplateVersion,
   rejectTemplateVersion,
 } from "../api/github";
 import type { TemplateDto, TemplateVersionDto } from "../api/templates";
 import { isStrictlyNewer } from "../lib/version";
+import { deriveTemplateOverallStatus } from "../lib/template-status";
 import { UpgradeVersionDialog } from "./UpgradeVersionDialog";
 import { CheckRemoteVersionsDialog } from "./CheckRemoteVersionsDialog";
 
@@ -61,39 +61,6 @@ interface Props {
   onChanged: () => void;
   isAdmin: boolean;
 }
-
-function ApprovalBadge({ status }: { status: string }) {
-  if (status === "approved") {
-    return (
-      <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-        <ShieldCheck className="w-3 h-3 mr-1" />
-        genehmigt
-      </Badge>
-    );
-  }
-  if (status === "rejected") {
-    return (
-      <Badge className="bg-red-100 text-red-700 hover:bg-red-100">
-        <X className="w-3 h-3 mr-1" />
-        abgelehnt
-      </Badge>
-    );
-  }
-  if (status === "deprecated") {
-    return (
-      <Badge variant="outline" className="text-slate-500">
-        veraltet
-      </Badge>
-    );
-  }
-  return (
-    <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">
-      <ShieldQuestion className="w-3 h-3 mr-1" />
-      offen
-    </Badge>
-  );
-}
-
 export function TemplateOwnerDetailDialog({
   template,
   open,
@@ -125,6 +92,11 @@ export function TemplateOwnerDetailDialog({
     );
 
   const activeVersion = versions.find((v) => v.is_active);
+
+  // Approval lebt nur noch pro Version (Backend-Migration
+  // a7c4f2b91d34_per_version_approval_and_github_app). Aus dem Versionsstand
+  // leiten wir hier eine UI-taugliche Aggregations-Bewertung ab.
+  const overallStatus = deriveTemplateOverallStatus(template);
 
   // Versionen, auf die der Owner hochziehen kann: strikt neuer als die
   // aktuelle aktive Version. Wenn (noch) keine aktive existiert, jede.
@@ -206,7 +178,7 @@ export function TemplateOwnerDetailDialog({
                   </>
                 )}
               </Badge>
-              <ApprovalBadge status={template.approval_status} />
+              <ApprovalBadge status={overallStatus} variant="overall" />
             </div>
 
             {/* Beschreibung */}
@@ -307,7 +279,7 @@ export function TemplateOwnerDetailDialog({
                     <span className="text-xs text-green-600 font-medium">
                       Aktiv
                     </span>
-                    <ApprovalBadge status={activeVersion.approval_status as string} />
+                    <ApprovalBadge status={activeVersion.approval_status} variant="version" />
                   </div>
                   <p className="text-xs text-slate-500 mt-2 font-mono break-all">
                     {activeVersion.git_commit_sha}
@@ -353,7 +325,8 @@ export function TemplateOwnerDetailDialog({
                               </Badge>
                             )}
                             <ApprovalBadge
-                              status={version.approval_status as string}
+                              status={version.approval_status}
+                              variant="version"
                             />
                           </div>
                           <p className="text-xs text-slate-500 mt-1 font-mono break-all">

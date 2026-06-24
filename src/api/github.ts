@@ -116,7 +116,11 @@ export async function importTemplateVersionFromGithub(
 // Approval-Queue (Template-Versionen)
 // ---------------------------------------------------------------------------
 
-export type ApprovalStatus = "pending" | "approved" | "rejected" | "deprecated";
+import type { TemplateVersionApprovalStatus } from "./templates";
+
+// Re-Export, damit existierende Imports `ApprovalStatus` aus `api/github`
+// nicht alle umgezogen werden müssen. Quelle der Wahrheit ist `api/templates`.
+export type ApprovalStatus = TemplateVersionApprovalStatus;
 
 export type QueueSort =
   | "created_at_desc"

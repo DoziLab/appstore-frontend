@@ -167,8 +167,37 @@ export function OpenStackConfig() {
     }
   }
 
+  function validateCloudsYaml(yaml: string): string | null {
+    // Basic checks for unclosed quotes and obvious broken lines
+    const lines = yaml.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // line ends with an opening quote (no closing quote on same line)
+      if (/:\s*["']\s*$/.test(line)) {
+        return `Unvollständige Zeichenkette in Zeile ${i + 1}: fehlendes schließendes Anführungszeichen.`;
+      }
+      const dbl = (line.match(/\"/g) || []).length;
+      const sgl = (line.match(/\'/g) || []).length;
+      if (dbl % 2 !== 0) return `Unbalancierte Doppel-Anführungszeichen in Zeile ${i + 1}.`;
+      if (sgl % 2 !== 0) return `Unbalancierte einfache Anführungszeichen in Zeile ${i + 1}.`;
+    }
+    // Quick global check for overall unbalanced quotes
+    const allDbl = (yaml.match(/\"/g) || []).length;
+    const allSgl = (yaml.match(/\'/g) || []).length;
+    if (allDbl % 2 !== 0) return 'Unbalancierte Doppel-Anführungszeichen im Dokument.';
+    if (allSgl % 2 !== 0) return 'Unbalancierte einfache Anführungszeichen im Dokument.';
+    return null;
+  }
+
   const handleYamlSubmit = () => {
     setYamlFeedback(null);
+    const syntaxErr = validateCloudsYaml(yamlInput);
+    if (syntaxErr) {
+      setYamlFeedback({ type: 'error', message: syntaxErr });
+      setFormFeedback(null);
+      setDeleteFeedback(null);
+      return;
+    }
     const result = parseCloudsYaml(yamlInput);
     if (typeof result === 'string') {
       setYamlFeedback({ type: 'error', message: result });
@@ -468,7 +497,7 @@ export function OpenStackConfig() {
                   </div>
 
                   <div>
-                    <Label>clouds.yaml (optional)</Label>
+                    <Label>Eingabe über clouds.yaml (alternativ)</Label>
                     <Textarea
                       className="font-mono text-sm h-40 resize-none mt-2"
                       placeholder={`clouds:\n  openstack:\n    auth:\n      auth_url: https://...\n      username: "user"\n      password: "pass"\n      project_id: abc123\n      project_name: "mein-projekt"\n      user_domain_name: "Default"\n    region_name: "RegionOne"`}

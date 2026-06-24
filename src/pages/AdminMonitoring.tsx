@@ -276,9 +276,9 @@ export function AdminMonitoring() {
     <div className="p-8 space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-slate-900 mb-2">Admin Monitoring</h1>
+        <h1 className="text-slate-900 mb-2">Administration</h1>
         <p className="text-slate-600">
-          Globale Ressourcenüberwachung und Verwaltung der Dozenten-Projekte
+          Globale Ressourcenüberwachung und Verwaltung der Deployments
         </p>
       </div>
 
@@ -348,9 +348,9 @@ export function AdminMonitoring() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Dozenten-Projekte</CardTitle>
-                  <CardDescription>
-                    Übersicht über alle Dozenten-Projekte und deren Deployments
+                  <CardTitle>Deployments</CardTitle>
+                  <CardDescription className='mt-1'>
+                    Übersicht über alle Deployments
                   </CardDescription>
                 </div>
 
@@ -419,6 +419,10 @@ export function AdminMonitoring() {
                   >
                     ← Zurück
                   </Button>
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-slate-900">Deployments von {selectedTeacher.name}</h3>
+                    <p className="text-sm text-slate-500">{selectedTeacher.email}</p>
+                  </div>
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -497,6 +501,9 @@ export function AdminMonitoring() {
                   >
                     ← Zurück
                   </Button>
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-slate-900">Deployments im Kurs {selectedCourse}</h3>
+                  </div>
                   <Table>
                     <TableHeader>
                       <TableRow>

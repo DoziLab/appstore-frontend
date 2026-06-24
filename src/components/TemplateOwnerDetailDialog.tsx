@@ -46,7 +46,11 @@ import {
   approveTemplateVersion,
   rejectTemplateVersion,
 } from "../api/github";
-import type { TemplateDto, TemplateVersionDto } from "../api/templates";
+import {
+  updateTemplate,
+  type TemplateDto,
+  type TemplateVersionDto,
+} from "../api/templates";
 import { isStrictlyNewer } from "../lib/version";
 import { deriveTemplateOverallStatus } from "../lib/template-status";
 import { UpgradeVersionDialog } from "./UpgradeVersionDialog";
@@ -73,6 +77,11 @@ export function TemplateOwnerDetailDialog({
   const [busyVersionId, setBusyVersionId] = useState<string | null>(null);
   const [rejectingVersionId, setRejectingVersionId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
+  // Visibility-Toggle: Backend erlaubt das laut `template_service.update_template`
+  // ausdrücklich nur für Admins — wir blenden den Schalter daher außerhalb der
+  // Admin-Rolle ganz aus und vertrauen zusätzlich auf die Backend-403 als
+  // zweiten Riegel (für API-Direktanfragen).
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
 
   // Aufräumen, wenn der Dialog zugeht — verhindert, dass beim nächsten
   // Öffnen ein offener Reject-Block aus einer früheren Session sichtbar ist.
@@ -141,6 +150,31 @@ export function TemplateOwnerDetailDialog({
     }
   };
 
+  // Visibility umschalten — nur als Admin sinnvoll (Backend wirft sonst 403).
+  // Wir berechnen das Zielniveau aus dem aktuellen Wert, damit ein
+  // schneller Doppelklick nicht in eine Race läuft.
+  const handleToggleVisibility = async () => {
+    const next = template.visibility === "public" ? "private" : "public";
+    setVisibilityBusy(true);
+    try {
+      await updateTemplate(template.id, { visibility: next });
+      toast.success(
+        next === "public"
+          ? "Template ist jetzt öffentlich."
+          : "Template ist jetzt privat.",
+      );
+      onChanged();
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Sichtbarkeit konnte nicht geändert werden.",
+      );
+    } finally {
+      setVisibilityBusy(false);
+    }
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -160,7 +194,7 @@ export function TemplateOwnerDetailDialog({
 
           <div className="space-y-6 mt-2">
             {/* Status-Badges */}
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge
                 className={
                   template.visibility === "public"
@@ -179,6 +213,29 @@ export function TemplateOwnerDetailDialog({
                 )}
               </Badge>
               <ApprovalBadge status={overallStatus} variant="overall" />
+              {/* Sichtbarkeits-Umschalter — Backend lässt nur Admins zu
+                  (`template_service.update_template` wirft sonst 403).
+                  Wir zeigen den Button daher gar nicht erst für Nicht-Admins. */}
+              {isAdmin && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleToggleVisibility}
+                  disabled={visibilityBusy}
+                  className="h-7 text-xs"
+                  title={
+                    template.visibility === "public"
+                      ? "Auf privat zurückstellen — Template ist dann nur noch für Owner und Admins sichtbar."
+                      : "Auf öffentlich schalten — Template wird für alle User sichtbar, sobald mindestens eine approvte Version existiert."
+                  }
+                >
+                  {visibilityBusy
+                    ? "Wird geändert…"
+                    : template.visibility === "public"
+                      ? "Auf privat stellen"
+                      : "Öffentlich schalten"}
+                </Button>
+              )}
             </div>
 
             {/* Beschreibung */}

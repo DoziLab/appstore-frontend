@@ -164,6 +164,36 @@ export async function activateTemplateVersion(versionId: string) {
   }>(`/api/v1/template-versions/${versionId}/activate`, { method: "POST" });
 }
 
+/**
+ * Partial update auf ein Template. Backend erlaubt das für Owner-or-Admin
+ * (`templates.py:138` → `template_service.update_template`), erzwingt aber
+ * dass nur **Admins** `visibility` ändern dürfen — andere Felder fasst die
+ * UI bislang nicht an, weil sie nicht in der Owner-Detailansicht editierbar
+ * sind. Bei Visibility-Änderungen durch Nicht-Admins gibt das Backend einen
+ * 403 zurück, den die UI als Toast aufgreift.
+ */
+export type TemplateUpdatePayload = {
+  name?: string;
+  description?: string | null;
+  repo_url?: string;
+  icon_url?: string | null;
+  visibility?: "public" | "private";
+};
+
+export async function updateTemplate(
+  templateId: string,
+  patch: TemplateUpdatePayload,
+) {
+  return apiFetch<{
+    success: boolean;
+    message: string;
+    data: TemplateDto;
+  }>(`/api/v1/templates/${templateId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
 // Approval lebt seit der Per-Version-Migration ausschließlich auf
 // `TemplateVersion`. Die zugehörigen Helfer sind in `api/github.ts`:
 // `approveTemplateVersion` / `rejectTemplateVersion`.

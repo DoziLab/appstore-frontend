@@ -130,6 +130,21 @@ export async function getTemplateVersions(templateId: string, activeOnly = false
   }>(`/api/v1/template-versions/template/${templateId}${sp.toString() ? `?${sp.toString()}` : ""}`);
 }
 
+/**
+ * Aktiviert eine bestimmte Template-Version. Das Backend deaktiviert
+ * automatisch alle anderen Versionen desselben Templates — d.h. das ist die
+ * Operation hinter „Template auf neue Version aktualisieren". Erlaubt für
+ * Template-Owner und Admins; das Approval-Flag der Version ist hier egal
+ * (Backend prüft Approval erst beim Deploy).
+ */
+export async function activateTemplateVersion(versionId: string) {
+  return apiFetch<{
+    success: boolean;
+    message: string;
+    data: TemplateVersionDto;
+  }>(`/api/v1/template-versions/${versionId}/activate`, { method: "POST" });
+}
+
 export async function approveTemplate(templateId: string, comment?: string) {
   return apiFetch<{ success: boolean; message: string }>(
     `/api/v1/templates/${templateId}/approve`,

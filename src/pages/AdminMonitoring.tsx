@@ -43,6 +43,7 @@ export function AdminMonitoring() {
   const [deployments, setDeployments] = useState<DeploymentDto[]>([]);
   const [view, setView] = useState<'lecturer' | 'course' | 'date'>('lecturer');
   const [selectedTeacher, setSelectedTeacher] = useState<TeacherInfo | null>(null);
+  const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
   const [pendingTemplates, setPendingTemplates] = useState<any[]>([]);
   const [coursesData, setCoursesData] = useState<CourseDto[]>([]);
   const [groups, setGroups] = useState<KeycloakGroup[]>([]);
@@ -208,32 +209,24 @@ export function AdminMonitoring() {
     }, {})
   );
 
-  // Group by project name for "course" view
+  // Group by course name for "course" view
   type CourseAggregate = {
-    projectName: string;
-    teachers: TeacherInfo[];
+    courseName: string;
     deployments: DeploymentDto[];
   };
 
   const courses: CourseAggregate[] = Object.values(
     deployments.reduce<Record<string, CourseAggregate>>((acc, deployment) => {
-      const name = deployment.name || 'Unbenannt';
-      const teacher = extractTeacher(deployment);
+      const courseName = extractCourse(deployment);
 
-      if (!acc[name]) {
-        acc[name] = {
-          projectName: name,
-          teachers: [],
+      if (!acc[courseName]) {
+        acc[courseName] = {
+          courseName,
           deployments: [],
         };
       }
 
-      // avoid duplicate teachers
-      if (!acc[name].teachers.some((t) => t.id === teacher.id)) {
-        acc[name].teachers.push(teacher);
-      }
-
-      acc[name].deployments.push(deployment);
+      acc[courseName].deployments.push(deployment);
       return acc;
     }, {}),
   );
@@ -361,7 +354,7 @@ export function AdminMonitoring() {
                   </CardDescription>
                 </div>
 
-                {!selectedTeacher && (
+                {!selectedTeacher && !selectedCourse && (
                   <div>
                     <label className="sr-only">Ansicht</label>
                     <select
@@ -457,14 +450,12 @@ export function AdminMonitoring() {
                 </div>
               )}
 
-              {view === 'course' && (
+              {view === 'course' && !selectedCourse && (
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Kurs</TableHead>
-                      <TableHead>Dozenten</TableHead>
                       <TableHead>Deployments</TableHead>
-                      <TableHead>Letzte Aktivität</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -472,34 +463,69 @@ export function AdminMonitoring() {
                     {courses.map((c) => {
                       const stats = getDeploymentStats(c.deployments);
                       const health = getProjectHealth(c.deployments);
-                      const lastActivity = new Date(
-                        Math.max(...c.deployments.map((d) => new Date(d.updated_at).getTime()))
-                      ).toLocaleString();
+
                       return (
                         <TableRow 
-                          key={c.projectName}
+                          key={c.courseName}
                           className="cursor-pointer hover:bg-slate-50"
-                          onClick={() => {
-                            // Navigate to first deployment of this project
-                            if (c.deployments.length > 0) {
-                              navigate(`/deployment/${c.deployments[0].id}`);
-                            }
-                          }}
+                          onClick={() => setSelectedCourse(c.courseName)}
                         >
-                          <TableCell className="text-blue-600 hover:underline">{c.projectName}</TableCell>
-                          <TableCell>
-                            {c.teachers.map((t) => t.name).join(', ')}
+                          <TableCell className="text-slate-900">
+                            {c.courseName}
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline">{stats.running} / {stats.total}</Badge>
+                            <Badge variant="outline">
+                              {c.deployments.length}
+                            </Badge>
                           </TableCell>
-                          <TableCell className="text-sm text-slate-600">{lastActivity}</TableCell>
-                          <TableCell>{renderHealthBadge(health)}</TableCell>
+                          <TableCell>
+                            {renderHealthBadge(health)}
+                          </TableCell>
                         </TableRow>
                       );
                     })}
                   </TableBody>
                 </Table>
+              )}
+
+              {view === 'course' && selectedCourse && (
+                <div className="space-y-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedCourse(null)}
+                  >
+                    ← Zurück
+                  </Button>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Deployment-Name</TableHead>
+                        <TableHead>Dozent</TableHead>
+                        <TableHead>Template</TableHead>
+                        <TableHead>Erstellt</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {deployments
+                        .filter((d) => extractCourse(d) === selectedCourse)
+                        .map((d) => (
+                          <TableRow 
+                            key={d.id}
+                            className="cursor-pointer hover:bg-slate-50"
+                            onClick={() => navigate(`/deployment/${d.id}`)}
+                          >
+                            <TableCell className="text-slate-900 text-blue-600 hover:underline">{d.name}</TableCell>
+                            <TableCell>{extractTeacher(d).name}</TableCell>
+                            <TableCell>{d.template_version?.template_name || '—'}</TableCell>
+                            <TableCell className="text-sm text-slate-600">
+                              {new Date(d.created_at).toLocaleString()}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
 
               {view === 'date' && (

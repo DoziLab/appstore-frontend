@@ -1054,15 +1054,7 @@ function PhaseRow({ phase, isLive, defaultOpen }: { phase: LogPhase; isLive: boo
 
       {/* Log entries */}
       {open && (
-        <div
-          style={{
-            borderTop: "1px solid #1e293b",
-            backgroundColor: "#0f172a",
-            maxHeight: "20rem",
-            overflowY: "auto",
-            overscrollBehavior: "contain",
-          }}
-        >
+        <div style={{ borderTop: "1px solid #1e293b", backgroundColor: "#0f172a", maxHeight: "400px", overflowY: "auto" }}>
           {phase.logs.length === 0 ? (
             <p className="px-4 py-3 text-xs italic font-mono" style={{ color: "#475569" }}>
               {phase.status === "pending" ? "// Noch nicht gestartet" : "// Keine Einträge"}

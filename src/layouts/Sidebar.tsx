@@ -71,9 +71,13 @@ export function Sidebar({ logo }: SidebarProps) {
   return (
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
       {/* Logo */}
-      <div className="p-6 border-b border-slate-200">
+      <NavLink
+        to="/dashboard"
+        className="p-6 border-b border-slate-200 block transition-opacity hover:opacity-80"
+        aria-label="Zum Dashboard"
+      >
         <img src={logo} alt="DoziLab" className="h-40 w-auto" />
-      </div>
+      </NavLink>
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1">

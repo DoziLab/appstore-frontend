@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import React from "react";
 import {
   CheckCircle2,
@@ -25,6 +25,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -854,87 +856,313 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
               </div>
             )}
 
-            {!credentialsLoading && !credentialsError && credentialsData && (
-              <div className="space-y-6">
-                {credentialsData.instances.map((instance) => (
-                  <Card key={instance.instance_id} className="border-slate-200">
-                    <CardHeader>
-                      <CardTitle className="text-base">{instance.vm_name || "VM"}</CardTitle>
-                      <CardDescription>Stack ID: {instance.openstack_stack_id || "-"}</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {instance.accesses.map((access, index) => {
-                        const accessKey = `${instance.instance_id}-${access.access_type}-${index}`;
-                        const isVisible = passwordVisibility[accessKey] === true;
-                        return (
-                          <div key={accessKey} className="rounded-lg border border-slate-200 p-4 space-y-3">
-                            <div className="flex items-center justify-between">
-                              <h4 className="text-sm font-medium text-slate-900">
-                                {accessTypeLabels[access.access_type] || access.access_type}
-                              </h4>
-                              <Badge variant="outline">{access.access_type}</Badge>
-                            </div>
-                            <div className="grid gap-3">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="text-xs text-slate-500">Username</span>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm text-slate-900">{access.username ?? "-"}</span>
-                                  <Button variant="outline" size="sm" onClick={() => handleCopy(access.username, "Username")} disabled={!access.username}>
-                                    <Copy className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="text-xs text-slate-500">Password</span>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm text-slate-900">
-                                    {isVisible ? access.password ?? "-" : getMaskedPassword(access.password)}
-                                  </span>
-                                  <Button variant="outline" size="sm" onClick={() => togglePasswordVisibility(accessKey)} disabled={!access.password}>
-                                    {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                  </Button>
-                                  <Button variant="outline" size="sm" onClick={() => handleCopy(access.password, "Password")} disabled={!access.password}>
-                                    <Copy className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="text-xs text-slate-500">
-                                  {access.access_type === "ssh" ? "SSH-Befehl" : access.access_type === "web_url" ? "URL" : "Connection URL"}
-                                </span>
-                                <div className="flex items-center gap-2">
-                                  {access.connection_url ? (
-                                    access.access_type === "web_url" ? (
-                                      <a href={access.connection_url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline break-all">
-                                        {access.connection_url}
-                                      </a>
-                                    ) : (
-                                      <code className="text-sm bg-slate-100 px-2 py-0.5 rounded break-all font-mono">{access.connection_url}</code>
-                                    )
-                                  ) : (
-                                    <span className="text-sm text-slate-400">-</span>
-                                  )}
-                                  <Button variant="outline" size="sm" onClick={() => handleCopy(access.connection_url, access.access_type === "ssh" ? "SSH-Befehl" : "URL")} disabled={!access.connection_url}>
-                                    <Copy className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="text-xs text-slate-500">Port</span>
-                                <span className="text-sm text-slate-900">{access.port ?? "-"}</span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+              {!credentialsLoading && credentialsError && (
+                <div className="space-y-3">
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <span className="text-sm text-red-700">{credentialsError}</span>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={loadCredentials}>
+                    Erneut versuchen
+                  </Button>
+                </div>
+              )}
+
+              {!credentialsLoading && !credentialsError && credentialsData && (
+                <div className="space-y-6">
+                  {credentialsData.instances.map((instance) => (
+                    <CredentialInstanceCard
+                      key={instance.instance_id}
+                      instance={instance}
+                      passwordVisibility={passwordVisibility}
+                      togglePasswordVisibility={togglePasswordVisibility}
+                      handleCopy={handleCopy}
+                      getMaskedPassword={getMaskedPassword}
+                    />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          )}
+        </Card>
+    </div>
+  );
+}
+
+// ── Credentials helpers ───────────────────────────────────────────────────────
+
+type AccessLike = {
+  access_type: string;
+  username: string | null;
+  password: string | null;
+  connection_url: string | null;
+  port: number | null;
+  owner_kind: "teacher" | "group" | null;
+  owner_label: string | null;
+};
+
+type CredentialInstanceLike = {
+  instance_id: string;
+  vm_name: string | null;
+  openstack_stack_id: string | null;
+  accesses: AccessLike[];
+};
+
+function CredentialInstanceCard({
+  instance,
+  passwordVisibility,
+  togglePasswordVisibility,
+  handleCopy,
+  getMaskedPassword,
+}: {
+  instance: CredentialInstanceLike;
+  passwordVisibility: Record<string, boolean>;
+  togglePasswordVisibility: (key: string) => void;
+  handleCopy: (value: string | null | undefined, label: string) => void;
+  getMaskedPassword: (pw: string | null | undefined) => string;
+}) {
+  // Split accesses by owner. Legacy rows (owner_kind == null) fall into
+  // a third "Sonstige" bucket so they're still visible but don't pollute
+  // the teacher tab.
+  const teacherAccesses = instance.accesses.filter((a) => a.owner_kind === "teacher");
+  const groupAccesses = instance.accesses.filter((a) => a.owner_kind === "group");
+  const otherAccesses = instance.accesses.filter((a) => a.owner_kind == null);
+
+  // Group the group-accesses by their owner_label so each group becomes
+  // one collapsible accordion row.
+  const groupsByLabel = new Map<string, AccessLike[]>();
+  for (const a of groupAccesses) {
+    const key = a.owner_label || a.username || "Gruppe";
+    const list = groupsByLabel.get(key) ?? [];
+    list.push(a);
+    groupsByLabel.set(key, list);
+  }
+
+  // Default tab: prefer "dozent" if there are teacher entries, else "gruppen".
+  const defaultTab =
+    teacherAccesses.length > 0 ? "dozent" : groupsByLabel.size > 0 ? "gruppen" : "sonstige";
+
+  return (
+    <Card className="border-slate-200">
+      <CardHeader>
+        <CardTitle className="text-base">{instance.vm_name || "VM"}</CardTitle>
+        <CardDescription>Stack ID: {instance.openstack_stack_id || "-"}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Tabs defaultValue={defaultTab} className="w-full">
+          <TabsList className="mb-4">
+            {teacherAccesses.length > 0 && (
+              <TabsTrigger value="dozent">
+                Dozent
+                <Badge variant="secondary" className="ml-2">{teacherAccesses.length}</Badge>
+              </TabsTrigger>
             )}
-          </CardContent>
-        )}
-      </Card>
+            {groupsByLabel.size > 0 && (
+              <TabsTrigger value="gruppen">
+                Gruppen
+                <Badge variant="secondary" className="ml-2">{groupsByLabel.size}</Badge>
+              </TabsTrigger>
+            )}
+            {otherAccesses.length > 0 && (
+              <TabsTrigger value="sonstige">
+                Sonstige
+                <Badge variant="secondary" className="ml-2">{otherAccesses.length}</Badge>
+              </TabsTrigger>
+            )}
+          </TabsList>
+
+          {teacherAccesses.length > 0 && (
+            <TabsContent value="dozent" className="space-y-3">
+              {teacherAccesses.map((access, idx) => (
+                <AccessRow
+                  key={`teacher-${idx}`}
+                  accessKey={`${instance.instance_id}-teacher-${access.access_type}-${idx}`}
+                  access={access}
+                  passwordVisibility={passwordVisibility}
+                  togglePasswordVisibility={togglePasswordVisibility}
+                  handleCopy={handleCopy}
+                  getMaskedPassword={getMaskedPassword}
+                />
+              ))}
+            </TabsContent>
+          )}
+
+          {groupsByLabel.size > 0 && (
+            <TabsContent value="gruppen">
+              <Accordion
+                type="multiple"
+                defaultValue={Array.from(groupsByLabel.keys()).slice(0, 1)}
+                className="space-y-2"
+              >
+                {Array.from(groupsByLabel.entries()).map(([label, accesses]) => (
+                  <AccordionItem
+                    key={label}
+                    value={label}
+                    className="border border-slate-200 rounded-lg px-3"
+                  >
+                    <AccordionTrigger className="hover:no-underline">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-slate-900">{label}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {accesses.length} {accesses.length === 1 ? "Zugang" : "Zugänge"}
+                        </Badge>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-3 pt-2">
+                      {accesses.map((access, idx) => (
+                        <AccessRow
+                          key={`${label}-${idx}`}
+                          accessKey={`${instance.instance_id}-${label}-${access.access_type}-${idx}`}
+                          access={access}
+                          passwordVisibility={passwordVisibility}
+                          togglePasswordVisibility={togglePasswordVisibility}
+                          handleCopy={handleCopy}
+                          getMaskedPassword={getMaskedPassword}
+                        />
+                      ))}
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </TabsContent>
+          )}
+
+          {otherAccesses.length > 0 && (
+            <TabsContent value="sonstige" className="space-y-3">
+              {otherAccesses.map((access, idx) => (
+                <AccessRow
+                  key={`other-${idx}`}
+                  accessKey={`${instance.instance_id}-other-${access.access_type}-${idx}`}
+                  access={access}
+                  passwordVisibility={passwordVisibility}
+                  togglePasswordVisibility={togglePasswordVisibility}
+                  handleCopy={handleCopy}
+                  getMaskedPassword={getMaskedPassword}
+                />
+              ))}
+            </TabsContent>
+          )}
+        </Tabs>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AccessRow({
+  accessKey,
+  access,
+  passwordVisibility,
+  togglePasswordVisibility,
+  handleCopy,
+  getMaskedPassword,
+}: {
+  accessKey: string;
+  access: AccessLike;
+  passwordVisibility: Record<string, boolean>;
+  togglePasswordVisibility: (key: string) => void;
+  handleCopy: (value: string | null | undefined, label: string) => void;
+  getMaskedPassword: (pw: string | null | undefined) => string;
+}) {
+  const accessTypeLabels: Record<string, string> = {
+    ssh: "SSH",
+    web_url: "Web URL",
+    guacamole: "Guacamole",
+    rdp: "RDP",
+    vnc: "VNC",
+    database: "Database",
+  };
+
+  const urlLabel =
+    access.access_type === "ssh" ? "SSH-Befehl" : access.access_type === "web_url" ? "URL" : "Connection URL";
+
+  const isVisible = passwordVisibility[accessKey] === true;
+
+  return (
+    <div className="rounded-lg border border-slate-200 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-medium text-slate-900">
+          {accessTypeLabels[access.access_type] || access.access_type}
+        </h4>
+        <Badge variant="outline">{access.access_type}</Badge>
+      </div>
+
+      <div className="grid gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-slate-500">Username</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-900">{access.username ?? "-"}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleCopy(access.username, "Username")}
+              disabled={!access.username}
+            >
+              <Copy className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-slate-500">Password</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-900">
+              {isVisible ? access.password ?? "-" : getMaskedPassword(access.password)}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => togglePasswordVisibility(accessKey)}
+              disabled={!access.password}
+            >
+              {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleCopy(access.password, "Password")}
+              disabled={!access.password}
+            >
+              <Copy className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-slate-500">{urlLabel}</span>
+          <div className="flex items-center gap-2">
+            {access.connection_url ? (
+              access.access_type === "web_url" ? (
+                <a
+                  href={access.connection_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-600 hover:underline break-all"
+                >
+                  {access.connection_url}
+                </a>
+              ) : (
+                <code className="text-sm bg-slate-100 px-2 py-0.5 rounded break-all font-mono">
+                  {access.connection_url}
+                </code>
+              )
+            ) : (
+              <span className="text-sm text-slate-400">-</span>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleCopy(access.connection_url, urlLabel)}
+              disabled={!access.connection_url}
+            >
+              <Copy className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-slate-500">Port</span>
+          <span className="text-sm text-slate-900">{access.port ?? "-"}</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -999,6 +1227,32 @@ function LogRow({ log }: { log: DeploymentLogDto }) {
 
 function PhaseRow({ phase, isLive, defaultOpen }: { phase: LogPhase; isLive: boolean; defaultOpen: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
+
+  // Auto-scroll: keep the log container pinned to the bottom as new entries
+  // stream in, but only while the user hasn't manually scrolled up. If they
+  // scroll away from the bottom we pause auto-scroll until they return — this
+  // is the standard terminal-tail behavior (tail -f, browser DevTools console).
+  const logContainerRef = useRef<HTMLDivElement | null>(null);
+  const stickToBottomRef = useRef(true);
+
+  const handleScroll = useCallback(() => {
+    const el = logContainerRef.current;
+    if (!el) return;
+    // Consider "at the bottom" within a 32px slack so the last partial line
+    // doesn't accidentally disengage auto-scroll.
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < 32;
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const el = logContainerRef.current;
+    if (!el) return;
+    if (stickToBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [phase.logs.length, phase.status, open]);
+
   const phaseIcon = PHASE_ICONS[phase.id] ?? <CheckCircle2 className="w-4 h-4" />;
   const dotClass =
     phase.status === "completed" ? "bg-green-500" :
@@ -1022,7 +1276,11 @@ function PhaseRow({ phase, isLive, defaultOpen }: { phase: LogPhase; isLive: boo
         {open ? <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />}
       </button>
       {open && (
-        <div style={{ borderTop: "1px solid #1e293b", backgroundColor: "#0f172a", maxHeight: "400px", overflowY: "auto" }}>
+        <div
+          ref={logContainerRef}
+          onScroll={handleScroll}
+          style={{ borderTop: "1px solid #1e293b", backgroundColor: "#0f172a", maxHeight: "400px", overflowY: "auto" }}
+        >
           {phase.logs.length === 0 ? (
             <p className="px-4 py-3 text-xs italic font-mono" style={{ color: "#475569" }}>
               {phase.status === "pending" ? "// Noch nicht gestartet" : "// Keine Einträge"}

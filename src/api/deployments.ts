@@ -60,12 +60,18 @@ export type AccessType =
   | "vnc"
   | "database";
 
+export type OwnerKind = "teacher" | "group";
+
 export type CredentialAccess = {
   access_type: AccessType;
   username: string | null;
   password: string | null;
   connection_url: string | null;
   port: number | null;
+  /** "teacher" or "group". Drives the Dozent/Gruppen tab split. */
+  owner_kind: OwnerKind | null;
+  /** Display label like "Dozent" or "Gruppe 1". Null on legacy rows. */
+  owner_label: string | null;
 };
 
 export type CredentialInstance = {

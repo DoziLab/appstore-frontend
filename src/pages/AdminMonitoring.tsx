@@ -59,7 +59,11 @@ export function AdminMonitoring() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [pendingVersions, setPendingVersions] = useState<TemplateVersionQueueItem[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
-  const [templateActionError, setTemplateActionError] = useState<string | null>(null);
+  // Fehler beim Laden der Queue ist seitenweit (oben in der Card).
+  const [queueLoadError, setQueueLoadError] = useState<string | null>(null);
+  // Approve/Reject-Fehler hingegen sind pro Version — wir wollen die Meldung
+  // direkt unter dem betroffenen Template anzeigen, nicht oben in der Card.
+  const [versionErrors, setVersionErrors] = useState<Record<string, string>>({});
   // Owner-Daten der Versionen werden im Queue-Response nur als ID mitgeliefert.
   // Wir holen die zugehörigen Templates separat, um Owner-Name/-Email zu
   // zeigen — das Templates-Listing-Endpoint hat diese Cache-Felder bereits.
@@ -75,12 +79,25 @@ export function AdminMonitoring() {
     try {
       const resp = await getTemplateVersionsQueue({ status: 'pending', page_size: 50 });
       setPendingVersions(resp.data);
+      setQueueLoadError(null);
     } catch (err) {
       console.error('Approval-Queue konnte nicht geladen werden', err);
-      setTemplateActionError('Approval-Queue konnte nicht geladen werden.');
+      setQueueLoadError('Approval-Queue konnte nicht geladen werden.');
     } finally {
       setVersionsLoading(false);
     }
+  };
+
+  // Hilfsfunktion: einen Version-spezifischen Fehler im Map-State setzen oder
+  // löschen — wird in handleApprove/handleReject für die per-Version Anzeige
+  // unterhalb des jeweiligen Templates verwendet.
+  const setVersionError = (versionId: string, message: string | null) => {
+    setVersionErrors((prev) => {
+      const next = { ...prev };
+      if (message === null) delete next[versionId];
+      else next[versionId] = message;
+      return next;
+    });
   };
 
   const handleApprove = async (versionId: string) => {
@@ -89,9 +106,9 @@ export function AdminMonitoring() {
       setPendingVersions((prev) => prev.filter((v) => v.id !== versionId));
       setRejectionReason('');
       setSelectedVersionId(null);
-      setTemplateActionError(null);
+      setVersionError(versionId, null);
     } catch {
-      setTemplateActionError('Version konnte nicht genehmigt werden.');
+      setVersionError(versionId, 'Version konnte nicht genehmigt werden.');
     }
   };
 
@@ -101,9 +118,9 @@ export function AdminMonitoring() {
       setPendingVersions((prev) => prev.filter((v) => v.id !== versionId));
       setRejectionReason('');
       setSelectedVersionId(null);
-      setTemplateActionError(null);
+      setVersionError(versionId, null);
     } catch {
-      setTemplateActionError('Version konnte nicht abgelehnt werden.');
+      setVersionError(versionId, 'Version konnte nicht abgelehnt werden.');
     }
   };
 
@@ -688,9 +705,9 @@ export function AdminMonitoring() {
                 Versionen"-Zeile wäre redundant. */}
             {!approvalQueueEmpty && (
               <CardContent className="space-y-4">
-                {templateActionError && (
+                {queueLoadError && (
                   <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
-                    {templateActionError}
+                    {queueLoadError}
                   </div>
                 )}
                 {versionsLoading && (
@@ -803,6 +820,15 @@ export function AdminMonitoring() {
                               Wird dem Dozenten in der Versionsübersicht angezeigt,
                               damit er Korrektur einreichen kann.
                             </p>
+                          </div>
+                        )}
+
+                        {/* Pro-Version Fehler — direkt am betroffenen
+                            Template, statt oben in der Card-übergreifenden
+                            Fehlerleiste. */}
+                        {versionErrors[version.id] && (
+                          <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+                            {versionErrors[version.id]}
                           </div>
                         )}
 

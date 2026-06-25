@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useKeycloak } from "@react-keycloak/web";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Courses } from "./pages/Courses";
 import { OpenStackConfig } from "./pages/OpenStackConfig";
 import { AdminMonitoring } from "./pages/AdminMonitoring";
@@ -11,6 +11,8 @@ import { AppStorePage } from "./pages/AppStorePage";
 import { DeploymentWizardPage } from "./pages/DeploymentWizardPage";
 import { DeploymentDetailsPage } from "./pages/DeploymentDetailsPage";
 import { OpenStackSetup } from "./pages/OpenStackSetup";
+import { GithubConnected } from "./pages/GithubConnected";
+import { Toaster } from "./components/ui/sonner";
 import { listOpenstackProjects, type OpenstackProjectResponse } from "./api/openstackProjects";
 import { OpenstackProjectProvider } from "./contexts/OpenstackProjectContext";
 import logo from "figma:asset/5c87f57a05de8f8018669c9004318908d006dcd5.png";
@@ -26,6 +28,14 @@ export default function App() {
   // Admins don't need a project to use the app, so we don't push them into the
   // OpenStack-setup route. We resolve this once after auth and keep it sticky.
   const [isLecturer, setIsLecturer] = useState(false);
+
+  // The GitHub-App install callback redirects the browser to
+  // `/github/connected?status=…`. That route has to stay reachable even if
+  // Keycloak isn't fully back yet — the user is mid-OAuth-round-trip and may
+  // not have a fresh session in this tab. We short-circuit before any
+  // auth/project gate kicks in.
+  const location = useLocation();
+  const isGithubCallback = location.pathname === "/github/connected";
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -68,6 +78,18 @@ export default function App() {
   };
 
   console.log("[Keycloak] initialized:", initialized, "authenticated:", keycloak?.authenticated);
+
+  // Public route: GitHub install-callback landing. Must render regardless of
+  // Keycloak state so the user can see the success/error toast and be sent
+  // back into the app.
+  if (isGithubCallback) {
+    return (
+      <>
+        <GithubConnected />
+        <Toaster richColors />
+      </>
+    );
+  }
 
   // Keycloak still initializing
   if (!initialized && !initTimedOut) {
@@ -138,6 +160,7 @@ export default function App() {
           </Routes>
         </main>
       </div>
+      <Toaster richColors />
     </OpenstackProjectProvider>
   );
 }

@@ -292,7 +292,7 @@
                       </div>
                       <div className="text-left">
                         <p className="text-sm font-medium text-slate-900 group-hover:text-purple-700 transition-colors">Kurse verwalten</p>
-                        <p className="text-xs text-slate-500">Kurse einsehen & bearbeiten</p>
+                        <p className="text-xs text-slate-500">Kurse einsehen</p>
                       </div>
                     </Button>
               </CardContent>

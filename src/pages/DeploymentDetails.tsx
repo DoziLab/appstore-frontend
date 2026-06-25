@@ -745,20 +745,18 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
                     </AlertDialogTrigger>
                     <AlertDialogContent className="bg-white w-auto max-w-sm sm:max-w-md max-h-[70vh] overflow-y-auto">
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Deployment erneut versuchen?</AlertDialogTitle>
-                        <AlertDialogDescription className="space-y-2">
-                          <span className="block">
-                            Das fehlgeschlagene Deployment wird zunächst <strong>gelöscht</strong> und alle zugehörigen Ressourcen entfernt.
-                          </span>
-                          <span className="block">
-                            Anschließend werden Sie direkt zum letzten Schritt des Deployment-Assistenten weitergeleitet. Ihre bisherigen Eingaben (Name, Kurs, Ressourcen und Konfiguration) sind bereits ausgefüllt — Sie müssen nur noch bestätigen, um das Deployment erneut zu starten.
-                          </span>
-                        </AlertDialogDescription>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                          <AlertCircle className="w-5 h-5 text-slate-600" />
+                            Deployment erneut versuchen?
+                          </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Dieses Deployment wird gelöscht und ihre aktuellen Einstellungen und Daten für ein erneutes Deployment übernommen.
+                      </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter className="justify-center sm:justify-center">
                         <AlertDialogCancel className="sm:w-auto">Abbrechen</AlertDialogCancel>
                         <AlertDialogAction
-                          className="sm:w-auto bg-teal-500 hover:bg-teal-600 text-white"
+                          className="sm:w-auto border bg-white border-slate-200 text-slate-900 hover:bg-slate-50"
                           onClick={handleRetry}
                         >
                           Ja, erneut versuchen

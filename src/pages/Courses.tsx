@@ -93,9 +93,12 @@ export function Courses() {
   }, [items, keycloakGroups]);
 
   const filteredCourses = useMemo(() => {
-    if (!prefixQuery) return courses;
+    // Filter out courses without deployments
+    const coursesWithDeployments = courses.filter((c) => c.applications.length > 0);
+    
+    if (!prefixQuery) return coursesWithDeployments;
     const q = prefixQuery.toUpperCase();
-    return courses.filter((c) => (c.keycloakGroupName || c.name || "").toUpperCase().startsWith(q));
+    return coursesWithDeployments.filter((c) => (c.keycloakGroupName || c.name || "").toUpperCase().startsWith(q));
   }, [courses, prefixQuery]);
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -172,7 +175,16 @@ export function Courses() {
         </Card>
       )}
 
-      {!loading && !error && (
+      {!loading && !error && filteredCourses.length === 0 && (
+        <Card className="border-slate-200">
+          <CardHeader className="pb-6">
+            <CardTitle>Keine Deployments vorhanden</CardTitle>
+            <CardDescription>Es wurden keine Kurse mit Deployments gefunden.</CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
+      {!loading && !error && filteredCourses.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {filteredCourses.map((course) => (
             <Card key={course.id} className="border-slate-200 shadow-sm hover:shadow-md transition-shadow">

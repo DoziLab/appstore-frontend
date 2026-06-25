@@ -218,6 +218,21 @@ export function DeploymentDetailsPage() {
         throw new Error("template_id missing");
       }
 
+      // Resolve the Keycloak group ID. The backend stores `course_id` as the
+      // *DB* course UUID (see deployment_service.create_deployment), NOT the
+      // Keycloak group ID — passing it to the wizard verbatim makes the
+      // members fetch 404 with "Could not find group by id". Look up the
+      // course in the cache and grab its `keycloak_course_id`.
+      const dbCourseId: string | undefined = raw.course_id;
+      const course = dbCourseId
+        ? coursesCacheRef.current.find((c) => c.id === dbCourseId)
+        : undefined;
+      const keycloakGroupId = course?.keycloak_course_id;
+      if (!keycloakGroupId) {
+        toast.error("Kurs konnte nicht aufgelöst werden. Bitte Seite neu laden.");
+        throw new Error("keycloak_course_id missing");
+      }
+
       // 1. DELETE without confirmation.
       try {
         await deleteDeployment(id, activeProjectId);
@@ -312,7 +327,7 @@ export function DeploymentDetailsPage() {
       const initialState: DeploymentWizardInitialState = {
         deploymentName: raw.name || "",
         templateVersionId: raw.template_version_id,
-        keycloakGroupId: raw.course_id,
+        keycloakGroupId,
         runtimeMonths,
         parameters: parsed.parameters ?? {},
         studentGroups,

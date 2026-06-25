@@ -55,6 +55,8 @@ export function Sidebar({ logo }: SidebarProps) {
     return "Benutzer";
   }, [token]);
 
+  const isAdmin = ((token?.realm_access?.roles ?? []) as string[]).includes("admin");
+
   const initials = initialsFromName(displayName);
 
   const handleLogout = async () => {
@@ -69,7 +71,7 @@ export function Sidebar({ logo }: SidebarProps) {
   const deploymentActive = location.pathname.startsWith('/deploy/');
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
+    <aside className="relative w-64 bg-white border-r border-slate-200 flex flex-col">
       {/* Logo */}
       <NavLink
         to="/dashboard"
@@ -85,6 +87,8 @@ export function Sidebar({ logo }: SidebarProps) {
           const Icon = item.icon;
           const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
 
+          // Skip admin here; it is rendered separately at the bottom edge
+          if (item.id === 'admin') return null;
           return (
             <NavLink
               key={item.id}
@@ -112,7 +116,22 @@ export function Sidebar({ logo }: SidebarProps) {
 
           <div className="flex-1 min-w-0">
             <p className="text-sm text-slate-900 truncate">{displayName}</p>
-            <p className="text-xs text-slate-500 truncate">{roleLabel}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-slate-500 truncate">{roleLabel}</p>
+              {isAdmin && (
+                <NavLink
+                  to="/admin"
+                  title="Admin Monitoring"
+                  aria-disabled={deploymentActive}
+                  className={`inline-flex items-center justify-center rounded-full p-1 transition-all ${
+                    deploymentActive ? "opacity-50 pointer-events-none" : "hover:bg-teal-50"
+                  }`}
+                >
+                  <Shield className="w-4 h-4 text-teal-500" />
+                  <span className="sr-only">Admin Monitoring</span>
+                </NavLink>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -138,7 +157,9 @@ export function Sidebar({ logo }: SidebarProps) {
             </button>
           </div>
         </div>
-      </div>
+        </div>
+
+        {/* admin gear moved into user profile */}
     </aside>
   );
 }

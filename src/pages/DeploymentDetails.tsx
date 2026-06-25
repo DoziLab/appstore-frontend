@@ -896,8 +896,14 @@ type AccessLike = {
   password: string | null;
   connection_url: string | null;
   port: number | null;
-  owner_kind: "teacher" | "group" | null;
-  owner_label: string | null;
+  /**
+   * course_groups.id this credential belongs to. NULL = lecturer/admin row
+   * (shown in Dozent tab). Non-NULL = student group row (Gruppen tab,
+   * accordion section per group_name).
+   */
+  group_id: string | null;
+  /** Human-readable group name from the JOIN on course_groups.name. */
+  group_name: string | null;
 };
 
 type CredentialInstanceLike = {
@@ -920,26 +926,27 @@ function CredentialInstanceCard({
   handleCopy: (value: string | null | undefined, label: string) => void;
   getMaskedPassword: (pw: string | null | undefined) => string;
 }) {
-  // Split accesses by owner. Legacy rows (owner_kind == null) fall into
-  // a third "Sonstige" bucket so they're still visible but don't pollute
-  // the teacher tab.
-  const teacherAccesses = instance.accesses.filter((a) => a.owner_kind === "teacher");
-  const groupAccesses = instance.accesses.filter((a) => a.owner_kind === "group");
-  const otherAccesses = instance.accesses.filter((a) => a.owner_kind == null);
+  // Split accesses by ownership: group_id IS NULL → lecturer/admin row →
+  // "Dozent" tab; group_id is a course_groups.id → student row → "Gruppen"
+  // tab, one accordion section per group_name.
+  const teacherAccesses = instance.accesses.filter((a) => a.group_id == null);
+  const groupAccesses = instance.accesses.filter((a) => a.group_id != null);
 
-  // Group the group-accesses by their owner_label so each group becomes
-  // one collapsible accordion row.
+  // Group the group-accesses by their group identity so each group becomes
+  // one collapsible accordion row. Prefer group_name for display; fall back
+  // to the bare group_id if the JOIN didn't yield a name (shouldn't happen
+  // in practice but keeps the UI safe).
   const groupsByLabel = new Map<string, AccessLike[]>();
   for (const a of groupAccesses) {
-    const key = a.owner_label || a.username || "Gruppe";
+    const key = a.group_name || a.group_id || "Gruppe";
     const list = groupsByLabel.get(key) ?? [];
     list.push(a);
     groupsByLabel.set(key, list);
   }
 
   // Default tab: prefer "dozent" if there are teacher entries, else "gruppen".
-  const defaultTab =
-    teacherAccesses.length > 0 ? "dozent" : groupsByLabel.size > 0 ? "gruppen" : "sonstige";
+  // If neither exists the card has no tabs (and no instance content to show).
+  const defaultTab = teacherAccesses.length > 0 ? "dozent" : "gruppen";
 
   return (
     <Card className="border-slate-200">
@@ -960,12 +967,6 @@ function CredentialInstanceCard({
               <TabsTrigger value="gruppen">
                 Gruppen
                 <Badge variant="secondary" className="ml-2">{groupsByLabel.size}</Badge>
-              </TabsTrigger>
-            )}
-            {otherAccesses.length > 0 && (
-              <TabsTrigger value="sonstige">
-                Sonstige
-                <Badge variant="secondary" className="ml-2">{otherAccesses.length}</Badge>
               </TabsTrigger>
             )}
           </TabsList>
@@ -1023,22 +1024,6 @@ function CredentialInstanceCard({
                   </AccordionItem>
                 ))}
               </Accordion>
-            </TabsContent>
-          )}
-
-          {otherAccesses.length > 0 && (
-            <TabsContent value="sonstige" className="space-y-3">
-              {otherAccesses.map((access, idx) => (
-                <AccessRow
-                  key={`other-${idx}`}
-                  accessKey={`${instance.instance_id}-other-${access.access_type}-${idx}`}
-                  access={access}
-                  passwordVisibility={passwordVisibility}
-                  togglePasswordVisibility={togglePasswordVisibility}
-                  handleCopy={handleCopy}
-                  getMaskedPassword={getMaskedPassword}
-                />
-              ))}
             </TabsContent>
           )}
         </Tabs>

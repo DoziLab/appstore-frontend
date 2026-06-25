@@ -60,18 +60,23 @@ export type AccessType =
   | "vnc"
   | "database";
 
-export type OwnerKind = "teacher" | "group";
-
 export type CredentialAccess = {
   access_type: AccessType;
   username: string | null;
   password: string | null;
   connection_url: string | null;
   port: number | null;
-  /** "teacher" or "group". Drives the Dozent/Gruppen tab split. */
-  owner_kind: OwnerKind | null;
-  /** Display label like "Dozent" or "Gruppe 1". Null on legacy rows. */
-  owner_label: string | null;
+  /**
+   * course_groups.id this credential belongs to. NULL = lecturer/admin
+   * credential (not tied to a student group). Drives the Dozent/Gruppen
+   * split in the UI.
+   */
+  group_id: string | null;
+  /**
+   * Display name of the course group (joined from course_groups.name).
+   * NULL when group_id is NULL.
+   */
+  group_name: string | null;
 };
 
 export type CredentialInstance = {

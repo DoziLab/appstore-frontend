@@ -19,6 +19,7 @@ import {
   type OpenstackCredentialsCreate,
 } from '../api/openstackProjects';
 import { getQuotas, type QuotasResponse } from '../api/quotas';
+import { GithubIntegrationCard } from '../components/GithubIntegrationCard';
 
 const percent = (used?: number, limit?: number) => {
   if (!used || !limit || limit === 0) return 0;
@@ -367,9 +368,16 @@ export function OpenStackConfig() {
                    connectionStatus === 'connected' ? 'Aktiv' : 'Nicht verbunden'}
                 </Badge>
               </div>
-              </CardContent>
-            </Card>
+            </CardContent>
+          </Card>
           </section>
+
+          {/* GitHub-Integration — eigenständige Karte zwischen Connection
+              und Authentifizierung. Bewusst keine eigene Scrollspy-Section,
+              weil sie nicht in der Sidebar-Navigation auftaucht und der
+              Inhalt klein ist. */}
+          <GithubIntegrationCard />
+
           <section
             ref={authRef}
             data-section="authentication"
@@ -377,6 +385,7 @@ export function OpenStackConfig() {
             onMouseEnter={() => setHoveredSection('authentication')}
             onMouseLeave={() => setHoveredSection(null)}
           >
+            {/* Authentication Settings */}
             <Card className="border-slate-200 shadow-sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2" id="authentication-heading">

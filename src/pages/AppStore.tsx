@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Server, Database, GitBranch, Container, Shield, Code, Laptop, Boxes, Search, Plus, AlertCircle, X } from 'lucide-react';
+import { Server, Database, GitBranch, Container, Shield, Code, Laptop, Boxes, Search, Plus, AlertCircle, Eye, Lock, User, Users } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { AddTemplateDialog } from '../components/AddTemplateDialog';
+import { TemplateOwnerDetailDialog } from '../components/TemplateOwnerDetailDialog';
+import { ApprovalBadge } from '../components/ApprovalBadge';
 import { getTemplates, type TemplateDto } from '../api/templates';
+import { deriveTemplateOverallStatus } from '../lib/template-status';
+import { useCurrentUser } from '../auth/useCurrentUser';
 import type { LucideIcon } from 'lucide-react';
 
 interface AppStoreProps {
@@ -84,43 +88,65 @@ export function AppStore({ onDeploy }: AppStoreProps) {
   const [templates, setTemplates] = useState<TemplateDto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState('Alle');
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDto | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [ownerDetailsOpen, setOwnerDetailsOpen] = useState(false);
+
+  // Filter-Flags: visibility = öffentlich/privat, ownership = eigene/fremde.
+  // 'all' bedeutet jeweils „kein Filter". Wir filtern client-seitig, weil das
+  // Listing-Endpoint sowieso nur die für den User sichtbaren Templates liefert
+  // und ein zweiter Roundtrip pro Filterklick unnötig wäre.
+  const [visibilityFilter, setVisibilityFilter] = useState<'all' | 'public' | 'private'>('all');
+  const [ownershipFilter, setOwnershipFilter] = useState<'all' | 'mine' | 'others'>('all');
+
+  const { userId, isAdmin } = useCurrentUser();
 
   // Fetch templates from backend
-  useEffect(() => {
-    const fetchTemplates = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const response = await getTemplates({
-          status: 'approved', // Only show approved templates
-          page_size: 100, // Get all templates
-        });
-        setTemplates(response.data);
-      } catch (err) {
-        console.error('Failed to fetch templates:', err);
-        setError(err instanceof Error ? err.message : 'Fehler beim Laden der Templates');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const fetchTemplates = async (): Promise<TemplateDto[]> => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await getTemplates({
+        // Hinweis: das Backend ignoriert `status` derzeit als Filter — es
+        // liefert für Owner immer alle eigenen Templates aus und für andere
+        // nur public + mindestens eine approved Version. Genau das wollen wir
+        // hier (Owner muss seine Pending-Templates verwalten können).
+        status: 'approved',
+        page_size: 100, // Get all templates
+      });
+      setTemplates(response.data);
+      return response.data;
+    } catch (err) {
+      console.error('Failed to fetch templates:', err);
+      setError(err instanceof Error ? err.message : 'Fehler beim Laden der Templates');
+      return [];
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchTemplates();
   }, []);
 
-  // Filter templates by search query (only by name)
-  const filteredTemplates = templates.filter((template) =>
-    template.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filter templates by search query + flags
+  const filteredTemplates = templates.filter((template) => {
+    if (!template.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+      return false;
+    }
+    if (visibilityFilter !== 'all' && template.visibility !== visibilityFilter) {
+      return false;
+    }
+    if (ownershipFilter === 'mine' && template.owner_id !== userId) {
+      return false;
+    }
+    if (ownershipFilter === 'others' && template.owner_id === userId) {
+      return false;
+    }
+    return true;
+  });
 
-  // Get unique categories from templates
-  const categories = ['Alle'];
-  
-  const displayTemplates = selectedCategory === 'Alle' 
-    ? filteredTemplates 
-    : filteredTemplates;
+  const displayTemplates = filteredTemplates;
 
   return (
     <div className="p-8 space-y-8">
@@ -141,28 +167,78 @@ export function AppStore({ onDeploy }: AppStoreProps) {
       </div>
 
       {/* Search and Filter */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input
-            type="text"
-            placeholder="Templates durchsuchen..."
-            className="pl-10"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
+              type="text"
+              placeholder="Templates durchsuchen..."
+              className="pl-10"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          {categories.map((category) => (
-            <Button
-              key={category}
-              variant={selectedCategory === category ? "default" : "outline"}
-              className={selectedCategory === category ? "bg-teal-500 hover:bg-teal-600" : ""}
-              onClick={() => setSelectedCategory(category)}
-            >
-              {category}
-            </Button>
-          ))}
+
+        {/* Filter-Flags: visibility + ownership. Wir nutzen Toggle-Chips
+            statt Selects, damit man auf einen Blick sieht, was aktiv ist. */}
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-slate-500 mr-1">Sichtbarkeit:</span>
+          <Button
+            size="sm"
+            variant={visibilityFilter === 'all' ? 'default' : 'outline'}
+            className={visibilityFilter === 'all' ? 'bg-teal-500 hover:bg-teal-600 text-white' : ''}
+            onClick={() => setVisibilityFilter('all')}
+          >
+            Alle
+          </Button>
+          <Button
+            size="sm"
+            variant={visibilityFilter === 'public' ? 'default' : 'outline'}
+            className={visibilityFilter === 'public' ? 'bg-teal-500 hover:bg-teal-600 text-white' : ''}
+            onClick={() => setVisibilityFilter('public')}
+          >
+            <Eye className="w-3.5 h-3.5 mr-1.5" />
+            Öffentlich
+          </Button>
+          <Button
+            size="sm"
+            variant={visibilityFilter === 'private' ? 'default' : 'outline'}
+            className={visibilityFilter === 'private' ? 'bg-teal-500 hover:bg-teal-600 text-white' : ''}
+            onClick={() => setVisibilityFilter('private')}
+          >
+            <Lock className="w-3.5 h-3.5 mr-1.5" />
+            Privat
+          </Button>
+
+          <span className="text-slate-500 ml-4 mr-1">Besitz:</span>
+          <Button
+            size="sm"
+            variant={ownershipFilter === 'all' ? 'default' : 'outline'}
+            className={ownershipFilter === 'all' ? 'bg-teal-500 hover:bg-teal-600 text-white' : ''}
+            onClick={() => setOwnershipFilter('all')}
+          >
+            Alle
+          </Button>
+          <Button
+            size="sm"
+            variant={ownershipFilter === 'mine' ? 'default' : 'outline'}
+            className={ownershipFilter === 'mine' ? 'bg-teal-500 hover:bg-teal-600 text-white' : ''}
+            onClick={() => setOwnershipFilter('mine')}
+          >
+            <User className="w-3.5 h-3.5 mr-1.5" />
+            Eigene
+          </Button>
+          <Button
+            size="sm"
+            variant={ownershipFilter === 'others' ? 'default' : 'outline'}
+            className={ownershipFilter === 'others' ? 'bg-teal-500 hover:bg-teal-600 text-white' : ''}
+            onClick={() => setOwnershipFilter('others')}
+          >
+            <Users className="w-3.5 h-3.5 mr-1.5" />
+            Fremde
+          </Button>
         </div>
       </div>
 
@@ -206,11 +282,11 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                         <Icon className="w-6 h-6" />
                       </div>
                       <div className="flex gap-2">
-                        {template.approval_status === 'approved' && (
-                          <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                            Genehmigt
-                          </Badge>
-                        )}
+                        <ApprovalBadge
+                          status={deriveTemplateOverallStatus(template)}
+                          variant="overall"
+                          showIcon={false}
+                        />
                         {template.visibility === 'public' && (
                           <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
                             Öffentlich
@@ -252,7 +328,13 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                         variant="outline"
                         onClick={() => {
                           setSelectedTemplate(template);
-                          setDetailsModalOpen(true);
+                          // Owner → eigene Detailseite mit Versionsverwaltung;
+                          // alle anderen → bestehender generischer Modal.
+                          if (userId && template.owner_id === userId) {
+                            setOwnerDetailsOpen(true);
+                          } else {
+                            setDetailsModalOpen(true);
+                          }
                         }}
                         className="w-full"
                       >
@@ -288,7 +370,30 @@ export function AppStore({ onDeploy }: AppStoreProps) {
       <AddTemplateDialog
         open={addTemplateOpen}
         onOpenChange={setAddTemplateOpen}
+        onImported={fetchTemplates}
       />
+
+      {/* Owner-Detailansicht — wird nur für eigene Templates geöffnet.
+          Bringt Versions-Aktualisierung und Approval-Buttons mit. */}
+      {selectedTemplate && (
+        <TemplateOwnerDetailDialog
+          template={selectedTemplate}
+          open={ownerDetailsOpen}
+          onOpenChange={setOwnerDetailsOpen}
+          isAdmin={isAdmin}
+          onChanged={() => {
+            // Liste neu laden, damit das aktualisierte Active-Flag / der
+            // neue Approval-Status auch in den Cards sichtbar wird. Den
+            // Dialog lassen wir offen, falls der Admin gleich noch eine
+            // weitere Version approven möchte — dann muss selectedTemplate
+            // aber das frische Objekt aus dem Re-Fetch zeigen.
+            fetchTemplates().then((fresh) => {
+              const updated = fresh.find((t) => t.id === selectedTemplate.id);
+              if (updated) setSelectedTemplate(updated);
+            });
+          }}
+        />
+      )}
 
       {/* Template Details Modal */}
       {selectedTemplate && (
@@ -309,9 +414,10 @@ export function AppStore({ onDeploy }: AppStoreProps) {
             <div className="space-y-6 mt-4">
               {/* Badges */}
               <div className="flex gap-2 flex-wrap">
-                {selectedTemplate.approval_status === 'approved' && (
-                  <Badge className="bg-green-100 text-green-700">Genehmigt</Badge>
-                )}
+                <ApprovalBadge
+                  status={deriveTemplateOverallStatus(selectedTemplate)}
+                  variant="overall"
+                />
                 {selectedTemplate.visibility === 'public' && (
                   <Badge className="bg-blue-100 text-blue-700">Öffentlich</Badge>
                 )}

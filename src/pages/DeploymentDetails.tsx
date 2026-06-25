@@ -726,21 +726,46 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
               {/* ── failed ── */}
               {deployment.status === 'failed' && (
                 <>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={handleRetry}
-                    disabled={retryInFlight || !onRetry}
-                  >
-                    {retryInFlight ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Wird vorbereitet…
-                      </>
-                    ) : (
-                      "Erneut versuchen"
-                    )}
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        disabled={retryInFlight || !onRetry}
+                      >
+                        {retryInFlight ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Wird vorbereitet…
+                          </>
+                        ) : (
+                          "Erneut versuchen"
+                        )}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="bg-white w-auto max-w-sm sm:max-w-md max-h-[70vh] overflow-y-auto">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Deployment erneut versuchen?</AlertDialogTitle>
+                        <AlertDialogDescription className="space-y-2">
+                          <span className="block">
+                            Das fehlgeschlagene Deployment wird zunächst <strong>gelöscht</strong> und alle zugehörigen Ressourcen entfernt.
+                          </span>
+                          <span className="block">
+                            Anschließend werden Sie direkt zum letzten Schritt des Deployment-Assistenten weitergeleitet. Ihre bisherigen Eingaben (Name, Kurs, Ressourcen und Konfiguration) sind bereits ausgefüllt — Sie müssen nur noch bestätigen, um das Deployment erneut zu starten.
+                          </span>
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter className="justify-center sm:justify-center">
+                        <AlertDialogCancel className="sm:w-auto">Abbrechen</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="sm:w-auto bg-teal-500 hover:bg-teal-600 text-white"
+                          onClick={handleRetry}
+                        >
+                          Ja, erneut versuchen
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="outline" className="w-full text-red-600 hover:text-red-700 hover:bg-red-50">

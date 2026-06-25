@@ -492,15 +492,24 @@ export function DeploymentWizard({
     return baseSteps;
   }, [parametersByStep]);
 
-  // Retry flow: as soon as the wizard knows how many steps exist, jump to
-  // the overview (last step) so the user just has to confirm.
+  // Retry flow: jump to the overview (last step) as soon as the wizard knows
+  // *all* its steps. We wait for `templateVersionData` because the
+  // configuration/network steps depend on it — if we jumped earlier we'd
+  // land on whatever step index the overview *had* before those got
+  // inserted, which on most templates means the user ends up on
+  // "Konfiguration" instead of "Übersicht".
   const didJumpToOverviewRef = useRef(false);
   useEffect(() => {
-    if (initialState && !didJumpToOverviewRef.current && steps.length > 1) {
+    if (
+      initialState &&
+      !didJumpToOverviewRef.current &&
+      templateVersionData &&
+      steps.length > 1
+    ) {
       setCurrentStep(steps.length - 1);
       didJumpToOverviewRef.current = true;
     }
-  }, [initialState, steps.length]);
+  }, [initialState, templateVersionData, steps.length]);
 
   const handleNext = () => {
     if (currentStep < steps.length - 1) {

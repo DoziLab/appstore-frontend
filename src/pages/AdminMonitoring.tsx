@@ -77,7 +77,15 @@ export function AdminMonitoring() {
   const loadQueue = async () => {
     setVersionsLoading(true);
     try {
-      const resp = await getTemplateVersionsQueue({ status: 'pending', page_size: 50 });
+      // Approval gilt laut Backend nur für `visibility=public` — alle anderen
+      // Versionen werfen beim approve/reject 400 ("Approval flow applies only
+      // to public templates"). Wir filtern serverseitig, damit die Queue nur
+      // Versionen zeigt, die wir tatsächlich abnicken können.
+      const resp = await getTemplateVersionsQueue({
+        status: 'pending',
+        visibility: 'public',
+        page_size: 50,
+      });
       setPendingVersions(resp.data);
       setQueueLoadError(null);
     } catch (err) {
@@ -107,8 +115,14 @@ export function AdminMonitoring() {
       setRejectionReason('');
       setSelectedVersionId(null);
       setVersionError(versionId, null);
-    } catch {
-      setVersionError(versionId, 'Version konnte nicht genehmigt werden.');
+    } catch (err) {
+      // Backend liefert die konkrete Ursache (z. B. „Approval flow applies
+      // only to public templates" → 400). apiFetch packt sie in `message`,
+      // also leiten wir sie direkt weiter statt sie wegzuwerfen.
+      const message = err instanceof Error && err.message
+        ? err.message
+        : 'Version konnte nicht genehmigt werden.';
+      setVersionError(versionId, message);
     }
   };
 
@@ -119,8 +133,11 @@ export function AdminMonitoring() {
       setRejectionReason('');
       setSelectedVersionId(null);
       setVersionError(versionId, null);
-    } catch {
-      setVersionError(versionId, 'Version konnte nicht abgelehnt werden.');
+    } catch (err) {
+      const message = err instanceof Error && err.message
+        ? err.message
+        : 'Version konnte nicht abgelehnt werden.';
+      setVersionError(versionId, message);
     }
   };
 

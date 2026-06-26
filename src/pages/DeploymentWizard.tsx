@@ -502,9 +502,11 @@ export function DeploymentWizard({
     }
   }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups, currentStep, validateStep0]);
 
-  // Update numberOfGroups when studentGroups changes (for UI consistency)
+  // Update numberOfGroups when studentGroups changes (for UI consistency).
+  // Keep a sensible default of 1 while no groups have been created yet,
+  // so the input shows "1" instead of "0" on first open.
   useEffect(() => {
-    setNumberOfGroups(studentGroups.length);
+    setNumberOfGroups(studentGroups.length > 0 ? studentGroups.length : 1);
   }, [studentGroups.length]);
 
   // Auto-update group names when only one student is in a group
@@ -1697,7 +1699,7 @@ export function DeploymentWizard({
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-8">
       {/* Progress Steps */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start">
         <div className="flex items-center flex-1">
           {steps.map((step, index) => {
             const StepIcon = step.icon;
@@ -1757,12 +1759,6 @@ export function DeploymentWizard({
             );
           })}
         </div>
-
-        <div className="pl-4">
-          <Button variant="outline" onClick={onCancel} disabled={isDeploying}>
-            Deployment abbrechen
-          </Button>
-        </div>
       </div>
 
       {/* Content */}
@@ -1801,10 +1797,22 @@ export function DeploymentWizard({
         </Button>
 
         <div className="flex gap-2">
-          {/* Skip to Overview button (only on first step) */}
+          {/* Detaillierte Konfiguration (only on first step) — outline styling */}
           {currentStep === 0 && steps.length > 1 && (
             <Button
               variant="outline"
+              onClick={handleNext}
+              disabled={isDeploying || validationErrors.length > 0}
+              className="border-teal-500 text-teal-600 hover:bg-teal-50"
+            >
+              Detaillierte Konfiguration
+              <ChevronRight className="w-4 h-4 ml-2" />
+            </Button>
+          )}
+
+          {/* Direkt zur Übersicht (only on first step) — primary styling */}
+          {currentStep === 0 && steps.length > 1 && (
+            <Button
               onClick={handleSkipToOverview}
               disabled={
                 !selectedVersionId ||
@@ -1812,14 +1820,14 @@ export function DeploymentWizard({
                 !deploymentName ||
                 isDeploying
               }
-              className="border-teal-500 text-teal-600 hover:bg-teal-50"
+              className="bg-teal-500 hover:bg-teal-600 text-white"
             >
               Direkt zur Übersicht
               <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           )}
 
-          {currentStep < steps.length - 1 && (
+          {currentStep > 0 && currentStep < steps.length - 1 && (
             <Button
               onClick={handleNext}
               className="bg-teal-500 hover:bg-teal-600 text-white"

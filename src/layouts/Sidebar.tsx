@@ -109,7 +109,7 @@ export function Sidebar({ logo }: SidebarProps) {
 
       {/* User Profile */}
       <div className="p-4 border-t border-slate-200">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center text-white">
             {initials}
           </div>
@@ -157,9 +157,7 @@ export function Sidebar({ logo }: SidebarProps) {
             </button>
           </div>
         </div>
-        </div>
-
-        {/* admin gear moved into user profile */}
+      </div>
     </aside>
   );
 }

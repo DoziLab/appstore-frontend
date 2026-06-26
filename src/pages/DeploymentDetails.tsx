@@ -69,6 +69,13 @@ interface Deployment {
   id: string;
   name: string;
   status: 'deploying' | 'running' | 'failed' | 'cancelled' | 'stopped' | 'deleting' | 'delete_failed';
+  /**
+   * Raw backend status (lower-case). Populated by DeploymentDetailsPage from
+   * `DeploymentDto.status`. Drives the action button label / confirmation
+   * text — `status` alone collapses `queued` and `creating` into `deploying`,
+   * which we need to distinguish for the "Abbrechen" copy.
+   */
+  rawStatus?: string;
   course: string;
   startedAt: string;
   completedAt?: string;
@@ -112,6 +119,72 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
   const [extendDialogOpen, setExtendDialogOpen] = useState(false);
   const [selectedExtendMonths, setSelectedExtendMonths] = useState<RuntimeMonths | null>(null);
   const [retryInFlight, setRetryInFlight] = useState(false);
+  const [deleteInFlight, setDeleteInFlight] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  // ── Status-driven delete/cancel action ────────────────────────────────────
+  //
+  // Backend uses ONE endpoint for cancel-build and delete-deployment; it
+  // inspects the row's current status and picks the right operation itself.
+  // The UI just needs to label the button and the confirmation correctly so
+  // the user knows what they're about to trigger.
+  //
+  // Statuses outside this table render no action button at all (the spec
+  // covers `stopped`, `deleting`, `delete_failed`, `cancelled` elsewhere
+  // via banners/spinners — they don't need a manual delete trigger here).
+  const deleteAction = (() => {
+    switch (deployment.rawStatus) {
+      case "queued":
+      case "creating":
+        return {
+          label: "Abbrechen",
+          confirmTitle: "Build wirklich abbrechen?",
+          confirmText:
+            "Aktueller Build wird gestoppt, alle bereits erstellten Ressourcen werden gelöscht.",
+          confirmCta: "Ja, abbrechen",
+        };
+      case "running":
+        return {
+          label: "Löschen",
+          confirmTitle: "Deployment wirklich löschen?",
+          confirmText: "VMs werden heruntergefahren und alle Daten entfernt.",
+          confirmCta: "Ja, löschen",
+        };
+      case "failed":
+        return {
+          label: "Aufräumen",
+          confirmTitle: "Deployment aufräumen?",
+          confirmText:
+            "Fehlgeschlagenes Deployment und verbliebene Ressourcen werden entfernt.",
+          confirmCta: "Ja, aufräumen",
+        };
+      default:
+        return null;
+    }
+  })();
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!onDelete || deleteInFlight) return;
+    setDeleteInFlight(true);
+    try {
+      await onDelete(deployment.id);
+      // Page-level handler flips status to "deleting" or navigates away on
+      // success, AND surfaces errors via toast. Either way the dialog should
+      // close — keep the spinner running until the parent unmounts us or
+      // the status changes to something without a delete action.
+      setDeleteDialogOpen(false);
+    } catch {
+      // Page swallows errors and toasts them; re-enable the button so the
+      // user can retry. (Reached only if onDelete itself rejects, which the
+      // current implementation doesn't, but stay defensive.)
+      setDeleteInFlight(false);
+    }
+  }, [onDelete, deployment.id, deleteInFlight]);
+
+  // Once the parent flips status to `deleting`, the action button disappears
+  // anyway — but keep the local flag in sync so a stale `deleteInFlight`
+  // from a previous click doesn't leak across status transitions.
+  const isDeleting = deployment.status === "deleting";
 
   const handleRetry = useCallback(async () => {
     if (retryInFlight || !onRetry) return;
@@ -319,29 +392,51 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
     }
   };
 
-  // Shared delete confirmation dialog content — reused across status variants
-  const DeleteConfirmDialog = () => (
-    <AlertDialogContent className="bg-white w-auto max-w-sm sm:max-w-md max-h-[70vh] overflow-y-auto">
-      <AlertDialogHeader>
-        <AlertDialogTitle className="flex items-center gap-2">
-          <XCircle className="w-5 h-5 text-red-600" />
-          Deployment wirklich löschen?
-        </AlertDialogTitle>
-        <AlertDialogDescription>
-          Diese Aktion kann nicht rückgängig gemacht werden. Das Deployment und alle zugehörigen Ressourcen werden unwiderruflich entfernt.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter className="justify-center sm:justify-center">
-        <AlertDialogCancel className="sm:w-auto">Nein, abbrechen</AlertDialogCancel>
-        <AlertDialogAction
-          className="sm:w-auto border bg-white border-slate-200 text-red-600 hover:text-red-700 hover:bg-red-50"
-          onClick={() => onDelete?.(deployment.id)}
-        >
-          Ja, löschen
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  );
+  // Status-aware delete confirmation dialog. Single instance — opened by
+  // whichever button (Actions card or "delete_failed" retry banner) sets
+  // deleteDialogOpen=true.
+  const renderDeleteDialog = () => {
+    if (!deleteAction) return null;
+    return (
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent className="bg-white w-auto max-w-sm sm:max-w-md max-h-[70vh] overflow-y-auto">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <XCircle className="w-5 h-5 text-red-600" />
+              {deleteAction.confirmTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteAction.confirmText}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="justify-center sm:justify-center">
+            <AlertDialogCancel className="sm:w-auto" disabled={deleteInFlight}>
+              Nein, abbrechen
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="sm:w-auto border bg-white border-slate-200 text-red-600 hover:text-red-700 hover:bg-red-50"
+              disabled={deleteInFlight}
+              onClick={(e) => {
+                // Keep the dialog open while the request is in flight; we
+                // close it ourselves in handleConfirmDelete on success.
+                e.preventDefault();
+                void handleConfirmDelete();
+              }}
+            >
+              {deleteInFlight ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Wird gelöscht...
+                </>
+              ) : (
+                deleteAction.confirmCta
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    );
+  };
 
   return (
     <div className="p-8 space-y-8">
@@ -611,9 +706,17 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
                 <Button
                   variant="outline"
                   className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  onClick={() => onDelete?.(deployment.id)}
+                  disabled={deleteInFlight || !onDelete}
+                  onClick={() => void handleConfirmDelete()}
                 >
-                  Erneut versuchen
+                  {deleteInFlight ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Wird gelöscht...
+                    </>
+                  ) : (
+                    "Erneut versuchen"
+                  )}
                 </Button>
               </div>
             </div>
@@ -699,100 +802,85 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
               <CardTitle>Aktionen</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {/* ── running ── */}
               {deployment.status === 'running' && (
-                <>
-                  <Button variant="outline" className="w-full opacity-50 cursor-not-allowed" disabled>
-                    VM starten
-                  </Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="outline" className="w-full text-red-600 hover:text-red-700 hover:bg-red-50">
-                        Deployment löschen
-                      </Button>
-                    </AlertDialogTrigger>
-                    <DeleteConfirmDialog />
-                  </AlertDialog>
-                </>
-              )}
-
-              {/* ── deploying ── */}
-              {deployment.status === 'deploying' && (
-                <Button variant="outline" className="w-full text-orange-600 hover:text-orange-700 hover:bg-orange-50">
-                  Deployment abbrechen
+                <Button variant="outline" className="w-full opacity-50 cursor-not-allowed" disabled>
+                  VM starten
                 </Button>
               )}
 
-              {/* ── failed ── */}
+              {/* Retry-from-failed (separate flow from the delete/cleanup action) */}
               {deployment.status === 'failed' && (
-                <>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        disabled={retryInFlight || !onRetry}
-                      >
-                        {retryInFlight ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Wird vorbereitet…
-                          </>
-                        ) : (
-                          "Erneut versuchen"
-                        )}
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent className="bg-white w-auto max-w-sm sm:max-w-md max-h-[70vh] overflow-y-auto">
-                      <AlertDialogHeader>
-                        <AlertDialogTitle className="flex items-center gap-2">
-                          <AlertCircle className="w-5 h-5 text-slate-600" />
-                            Deployment erneut versuchen?
-                          </AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Dieses Deployment wird gelöscht und ihre aktuellen Einstellungen und Daten für ein erneutes Deployment übernommen.
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      disabled={retryInFlight || !onRetry || isDeleting || deleteInFlight}
+                    >
+                      {retryInFlight ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Wird vorbereitet…
+                        </>
+                      ) : (
+                        "Erneut versuchen"
+                      )}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent className="bg-white w-auto max-w-sm sm:max-w-md max-h-[70vh] overflow-y-auto">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="flex items-center gap-2">
+                        <AlertCircle className="w-5 h-5 text-slate-600" />
+                        Deployment erneut versuchen?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Dieses Deployment wird gelöscht und ihre aktuellen Einstellungen und Daten für ein erneutes Deployment übernommen.
                       </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter className="justify-center sm:justify-center">
-                        <AlertDialogCancel className="sm:w-auto">Abbrechen</AlertDialogCancel>
-                        <AlertDialogAction
-                          className="sm:w-auto border bg-white border-slate-200 text-slate-900 hover:bg-slate-50"
-                          onClick={handleRetry}
-                        >
-                          Ja, erneut versuchen
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="outline" className="w-full text-red-600 hover:text-red-700 hover:bg-red-50">
-                        Deployment löschen
-                      </Button>
-                    </AlertDialogTrigger>
-                    <DeleteConfirmDialog />
-                  </AlertDialog>
-                </>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter className="justify-center sm:justify-center">
+                      <AlertDialogCancel className="sm:w-auto">Abbrechen</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="sm:w-auto border bg-white border-slate-200 text-slate-900 hover:bg-slate-50"
+                        onClick={handleRetry}
+                      >
+                        Ja, erneut versuchen
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               )}
 
-              {/* ── cancelled ── */}
+              {/* Cancelled deployments may still be re-tried via the wizard */}
               {deployment.status === 'cancelled' && (
-                <>
-                  <Button variant="outline" className="w-full">
-                    Erneut versuchen
-                  </Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="outline" className="w-full text-red-600 hover:text-red-700 hover:bg-red-50">
-                        Deployment löschen
-                      </Button>
-                    </AlertDialogTrigger>
-                    <DeleteConfirmDialog />
-                  </AlertDialog>
-                </>
+                <Button variant="outline" className="w-full">
+                  Erneut versuchen
+                </Button>
+              )}
+
+              {/* Unified delete/cancel/cleanup button — label and confirmation
+                  text come from `deleteAction`, which switches on the raw
+                  backend status (queued/creating/running/failed). For all
+                  other statuses, deleteAction is null and no button renders. */}
+              {deleteAction && (
+                <Button
+                  variant="outline"
+                  className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                  disabled={isDeleting || deleteInFlight || !onDelete}
+                  onClick={() => setDeleteDialogOpen(true)}
+                >
+                  {isDeleting || deleteInFlight ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Wird gelöscht...
+                    </>
+                  ) : (
+                    deleteAction.label
+                  )}
+                </Button>
               )}
             </CardContent>
           </Card>
+          {renderDeleteDialog()}
         </div>
       </div>
 

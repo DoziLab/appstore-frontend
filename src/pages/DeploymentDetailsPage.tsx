@@ -342,6 +342,12 @@ export function DeploymentDetailsPage() {
   );
 
   const handleDeleteDeployment = async (id: string) => {
+    // Snapshot the backend's raw status BEFORE we flip to "deleting" — we
+    // need it to decide whether to show the "Abbruch eingeleitet" toast for
+    // builds that were cancelled mid-flight.
+    const rawStatus: string | undefined = backendDeploymentRef.current?.status?.toString().toLowerCase();
+    const wasInFlight = rawStatus === "queued" || rawStatus === "creating";
+
     isDeletingRef.current = true;
     stopStreamRef.current?.();
     setDeploymentData((prev: any) => prev ? { ...prev, status: "deleting" } : prev);
@@ -349,7 +355,41 @@ export function DeploymentDetailsPage() {
     try {
       await deleteDeployment(id, activeProjectId);
     } catch (err) {
-      console.error("Failed to initiate delete", err);
+      // Restore previous status so the action buttons reappear and the user
+      // can retry. The page stays mounted; the SSE stream is gone but the
+      // existing UI still works off the cached deployment.
+      isDeletingRef.current = false;
+      setDeploymentData((prev: any) =>
+        prev ? { ...prev, status: STATUS_MAP[rawStatus?.toUpperCase() ?? ""] ?? prev.status } : prev,
+      );
+
+      const error = err as Error & { status?: number };
+      if (error.status === 401) {
+        // Auth refresh happens inside deleteDeployment; a 401 reaching us
+        // means the refresh itself failed. Let the global auth flow handle
+        // it — surface a generic message.
+        toast.error("Sitzung abgelaufen. Bitte erneut anmelden.");
+      } else if (error.status === 403) {
+        toast.error("Du hast keinen Zugriff auf dieses Deployment.");
+      } else if (error.status === 404) {
+        // Already gone — refresh from server. The next getDeployment call
+        // will likely 404 too, which the catch-arm below maps to dashboard.
+        try {
+          const resp = await getDeployment(id, activeProjectId);
+          backendDeploymentRef.current = resp.data;
+          setDeploymentData(buildDeploymentData(resp.data, logsRef.current));
+        } catch {
+          navigate("/dashboard");
+        }
+      } else {
+        toast.error("Löschen fehlgeschlagen. Bitte erneut versuchen.");
+      }
+      return;
+    }
+
+    // Success path — backend returned 204 and flipped status to "deleting".
+    if (wasInFlight) {
+      toast.info("Abbruch eingeleitet. Kann je nach aktueller Phase einige Sekunden bis wenige Minuten dauern.");
     }
 
     // Poll for max 60s, then give up and show retry
@@ -445,6 +485,11 @@ export function DeploymentDetailsPage() {
         id: backendDeployment.id,
         name: backendDeployment.name || "Unnamed Deployment",
         status: mappedStatus,
+        // Raw backend status (lower-case) — DeploymentDetails uses this to
+        // pick the action-button label ("Abbrechen" vs "Löschen" vs
+        // "Aufräumen"), which can't be derived from the mapped status
+        // alone (queued and creating both map to "deploying").
+        rawStatus: (backendDeployment.status ?? "").toString().toLowerCase(),
         course: resolvedCourseName,
         startedAt: backendDeployment.created_at,
         completedAt:

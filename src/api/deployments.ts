@@ -243,8 +243,22 @@ export function streamDeploymentLogs(
   return () => controller.abort();
 }
 
+/**
+ * Single delete/cancel endpoint.
+ *
+ * The backend uses ONE endpoint for both operations: it inspects the
+ * current deployment status and decides itself whether to cancel an
+ * in-flight build (`queued`, `creating`) or tear down a finished
+ * deployment (`running`, `failed`). The frontend does not branch.
+ *
+ * Returns 204 No Content on success and flips the row's status to
+ * `deleting` synchronously, so the caller can poll for the actual
+ * teardown to finish.
+ *
+ * Throws an `Error & { status: number }` on non-2xx so callers can map
+ * 401/403/404/500 to the right toast.
+ */
 export async function deleteDeployment(deploymentId: string, openstackProjectId: string | null) {
-  // Backend returns 204 No Content — don't call res.json()
   await keycloak.updateToken(30).catch(() => {});
   const res = await fetch(
     `/api/v1/deployments/${deploymentId}${projectQuery(openstackProjectId)}`,
@@ -255,7 +269,10 @@ export async function deleteDeployment(deploymentId: string, openstackProjectId:
   );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(text || res.statusText);
+    const err = new Error(text || res.statusText) as Error & { status: number; body: string };
+    err.status = res.status;
+    err.body = text;
+    throw err;
   }
 }
 

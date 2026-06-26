@@ -1,4 +1,5 @@
 import { apiFetch } from "./http";
+import keycloak from "../auth/keycloak";
 
 export type TemplateParameter = {
   name: string;
@@ -166,11 +167,12 @@ export async function activateTemplateVersion(versionId: string) {
 
 /**
  * Partial update auf ein Template. Backend erlaubt das für Owner-or-Admin
- * (`templates.py:138` → `template_service.update_template`), erzwingt aber
- * dass nur **Admins** `visibility` ändern dürfen — andere Felder fasst die
- * UI bislang nicht an, weil sie nicht in der Owner-Detailansicht editierbar
- * sind. Bei Visibility-Änderungen durch Nicht-Admins gibt das Backend einen
- * 403 zurück, den die UI als Toast aufgreift.
+ * (`templates.py:138` → `template_service.update_template`). Seit Commit
+ * `2641a01` ("approval flow applies only to public templates") dürfen
+ * Owner UND Admins `visibility` umschalten — der frühere Admin-only-Riegel
+ * ist entfallen. Der Visibility-Wechsel hat einen Seiteneffekt: private →
+ * public setzt alle Versionen ohne Status auf PENDING; public → private
+ * räumt approval_status/approved_by/_at/reason auf NULL.
  */
 export type TemplateUpdatePayload = {
   name?: string;
@@ -192,6 +194,59 @@ export async function updateTemplate(
     method: "PATCH",
     body: JSON.stringify(patch),
   });
+}
+
+/**
+ * Löscht ein Template komplett (inkl. aller Versionen und Files — das Backend
+ * macht das via Cascade in `template_repo.delete`). Owner-or-Admin. Backend
+ * antwortet mit 204 No Content; deshalb gehen wir hier am gemeinsamen
+ * `apiFetch` vorbei (das ruft unbedingt `res.json()` und würde am leeren
+ * Body scheitern — siehe `deleteDeployment` für die gleiche Konstruktion).
+ */
+export async function deleteTemplate(templateId: string): Promise<void> {
+  await keycloak.updateToken(30).catch(() => {});
+  const res = await fetch(`/api/v1/templates/${templateId}`, {
+    method: "DELETE",
+    headers: keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {},
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    let message = text || res.statusText;
+    try {
+      const json = JSON.parse(text);
+      if (json?.message) message = json.message;
+      else if (json?.detail) message = json.detail;
+    } catch {
+      // not JSON
+    }
+    throw new Error(message);
+  }
+}
+
+/**
+ * Löscht eine einzelne Template-Version. Owner-or-Admin. Backend blockiert
+ * das Löschen der einzigen aktiven Version mit 400 — vor diesem Aufruf also
+ * besser eine andere Version aktivieren (oder im UI als disabled rendern).
+ * Siehe `template_version_service.delete_version`. Backend liefert 204.
+ */
+export async function deleteTemplateVersion(versionId: string): Promise<void> {
+  await keycloak.updateToken(30).catch(() => {});
+  const res = await fetch(`/api/v1/template-versions/${versionId}`, {
+    method: "DELETE",
+    headers: keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {},
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    let message = text || res.statusText;
+    try {
+      const json = JSON.parse(text);
+      if (json?.message) message = json.message;
+      else if (json?.detail) message = json.detail;
+    } catch {
+      // not JSON
+    }
+    throw new Error(message);
+  }
 }
 
 // Approval lebt seit der Per-Version-Migration ausschließlich auf

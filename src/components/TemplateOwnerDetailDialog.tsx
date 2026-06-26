@@ -15,7 +15,7 @@
 // Der eigentliche Versions-Upgrade-Dialog liegt in einem eigenen Component
 // (UpgradeVersionDialog), damit das hier nicht zu groß wird.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ArrowUpCircle,
@@ -28,6 +28,8 @@ import {
   GitBranch,
   Lock,
   MessageSquare,
+  Pencil,
+  Trash2,
   X,
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
@@ -38,8 +40,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { ApprovalBadge } from "./ApprovalBadge";
 import {
@@ -47,8 +60,11 @@ import {
   rejectTemplateVersion,
 } from "../api/github";
 import {
+  deleteTemplate,
+  deleteTemplateVersion,
   updateTemplate,
   type TemplateDto,
+  type TemplateUpdatePayload,
   type TemplateVersionDto,
 } from "../api/templates";
 import { isStrictlyNewer } from "../lib/version";
@@ -77,11 +93,26 @@ export function TemplateOwnerDetailDialog({
   const [busyVersionId, setBusyVersionId] = useState<string | null>(null);
   const [rejectingVersionId, setRejectingVersionId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
-  // Visibility-Toggle: Backend erlaubt das laut `template_service.update_template`
-  // ausdrücklich nur für Admins — wir blenden den Schalter daher außerhalb der
-  // Admin-Rolle ganz aus und vertrauen zusätzlich auf die Backend-403 als
-  // zweiten Riegel (für API-Direktanfragen).
+  // Visibility-Toggle: seit Backend-Commit 2641a01 ("approval flow applies
+  // only to public templates") darf das Owner-or-Admin — der frühere
+  // Admin-only-Riegel im Service ist weg. Wir blenden den Button daher für
+  // alle ein, die diesen Dialog sehen (Owner sehen ihn; Admins sehen alle).
   const [visibilityBusy, setVisibilityBusy] = useState(false);
+
+  // Edit-Modus für Metadaten (name/description/repo_url/icon_url). Visibility
+  // hat seinen eigenen Toggle weiter oben, daher hier nicht enthalten.
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState(template.name);
+  const [editDescription, setEditDescription] = useState(template.description ?? "");
+  const [editRepoUrl, setEditRepoUrl] = useState(template.repo_url);
+  const [editIconUrl, setEditIconUrl] = useState(template.icon_url ?? "");
+  const [editBusy, setEditBusy] = useState(false);
+
+  // Bestätigungsdialoge für destruktive Aktionen.
+  const [confirmDeleteTemplate, setConfirmDeleteTemplate] = useState(false);
+  const [deletingTemplate, setDeletingTemplate] = useState(false);
+  const [confirmDeleteVersionId, setConfirmDeleteVersionId] = useState<string | null>(null);
+  const [deletingVersionId, setDeletingVersionId] = useState<string | null>(null);
 
   // Aufräumen, wenn der Dialog zugeht — verhindert, dass beim nächsten
   // Öffnen ein offener Reject-Block aus einer früheren Session sichtbar ist.
@@ -90,8 +121,21 @@ export function TemplateOwnerDetailDialog({
       setRejectingVersionId(null);
       setRejectionReason("");
       setBusyVersionId(null);
+      setEditing(false);
+      setConfirmDeleteTemplate(false);
+      setConfirmDeleteVersionId(null);
     }
   }, [open]);
+
+  // Wenn von außen ein frisches Template-Objekt reinkommt (nach onChanged-
+  // Refetch), die Edit-Felder mitziehen — sonst zeigt der Edit-Modus alte
+  // Werte aus dem ersten Render-Zyklus.
+  useEffect(() => {
+    setEditName(template.name);
+    setEditDescription(template.description ?? "");
+    setEditRepoUrl(template.repo_url);
+    setEditIconUrl(template.icon_url ?? "");
+  }, [template.id, template.name, template.description, template.repo_url, template.icon_url]);
 
   const versions: TemplateVersionDto[] = (template.versions ?? [])
     .slice()
@@ -150,8 +194,8 @@ export function TemplateOwnerDetailDialog({
     }
   };
 
-  // Visibility umschalten — nur als Admin sinnvoll (Backend wirft sonst 403).
-  // Wir berechnen das Zielniveau aus dem aktuellen Wert, damit ein
+  // Visibility umschalten — seit Backend-Commit 2641a01 für Owner-or-Admin
+  // erlaubt. Wir berechnen das Zielniveau aus dem aktuellen Wert, damit ein
   // schneller Doppelklick nicht in eine Race läuft.
   const handleToggleVisibility = async () => {
     const next = template.visibility === "public" ? "private" : "public";
@@ -174,6 +218,88 @@ export function TemplateOwnerDetailDialog({
       setVisibilityBusy(false);
     }
   };
+
+  // Metadaten-Edit speichern — nur die tatsächlich geänderten Felder ans
+  // Backend schicken, damit kein unnötiger Diff entsteht und PATCH
+  // semantisch sauber bleibt.
+  const handleSaveEdit = async () => {
+    const patch: TemplateUpdatePayload = {};
+    if (editName.trim() && editName !== template.name) patch.name = editName.trim();
+    const nextDesc = editDescription.trim() === "" ? null : editDescription;
+    if ((template.description ?? null) !== nextDesc) patch.description = nextDesc;
+    if (editRepoUrl.trim() && editRepoUrl !== template.repo_url) patch.repo_url = editRepoUrl.trim();
+    const nextIcon = editIconUrl.trim() === "" ? null : editIconUrl.trim();
+    if ((template.icon_url ?? null) !== nextIcon) patch.icon_url = nextIcon;
+
+    if (Object.keys(patch).length === 0) {
+      setEditing(false);
+      return;
+    }
+
+    setEditBusy(true);
+    try {
+      await updateTemplate(template.id, patch);
+      toast.success("Template-Daten aktualisiert.");
+      setEditing(false);
+      onChanged();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Aktualisierung fehlgeschlagen.",
+      );
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
+  // Template komplett löschen. Backend kaskadiert über alle Versionen/Files;
+  // nach Erfolg schließen wir den Dialog und lassen die Parent-Komponente
+  // die Liste neu laden.
+  const handleDeleteTemplate = async () => {
+    setDeletingTemplate(true);
+    try {
+      await deleteTemplate(template.id);
+      toast.success("Template gelöscht.");
+      setConfirmDeleteTemplate(false);
+      onOpenChange(false);
+      onChanged();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Löschen fehlgeschlagen.",
+      );
+    } finally {
+      setDeletingTemplate(false);
+    }
+  };
+
+  // Einzelne Version löschen. Backend blockt das Löschen der einzigen
+  // aktiven Version mit 400 — wir lassen den Button für genau diesen Fall
+  // gar nicht erst zu (siehe `canDeleteVersion`-Hilfsfunktion unten).
+  const handleDeleteVersion = async (versionId: string) => {
+    setDeletingVersionId(versionId);
+    try {
+      await deleteTemplateVersion(versionId);
+      toast.success("Version gelöscht.");
+      setConfirmDeleteVersionId(null);
+      onChanged();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Löschen fehlgeschlagen.",
+      );
+    } finally {
+      setDeletingVersionId(null);
+    }
+  };
+
+  // Spiegelt die Backend-Regel aus `template_version_service.delete_version`:
+  // die einzige aktive Version eines Templates darf nicht gelöscht werden.
+  // (Es gibt entweder eine zweite aktive Version — was das Service-Konstrukt
+  // eigentlich vermeidet — oder die zu löschende Version ist nicht aktiv.)
+  const activeCount = useMemo(
+    () => versions.filter((v) => v.is_active).length,
+    [versions],
+  );
+  const canDeleteVersion = (v: TemplateVersionDto) =>
+    !v.is_active || activeCount > 1;
 
   return (
     <>
@@ -213,87 +339,176 @@ export function TemplateOwnerDetailDialog({
                 )}
               </Badge>
               <ApprovalBadge status={overallStatus} variant="overall" />
-              {/* Sichtbarkeits-Umschalter — Backend lässt nur Admins zu
-                  (`template_service.update_template` wirft sonst 403).
-                  Wir zeigen den Button daher gar nicht erst für Nicht-Admins. */}
-              {isAdmin && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleToggleVisibility}
-                  disabled={visibilityBusy}
-                  className="h-7 text-xs"
-                  title={
-                    template.visibility === "public"
-                      ? "Auf privat zurückstellen — Template ist dann nur noch für Owner und Admins sichtbar."
-                      : "Auf öffentlich schalten — Template wird für alle User sichtbar, sobald mindestens eine approvte Version existiert."
-                  }
-                >
-                  {visibilityBusy
-                    ? "Wird geändert…"
-                    : template.visibility === "public"
-                      ? "Auf privat stellen"
-                      : "Öffentlich schalten"}
-                </Button>
-              )}
+              {/* Sichtbarkeits-Umschalter — seit Backend-Commit 2641a01 für
+                  Owner-or-Admin erlaubt. Dieser Dialog erscheint nur für
+                  eigene Templates (siehe AppStore.tsx) bzw. für Admins, also
+                  zeigen wir den Button konstant an. */}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleToggleVisibility}
+                disabled={visibilityBusy}
+                className="h-7 text-xs"
+                title={
+                  template.visibility === "public"
+                    ? "Auf privat zurückstellen — Template ist dann nur noch für Owner und Admins sichtbar."
+                    : "Auf öffentlich schalten — Template wird für alle User sichtbar, sobald mindestens eine approvte Version existiert."
+                }
+              >
+                {visibilityBusy
+                  ? "Wird geändert…"
+                  : template.visibility === "public"
+                    ? "Auf privat stellen"
+                    : "Öffentlich schalten"}
+              </Button>
             </div>
 
-            {/* Beschreibung */}
-            <section>
-              <h3 className="text-sm font-semibold text-slate-900 mb-2">
-                Beschreibung
-              </h3>
-              <p className="text-sm text-slate-600 leading-relaxed">
-                {template.description || "Keine Beschreibung hinterlegt."}
-              </p>
-            </section>
+            {/* Beschreibung + Metadaten — editierbar via Edit-Toggle.
+                Owner-or-Admin laut Backend (`template_service.update_template`).
+                Visibility wird hier bewusst NICHT mit-editiert, weil sie ihren
+                eigenen Toggle oben in der Status-Zeile hat. */}
+            {!editing ? (
+              <>
+                <section>
+                  <div className="flex items-center justify-between mb-2 gap-2">
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      Beschreibung
+                    </h3>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditing(true)}
+                      className="h-7 text-xs"
+                    >
+                      <Pencil className="w-3 h-3 mr-1" /> Bearbeiten
+                    </Button>
+                  </div>
+                  <p className="text-sm text-slate-600 leading-relaxed">
+                    {template.description || "Keine Beschreibung hinterlegt."}
+                  </p>
+                </section>
 
-            {/* Repo / Metadaten */}
-            <section>
-              <h3 className="text-sm font-semibold text-slate-900 mb-2">
-                Quelle &amp; Metadaten
-              </h3>
-              <dl className="text-sm space-y-2">
-                {template.repo_url && (
-                  <div className="flex items-start gap-2">
-                    <Github className="w-4 h-4 mt-0.5 text-slate-500" />
-                    <div className="min-w-0 flex-1">
-                      <dt className="text-xs text-slate-500">Repository</dt>
-                      <dd>
-                        <a
-                          href={template.repo_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-teal-600 hover:text-teal-700 break-all"
-                        >
-                          {template.repo_url}
-                        </a>
-                      </dd>
+                <section>
+                  <h3 className="text-sm font-semibold text-slate-900 mb-2">
+                    Quelle &amp; Metadaten
+                  </h3>
+                  <dl className="text-sm space-y-2">
+                    {template.repo_url && (
+                      <div className="flex items-start gap-2">
+                        <Github className="w-4 h-4 mt-0.5 text-slate-500" />
+                        <div className="min-w-0 flex-1">
+                          <dt className="text-xs text-slate-500">Repository</dt>
+                          <dd>
+                            <a
+                              href={template.repo_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-teal-600 hover:text-teal-700 break-all"
+                            >
+                              {template.repo_url}
+                            </a>
+                          </dd>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-start gap-2">
+                      <Calendar className="w-4 h-4 mt-0.5 text-slate-500" />
+                      <div>
+                        <dt className="text-xs text-slate-500">Erstellt</dt>
+                        <dd className="text-slate-700">
+                          {new Date(template.created_at).toLocaleString("de-DE")}
+                        </dd>
+                      </div>
                     </div>
-                  </div>
-                )}
-                <div className="flex items-start gap-2">
-                  <Calendar className="w-4 h-4 mt-0.5 text-slate-500" />
-                  <div>
-                    <dt className="text-xs text-slate-500">Erstellt</dt>
-                    <dd className="text-slate-700">
-                      {new Date(template.created_at).toLocaleString("de-DE")}
-                    </dd>
-                  </div>
+                    <div className="flex items-start gap-2">
+                      <Calendar className="w-4 h-4 mt-0.5 text-slate-500" />
+                      <div>
+                        <dt className="text-xs text-slate-500">
+                          Zuletzt aktualisiert
+                        </dt>
+                        <dd className="text-slate-700">
+                          {new Date(template.updated_at).toLocaleString("de-DE")}
+                        </dd>
+                      </div>
+                    </div>
+                  </dl>
+                </section>
+              </>
+            ) : (
+              <section className="space-y-3 p-3 rounded-lg border border-slate-200 bg-slate-50">
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Template bearbeiten
+                </h3>
+                <div className="space-y-2">
+                  <Label htmlFor="tpl-edit-name" className="text-xs">Name</Label>
+                  <Input
+                    id="tpl-edit-name"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    maxLength={255}
+                    disabled={editBusy}
+                  />
                 </div>
-                <div className="flex items-start gap-2">
-                  <Calendar className="w-4 h-4 mt-0.5 text-slate-500" />
-                  <div>
-                    <dt className="text-xs text-slate-500">
-                      Zuletzt aktualisiert
-                    </dt>
-                    <dd className="text-slate-700">
-                      {new Date(template.updated_at).toLocaleString("de-DE")}
-                    </dd>
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="tpl-edit-desc" className="text-xs">Beschreibung</Label>
+                  <Textarea
+                    id="tpl-edit-desc"
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    rows={3}
+                    disabled={editBusy}
+                  />
                 </div>
-              </dl>
-            </section>
+                <div className="space-y-2">
+                  <Label htmlFor="tpl-edit-repo" className="text-xs">Repository-URL</Label>
+                  <Input
+                    id="tpl-edit-repo"
+                    value={editRepoUrl}
+                    onChange={(e) => setEditRepoUrl(e.target.value)}
+                    maxLength={500}
+                    disabled={editBusy}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="tpl-edit-icon" className="text-xs">
+                    Icon (mdi:flask, fa:server, 🚀, /icons/template.svg)
+                  </Label>
+                  <Input
+                    id="tpl-edit-icon"
+                    value={editIconUrl}
+                    onChange={(e) => setEditIconUrl(e.target.value)}
+                    maxLength={500}
+                    disabled={editBusy}
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditing(false);
+                      // Felder auf den aktuellen Backend-Stand zurücksetzen,
+                      // damit der nächste Edit-Aufruf bei null beginnt.
+                      setEditName(template.name);
+                      setEditDescription(template.description ?? "");
+                      setEditRepoUrl(template.repo_url);
+                      setEditIconUrl(template.icon_url ?? "");
+                    }}
+                    disabled={editBusy}
+                  >
+                    Abbrechen
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleSaveEdit}
+                    disabled={editBusy || !editName.trim() || !editRepoUrl.trim()}
+                    className="bg-teal-500 hover:bg-teal-600 text-white"
+                  >
+                    {editBusy ? "Speichert…" : "Speichern"}
+                  </Button>
+                </div>
+              </section>
+            )}
 
             {/* Aktive Version + Update-Button */}
             <section>
@@ -443,6 +658,34 @@ export function TemplateOwnerDetailDialog({
                             )}
                           </div>
                         )}
+
+                        {/* Version löschen — Owner-or-Admin laut Backend
+                            (`template_version_service.delete_version`). Dieser
+                            Dialog wird nur für eigene Templates geöffnet
+                            (siehe AppStore.tsx), darum erscheint der Button
+                            ohne weitere Rollenprüfung. Die einzige aktive
+                            Version blockt das Backend mit 400 — daher hier
+                            schon disabled, damit das gar nicht erst passiert. */}
+                        {rejectingVersionId !== version.id && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 shrink-0"
+                            onClick={() => setConfirmDeleteVersionId(version.id)}
+                            disabled={
+                              deletingVersionId === version.id ||
+                              !canDeleteVersion(version)
+                            }
+                            title={
+                              !canDeleteVersion(version)
+                                ? "Die einzige aktive Version kann nicht gelöscht werden — zuerst eine andere aktivieren."
+                                : "Version dauerhaft löschen."
+                            }
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Löschen
+                          </Button>
+                        )}
                       </div>
 
                       {/* Ausgeklappter Reject-Bereich (nur Admin) */}
@@ -492,7 +735,19 @@ export function TemplateOwnerDetailDialog({
               </div>
             )}
 
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+              {/* Destruktive Aktion ganz links, von „Schließen" optisch getrennt
+                  — Owner-or-Admin laut Backend (`template_service.delete_template`).
+                  Backend kaskadiert über alle Versionen und Files. */}
+              <Button
+                variant="outline"
+                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                onClick={() => setConfirmDeleteTemplate(true)}
+                disabled={deletingTemplate}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Template löschen
+              </Button>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Schließen
               </Button>
@@ -522,6 +777,79 @@ export function TemplateOwnerDetailDialog({
           onChanged();
         }}
       />
+
+      {/* Confirm: Template komplett löschen. AlertDialog statt eigener
+          Dialog-Komponente, weil das semantisch eine destruktive
+          Bestätigung ist und Radix dann den Focus-Lock korrekt umleitet. */}
+      <AlertDialog
+        open={confirmDeleteTemplate}
+        onOpenChange={(o) => !deletingTemplate && setConfirmDeleteTemplate(o)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Template „{template.name}" löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Das Template, alle {versions.length} Version
+              {versions.length === 1 ? "" : "en"} und die zugehörigen Dateien
+              werden dauerhaft entfernt. Bestehende Deployments aus diesem
+              Template laufen weiter, lassen sich aber nicht neu erstellen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row justify-end gap-2">
+            <AlertDialogCancel className="mt-0" disabled={deletingTemplate}>
+              Abbrechen
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              style={{ backgroundColor: "#dc2626", color: "#ffffff" }}
+              onClick={handleDeleteTemplate}
+              disabled={deletingTemplate}
+            >
+              {deletingTemplate ? "Wird gelöscht…" : "Löschen"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirm: einzelne Version löschen. Identisches Pattern. */}
+      <AlertDialog
+        open={confirmDeleteVersionId !== null}
+        onOpenChange={(o) => !deletingVersionId && !o && setConfirmDeleteVersionId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Version{" "}
+              {versions.find((v) => v.id === confirmDeleteVersionId)?.version ??
+                ""}{" "}
+              löschen?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Die Version und alle Files dieser Version werden dauerhaft
+              entfernt. Diese Aktion kann nicht rückgängig gemacht werden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row justify-end gap-2">
+            <AlertDialogCancel
+              className="mt-0"
+              disabled={deletingVersionId !== null}
+            >
+              Abbrechen
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              style={{ backgroundColor: "#dc2626", color: "#ffffff" }}
+              onClick={() =>
+                confirmDeleteVersionId &&
+                handleDeleteVersion(confirmDeleteVersionId)
+              }
+              disabled={deletingVersionId !== null}
+            >
+              {deletingVersionId !== null ? "Wird gelöscht…" : "Löschen"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

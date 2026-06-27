@@ -271,9 +271,11 @@ export function OpenStackConfig() {
 
   // Refs for internal sections
   const connectionRef = useRef<HTMLElement | null>(null);
+  const githubRef = useRef<HTMLElement | null>(null);
   const authRef = useRef<HTMLElement | null>(null);
   const quotasRef = useRef<HTMLElement | null>(null);
-  const [hoveredSection, setHoveredSection] = useState<'connection' | 'authentication' | 'quotas' | null>(null);
+  type SectionKey = 'connection' | 'github' | 'authentication' | 'quotas';
+  const [hoveredSection, setHoveredSection] = useState<SectionKey | null>(null);
   const activeSection = hoveredSection; // only hover determines active section
 
   const scrollToRef = useCallback((ref: typeof connectionRef) => {
@@ -295,6 +297,8 @@ export function OpenStackConfig() {
           <nav className="space-y-2">
             <button
               onClick={() => scrollToRef(connectionRef)}
+              onMouseEnter={() => setHoveredSection('connection')}
+              onMouseLeave={() => setHoveredSection(null)}
               className={`w-full text-left px-3 py-2 rounded-md transition ${activeSection === 'connection' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
               title="Verbindungsstatus"
             >
@@ -302,7 +306,19 @@ export function OpenStackConfig() {
             </button>
 
             <button
+              onClick={() => scrollToRef(githubRef)}
+              onMouseEnter={() => setHoveredSection('github')}
+              onMouseLeave={() => setHoveredSection(null)}
+              className={`w-full text-left px-3 py-2 rounded-md transition ${activeSection === 'github' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
+              title="GitHub-Integration"
+            >
+              GitHub-Integration
+            </button>
+
+            <button
               onClick={() => scrollToRef(authRef)}
+              onMouseEnter={() => setHoveredSection('authentication')}
+              onMouseLeave={() => setHoveredSection(null)}
               className={`w-full text-left px-3 py-2 rounded-md transition ${activeSection === 'authentication' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
               title="Authentifizierung"
             >
@@ -311,6 +327,8 @@ export function OpenStackConfig() {
 
             <button
               onClick={() => scrollToRef(quotasRef)}
+              onMouseEnter={() => setHoveredSection('quotas')}
+              onMouseLeave={() => setHoveredSection(null)}
               className={`w-full text-left px-3 py-2 rounded-md transition ${activeSection === 'quotas' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
               title="Quotas"
             >
@@ -320,7 +338,7 @@ export function OpenStackConfig() {
         </aside>
 
         {/* Right: content */}
-        <main className="flex-1 overflow-auto pr-4 space-y-6">
+        <main className="flex-1 overflow-auto pr-4 space-y-6 settings-scroll">
           {/* Connection Status Card */}
           <section
             ref={connectionRef}
@@ -372,11 +390,18 @@ export function OpenStackConfig() {
           </Card>
           </section>
 
-          {/* GitHub-Integration — eigenständige Karte zwischen Connection
-              und Authentifizierung. Bewusst keine eigene Scrollspy-Section,
-              weil sie nicht in der Sidebar-Navigation auftaucht und der
-              Inhalt klein ist. */}
-          <GithubIntegrationCard />
+          {/* GitHub-Integration — eigene Scrollspy-Section, damit sie auch
+              in der Sidebar-Navigation einen eigenen Tab bekommt
+              (siehe Issue #127). */}
+          <section
+            ref={githubRef}
+            data-section="github"
+            aria-labelledby="github-heading"
+            onMouseEnter={() => setHoveredSection('github')}
+            onMouseLeave={() => setHoveredSection(null)}
+          >
+            <GithubIntegrationCard />
+          </section>
 
           <section
             ref={authRef}

@@ -44,6 +44,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import {
   AccessType,
   DeploymentCredentialsResponse,
@@ -55,6 +56,7 @@ import {
 import { type LogPhase, type PhaseStatus } from "./DeploymentDetailsPage";
 import { getExpiryState } from "../utils/deployment";
 import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
+import { useCurrentUser } from "../auth/useCurrentUser";
 
 interface DeploymentStep {
   id: string;
@@ -78,6 +80,17 @@ interface Deployment {
    * which we need to distinguish for the "Abbrechen" copy.
    */
   rawStatus?: string;
+  /**
+   * Keycloak UUID of the deployment owner (lecturer who created it). Populated
+   * by DeploymentDetailsPage from `DeploymentDto.owner_id`. Compared against
+   * `useCurrentUser().userId` (== Keycloak `sub`) to gate the Aktionen card
+   * buttons — non-owners (including lecturers with read access via course
+   * membership and viewing admins who explicitly want to act as a regular
+   * user) see the buttons disabled with an explanatory tooltip. Admins
+   * always bypass the check. Null on legacy rows that pre-date the
+   * teacher-info migration — treated as non-owner.
+   */
+  ownerId?: string | null;
   course: string;
   startedAt: string;
   completedAt?: string;
@@ -112,6 +125,25 @@ interface DeploymentDetailsProps {
 
 export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: DeploymentDetailsProps) {
   const { activeProjectId } = useActiveOpenstackProject();
+  const currentUser = useCurrentUser();
+  // ── Owner-only gate for the Aktionen card ────────────────────────────────
+  //
+  // Spec: "Aktionen" (Abbrechen, Löschen, Aufräumen, Erneut versuchen) may
+  // only be triggered by the deployment's owner — other lecturers / admins
+  // browsing the details page see the buttons disabled with an explanatory
+  // tooltip but keep full read access to the rest of the page.
+  //
+  // The backend already enforces this on the DELETE/extend/restart endpoints
+  // via `authorize_deployment_access` (403 for non-owner non-admins), so this
+  // is a pure UX layer — it just prevents a guaranteed-403 click.
+  //
+  // Admins keep their full toolbox; legacy rows without `ownerId` fall back
+  // to non-owner for everyone except admins (safe default).
+  const canManageDeployment =
+    currentUser.isAdmin ||
+    (deployment.ownerId != null && deployment.ownerId === currentUser.userId);
+  const ownerTooltip =
+    "Diese Aktion kann nur vom Besitzer des Deployments ausgeführt werden.";
   const [credentialsVisible, setCredentialsVisible] = useState(false);
   const [credentialsLoading, setCredentialsLoading] = useState(false);
   const [credentialsError, setCredentialsError] = useState<string | null>(null);
@@ -440,6 +472,30 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
     );
   };
 
+  // Wraps an already-disabled action button in a tooltip explaining the
+  // ownership gate. The tooltip only renders when the gate is the reason for
+  // the disable; status-driven disables (deleteInFlight, isDeleting, etc.)
+  // keep the bare button so the user isn't told the wrong "why".
+  const withOwnerTooltip = (
+    button: React.ReactElement,
+    disabledByOwnership: boolean,
+  ) => {
+    if (!disabledByOwnership) return button;
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {/* Radix needs a focusable wrapper because the inner Button is
+              `disabled` (and therefore not pointer-event-capable). The span
+              is the standard escape hatch — keeps keyboard + hover working. */}
+          <span tabIndex={0} className="inline-block w-full">
+            {button}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{ownerTooltip}</TooltipContent>
+      </Tooltip>
+    );
+  };
+
   return (
     <div className="p-8 space-y-8">
       {/* Header */}
@@ -705,21 +761,24 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
                 <p className="text-sm text-orange-700 mb-3">
                   Das Deployment konnte nicht vollständig gelöscht werden. Bitte versuchen Sie es erneut.
                 </p>
-                <Button
-                  variant="outline"
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  disabled={deleteInFlight || !onDelete}
-                  onClick={() => void handleConfirmDelete()}
-                >
-                  {deleteInFlight ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Wird gelöscht...
-                    </>
-                  ) : (
-                    "Erneut versuchen"
-                  )}
-                </Button>
+                {withOwnerTooltip(
+                  <Button
+                    variant="outline"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    disabled={deleteInFlight || !onDelete || !canManageDeployment}
+                    onClick={() => void handleConfirmDelete()}
+                  >
+                    {deleteInFlight ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Wird gelöscht...
+                      </>
+                    ) : (
+                      "Erneut versuchen"
+                    )}
+                  </Button>,
+                  !canManageDeployment,
+                )}
               </div>
             </div>
           </CardContent>
@@ -814,20 +873,23 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
               {deployment.status === 'failed' && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      disabled={retryInFlight || !onRetry || isDeleting || deleteInFlight}
-                    >
-                      {retryInFlight ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Wird vorbereitet…
-                        </>
-                      ) : (
-                        "Erneut versuchen"
-                      )}
-                    </Button>
+                    {withOwnerTooltip(
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        disabled={retryInFlight || !onRetry || isDeleting || deleteInFlight || !canManageDeployment}
+                      >
+                        {retryInFlight ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Wird vorbereitet…
+                          </>
+                        ) : (
+                          "Erneut versuchen"
+                        )}
+                      </Button>,
+                      !canManageDeployment,
+                    )}
                   </AlertDialogTrigger>
                   <AlertDialogContent className="bg-white w-auto max-w-sm sm:max-w-md max-h-[70vh] overflow-y-auto">
                     <AlertDialogHeader>
@@ -854,9 +916,12 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
 
               {/* Cancelled deployments may still be re-tried via the wizard */}
               {deployment.status === 'cancelled' && (
-                <Button variant="outline" className="w-full">
-                  Erneut versuchen
-                </Button>
+                withOwnerTooltip(
+                  <Button variant="outline" className="w-full" disabled={!canManageDeployment}>
+                    Erneut versuchen
+                  </Button>,
+                  !canManageDeployment,
+                )
               )}
 
               {/* Unified delete/cancel/cleanup button — label and confirmation
@@ -864,21 +929,24 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
                   backend status (queued/creating/running/failed). For all
                   other statuses, deleteAction is null and no button renders. */}
               {deleteAction && (
-                <Button
-                  variant="outline"
-                  className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
-                  disabled={isDeleting || deleteInFlight || !onDelete}
-                  onClick={() => setDeleteDialogOpen(true)}
-                >
-                  {isDeleting || deleteInFlight ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Wird gelöscht...
-                    </>
-                  ) : (
-                    deleteAction.label
-                  )}
-                </Button>
+                withOwnerTooltip(
+                  <Button
+                    variant="outline"
+                    className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                    disabled={isDeleting || deleteInFlight || !onDelete || !canManageDeployment}
+                    onClick={() => setDeleteDialogOpen(true)}
+                  >
+                    {isDeleting || deleteInFlight ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Wird gelöscht...
+                      </>
+                    ) : (
+                      deleteAction.label
+                    )}
+                  </Button>,
+                  !canManageDeployment,
+                )
               )}
             </CardContent>
           </Card>

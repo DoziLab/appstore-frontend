@@ -490,6 +490,10 @@ export function DeploymentDetailsPage() {
         // "Aufräumen"), which can't be derived from the mapped status
         // alone (queued and creating both map to "deploying").
         rawStatus: (backendDeployment.status ?? "").toString().toLowerCase(),
+        // Keycloak UUID of the deployment owner (lecturer who created it).
+        // DeploymentDetails compares this against the logged-in user's `sub`
+        // to enable/disable the Aktionen card buttons. Null on legacy rows.
+        ownerId: backendDeployment.owner_id ?? null,
         course: resolvedCourseName,
         startedAt: backendDeployment.created_at,
         completedAt:

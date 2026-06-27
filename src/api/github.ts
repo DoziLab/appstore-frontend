@@ -83,6 +83,14 @@ export type ImportNewTemplateBody = {
   icon_url?: string | null;
   github_url: string;
   app_yaml_path?: string | null;
+  /**
+   * Sichtbarkeit des neu angelegten Templates. Default im Backend ist
+   * `"private"`. Bei `"private"` läuft kein Approval-Flow — die erste
+   * Version hat `approval_status = null` und ist sofort für den Owner
+   * nutzbar. Bei `"public"` greift der bestehende Pending-Flow (für
+   * Lecturer) bzw. direkte Approval (für Admins).
+   */
+  visibility?: "private" | "public";
 };
 
 export type ImportNewVersionBody = {

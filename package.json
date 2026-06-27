@@ -72,8 +72,8 @@
             "lint": "eslint src --ext .js,.jsx,.ts,.tsx",
             "format": "prettier --write .",
             "format:check": "prettier --check .",
-            "test:e2e": "cypress run",
-            "test:e2e:open": "cypress open",
-            "test:ci": "start-server-and-test 'vite --host 127.0.0.1 --port 3000' http://127.0.0.1:3000 'cypress run'"
+            "test:e2e": "ELECTRON_RUN_AS_NODE= cypress run",
+            "test:e2e:open": "ELECTRON_RUN_AS_NODE= cypress open",
+            "test:ci": "start-server-and-test 'vite --host 127.0.0.1 --port 3000' http://127.0.0.1:3000 'ELECTRON_RUN_AS_NODE= cypress run'"
       }
 }

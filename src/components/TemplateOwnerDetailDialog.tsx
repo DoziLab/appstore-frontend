@@ -607,6 +607,11 @@ export function TemplateOwnerDetailDialog({
                             <ApprovalBadge
                               status={version.approval_status}
                               variant="version"
+                              tooltip={
+                                version.approval_status === "rejected"
+                                  ? version.rejection_reason ?? undefined
+                                  : undefined
+                              }
                             />
                           </div>
                           <p className="text-xs text-slate-500 mt-1 font-mono break-all">

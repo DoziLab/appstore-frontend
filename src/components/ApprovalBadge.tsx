@@ -62,7 +62,10 @@ export function ApprovalBadge({
     label = s.text;
     cls = s.cls;
   } else {
+    // Private-Template-Versionen haben approval_status === null und brauchen
+    // gar kein Badge — wir rendern nichts statt einen Platzhalter.
     const s = badgeStyle(status as TemplateVersionApprovalStatus);
+    if (s === null) return null;
     label = s.text;
     cls = s.cls;
   }

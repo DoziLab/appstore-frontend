@@ -292,14 +292,14 @@ export function OpenStackConfig() {
       </div>
 
       <div className="flex gap-8 flex-1 overflow-hidden">
-        {/* Left: internal nav (approx 20% width, visible from md up) */}
-        <aside className="md:block flex-shrink-0 w-1/7 min-w-[100px] max-w-[280px]">
+        {/* Left: internal nav — shrinks to the widest tab label */}
+        <aside className="md:block flex-shrink-0 w-auto">
           <nav className="space-y-2">
             <button
               onClick={() => scrollToRef(connectionRef)}
               onMouseEnter={() => setHoveredSection('connection')}
               onMouseLeave={() => setHoveredSection(null)}
-              className={`w-full text-left px-3 py-2 rounded-md transition ${activeSection === 'connection' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
+              className={`w-full text-left whitespace-nowrap px-3 py-2 rounded-md transition ${activeSection === 'connection' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
               title="Verbindungsstatus"
             >
               Verbindungsstatus
@@ -309,7 +309,7 @@ export function OpenStackConfig() {
               onClick={() => scrollToRef(githubRef)}
               onMouseEnter={() => setHoveredSection('github')}
               onMouseLeave={() => setHoveredSection(null)}
-              className={`w-full text-left px-3 py-2 rounded-md transition ${activeSection === 'github' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
+              className={`w-full text-left whitespace-nowrap px-3 py-2 rounded-md transition ${activeSection === 'github' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
               title="GitHub-Integration"
             >
               GitHub-Integration
@@ -319,7 +319,7 @@ export function OpenStackConfig() {
               onClick={() => scrollToRef(authRef)}
               onMouseEnter={() => setHoveredSection('authentication')}
               onMouseLeave={() => setHoveredSection(null)}
-              className={`w-full text-left px-3 py-2 rounded-md transition ${activeSection === 'authentication' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
+              className={`w-full text-left whitespace-nowrap px-3 py-2 rounded-md transition ${activeSection === 'authentication' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
               title="Authentifizierung"
             >
               Authentifizierung
@@ -329,7 +329,7 @@ export function OpenStackConfig() {
               onClick={() => scrollToRef(quotasRef)}
               onMouseEnter={() => setHoveredSection('quotas')}
               onMouseLeave={() => setHoveredSection(null)}
-              className={`w-full text-left px-3 py-2 rounded-md transition ${activeSection === 'quotas' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
+              className={`w-full text-left whitespace-nowrap px-3 py-2 rounded-md transition ${activeSection === 'quotas' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
               title="Quotas"
             >
               Quotas

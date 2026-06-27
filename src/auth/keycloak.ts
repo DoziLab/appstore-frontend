@@ -55,16 +55,40 @@ if (
   } = { login: 0, logout: 0, updateToken: 0 };
   (window as any).__cypressKeycloakCalls = calls;
 
+  // @react-keycloak/web's provider doesn't trust the promise return of init()
+  // — it sets `initialized: true` in response to the `onReady` callback that
+  // real keycloak-js fires from inside init(). We have to emulate that here,
+  // otherwise the Provider stays stuck on its LoadingComponent and the auth
+  // gate in App.tsx renders "Initializing Keycloak…" forever.
+  const fireOnReady = () => {
+    if (typeof kc.onReady === "function") {
+      try {
+        kc.onReady(stub.authenticated);
+      } catch {
+        // The Provider's handler is defensive; swallow to mimic keycloak-js.
+      }
+    }
+  };
+
   kc.init = function stubbedInit(): Promise<boolean> {
     if (stub.initRejects) {
       return Promise.reject(new Error("stubbed"));
     }
     if (typeof stub.initDelayMs === "number" && stub.initDelayMs > 0) {
       return new Promise<boolean>((resolve) =>
-        setTimeout(() => resolve(stub.authenticated), stub.initDelayMs),
+        setTimeout(() => {
+          fireOnReady();
+          resolve(stub.authenticated);
+        }, stub.initDelayMs),
       );
     }
-    return Promise.resolve(stub.authenticated);
+    // Resolve asynchronously (microtask) so the Provider has a chance to
+    // assign `authClient.onReady` BEFORE we invoke it — real keycloak-js is
+    // also async here.
+    return Promise.resolve().then(() => {
+      fireOnReady();
+      return stub.authenticated;
+    });
   };
 
   kc.updateToken = function stubbedUpdateToken(

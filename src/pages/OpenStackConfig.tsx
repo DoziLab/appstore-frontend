@@ -271,9 +271,10 @@ export function OpenStackConfig() {
 
   // Refs for internal sections
   const connectionRef = useRef<HTMLElement | null>(null);
+  const githubRef = useRef<HTMLElement | null>(null);
   const authRef = useRef<HTMLElement | null>(null);
   const quotasRef = useRef<HTMLElement | null>(null);
-  const [hoveredSection, setHoveredSection] = useState<'connection' | 'authentication' | 'quotas' | null>(null);
+  const [hoveredSection, setHoveredSection] = useState<'connection' | 'github' | 'authentication' | 'quotas' | null>(null);
   const activeSection = hoveredSection; // only hover determines active section
 
   const scrollToRef = useCallback((ref: typeof connectionRef) => {
@@ -299,6 +300,14 @@ export function OpenStackConfig() {
               title="Verbindungsstatus"
             >
               Verbindungsstatus
+            </button>
+
+            <button
+              onClick={() => scrollToRef(githubRef)}
+              className={`w-full text-left px-3 py-2 rounded-md transition ${activeSection === 'github' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
+              title="GitHub-Integration"
+            >
+              GitHub-Integration
             </button>
 
             <button
@@ -372,11 +381,17 @@ export function OpenStackConfig() {
           </Card>
           </section>
 
-          {/* GitHub-Integration — eigenständige Karte zwischen Connection
-              und Authentifizierung. Bewusst keine eigene Scrollspy-Section,
-              weil sie nicht in der Sidebar-Navigation auftaucht und der
-              Inhalt klein ist. */}
-          <GithubIntegrationCard />
+          {/* GitHub-Integration — eigenständige Section zwischen Verbindung
+              und Authentifizierung, jetzt mit Scrollspy-Hook (#139). */}
+          <section
+            ref={githubRef}
+            data-section="github"
+            aria-labelledby="github-heading"
+            onMouseEnter={() => setHoveredSection('github')}
+            onMouseLeave={() => setHoveredSection(null)}
+          >
+            <GithubIntegrationCard />
+          </section>
 
           <section
             ref={authRef}

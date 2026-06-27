@@ -96,7 +96,7 @@ export function GithubIntegrationCard() {
   return (
     <Card className="border-slate-200 shadow-sm">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle id="github-heading" className="flex items-center gap-2">
           <Github className="w-5 h-5" />
           GitHub-Integration
         </CardTitle>

@@ -50,18 +50,20 @@
             "vaul": "^1.1.2"
       },
       "devDependencies": {
-            "@types/node": "^20.10.0",
+            "@types/node": "^20.19.43",
             "@types/react": "^19.2.8",
             "@types/react-dom": "^19.2.3",
             "@typescript-eslint/eslint-plugin": "^8.53.1",
             "@typescript-eslint/parser": "^8.53.1",
             "@vitejs/plugin-basic-ssl": "^2.1.4",
             "@vitejs/plugin-react-swc": "^3.10.2",
+            "cypress": "^15.18.0",
             "eslint": "^9.39.2",
             "eslint-config-prettier": "^10.1.8",
             "eslint-plugin-react": "^7.37.5",
             "eslint-plugin-react-hooks": "^7.0.1",
             "prettier": "^3.8.1",
+            "start-server-and-test": "^3.0.11",
             "vite": "6.3.5"
       },
       "scripts": {
@@ -69,6 +71,9 @@
             "build": "vite build",
             "lint": "eslint src --ext .js,.jsx,.ts,.tsx",
             "format": "prettier --write .",
-            "format:check": "prettier --check ."
+            "format:check": "prettier --check .",
+            "test:e2e": "cypress run",
+            "test:e2e:open": "cypress open",
+            "test:ci": "start-server-and-test 'vite --host 127.0.0.1 --port 3000' http://127.0.0.1:3000 'cypress run'"
       }
 }

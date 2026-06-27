@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "message": "ok",
+  "data": [],
+  "pagination": {
+    "page": 1,
+    "page_size": 20,
+    "total_items": 0,
+    "total_pages": 0
+  },
+  "errors": null,
+  "timestamp": "2026-06-27T00:00:00Z",
+  "request_id": "req-empty-deployments"
+}

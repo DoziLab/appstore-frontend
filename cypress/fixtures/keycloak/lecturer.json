@@ -1,0 +1,14 @@
+{
+  "authenticated": true,
+  "token": "fake.lecturer.jwt",
+  "tokenParsed": {
+    "sub": "user-lec-1",
+    "preferred_username": "lec1",
+    "email": "lec1@dhbw.de",
+    "realm_access": { "roles": ["lecturer"] },
+    "given_name": "Lena",
+    "family_name": "Lehrer"
+  },
+  "realm": "Dozilab",
+  "authServerUrl": "https://keycloak.test/"
+}

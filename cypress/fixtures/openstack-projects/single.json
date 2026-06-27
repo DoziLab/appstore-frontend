@@ -1,0 +1,11 @@
+[
+  {
+    "id": "11111111-1111-1111-1111-111111111111",
+    "owner_user_id": "user-lec-1",
+    "openstack_project_id": "ks-uuid-alpha",
+    "openstack_project_name": "ProjectAlpha",
+    "region_name": "RegionOne",
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]

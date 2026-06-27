@@ -1,0 +1,35 @@
+{
+  "success": true,
+  "message": "ok",
+  "data": {
+    "id": "dep-alpha-0001",
+    "name": "test-deploy-alpha",
+    "template_version_id": "tv-alpha-1",
+    "course_id": "course-alpha",
+    "deployment_mode": "single",
+    "status": "RUNNING",
+    "openstack_stack_id": "stack-alpha",
+    "config_json": null,
+    "deployment_parameters": null,
+    "access_types_json": "[]",
+    "expires_at": "2027-01-01T00:00:00Z",
+    "expiry_warning_at": "2026-12-15T00:00:00Z",
+    "created_at": "2026-06-20T10:00:00Z",
+    "updated_at": "2026-06-26T10:00:00Z",
+    "template_version": {
+      "id": "tv-alpha-1",
+      "version": "1.0.0",
+      "template_id": "tpl-alpha",
+      "template_name": "Alpha Template"
+    },
+    "course": {
+      "id": "course-alpha",
+      "name": "Kurs Alpha",
+      "lecturer_id": "user-lec-1"
+    },
+    "instances": []
+  },
+  "errors": null,
+  "timestamp": "2026-06-27T00:00:00Z",
+  "request_id": "req-detail-running"
+}

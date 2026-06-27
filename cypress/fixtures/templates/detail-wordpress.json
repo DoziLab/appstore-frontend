@@ -1,0 +1,35 @@
+{
+  "success": true,
+  "message": "ok",
+  "data": {
+    "id": "tpl-wp-0001",
+    "name": "wordpress-demo",
+    "description": "Eine WordPress-Demo-Instanz mit MariaDB-Backend für Lehrveranstaltungen.",
+    "owner_id": "user-instructor-1",
+    "owner_name": "Walter Wordpress",
+    "owner_email": "walter@dhbw.de",
+    "owner_username": "walter",
+    "repo_url": "https://github.com/DoziLab/wordpress-demo",
+    "icon_url": null,
+    "visibility": "public",
+    "versions": [
+      {
+        "id": "tv-wp-1",
+        "template_id": "tpl-wp-0001",
+        "version": "1.0.0",
+        "git_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "is_active": true,
+        "approval_status": "approved",
+        "approved_by_id": "user-admin-1",
+        "approved_at": "2026-06-01T10:00:00Z",
+        "rejection_reason": null,
+        "created_at": "2026-05-20T10:00:00Z"
+      }
+    ],
+    "created_at": "2026-05-20T10:00:00Z",
+    "updated_at": "2026-06-01T10:00:00Z"
+  },
+  "errors": null,
+  "timestamp": "2026-06-27T00:00:00Z",
+  "request_id": "req-template-detail-wordpress"
+}

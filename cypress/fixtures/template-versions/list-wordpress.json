@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "message": "ok",
+  "data": [
+    {
+      "id": "tv-wp-1",
+      "template_id": "tpl-wp-0001",
+      "version": "1.0.0",
+      "git_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "is_active": true,
+      "approval_status": "approved",
+      "approved_by_id": "user-admin-1",
+      "approved_at": "2026-06-01T10:00:00Z",
+      "rejection_reason": null,
+      "created_at": "2026-05-20T10:00:00Z",
+      "parameters": [],
+      "user_files": [],
+      "allow_user_files": false
+    }
+  ],
+  "errors": null,
+  "timestamp": "2026-06-27T00:00:00Z",
+  "request_id": "req-template-versions-wordpress"
+}

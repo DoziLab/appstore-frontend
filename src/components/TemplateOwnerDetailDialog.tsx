@@ -589,7 +589,13 @@ export function TemplateOwnerDetailDialog({
               <ul className="space-y-2">
                 {versions.map((version) => {
                   const isPending = version.approval_status === "pending";
-                  const showAdminActions = isAdmin && isPending;
+                  // Approval-Flow läuft seit dem Backend-Briefing in #122
+                  // nur noch für Public-Templates. Bei Legacy-Daten kann ein
+                  // Private-Template noch eine pending-Version tragen — der
+                  // Approve/Reject-API würde dort 400 antworten. Visibility
+                  // ist die Quelle der Wahrheit, deshalb hier zusätzlich gaten.
+                  const isPublic = template.visibility === "public";
+                  const showAdminActions = isAdmin && isPending && isPublic;
                   return (
                     <li
                       key={version.id}
@@ -737,7 +743,14 @@ export function TemplateOwnerDetailDialog({
               </ul>
             </section>
 
-            {!isAdmin && versions.some((v) => v.approval_status === "pending") && (
+            {/* Hinweis nur bei public-Templates: Approval-Flow läuft seit
+                #122 ausschließlich für public. Bei einem Legacy-Private-
+                Template mit pending-Versionen würde der Banner sonst auf
+                eine Approval-Queue verweisen, die für dieses Template nie
+                feuert. */}
+            {!isAdmin
+              && template.visibility === "public"
+              && versions.some((v) => v.approval_status === "pending") && (
               <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800">
                 <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
                 <span>

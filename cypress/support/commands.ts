@@ -175,9 +175,12 @@ Cypress.Commands.add("mockApi", (overrides: MockApiOverrides = {}) => {
     "getTemplates",
     overrides.getTemplates,
   );
+  // Cypress glob `*` does not cross `/`, so a single `template-versions*`
+  // pattern would miss `/template-versions/queue?…`. Cover both the listing
+  // path and the queue path with a regex.
   applyIntercept(
     "GET",
-    "/api/v1/template-versions*",
+    /\/api\/v1\/template-versions(\/queue)?(\?.*)?$/,
     "template-versions/queue-empty.json",
     "getTemplateVersions",
     overrides.getTemplateVersions,
@@ -196,9 +199,11 @@ Cypress.Commands.add("mockApi", (overrides: MockApiOverrides = {}) => {
     "getKeycloakGroups",
     overrides.getKeycloakGroups,
   );
+  // The real flavors endpoint is `/api/v1/openstack/flavors`, not
+  // `/api/v1/flavors`. Match either so older specs and new ones both work.
   applyIntercept(
     "GET",
-    "/api/v1/flavors*",
+    /\/api\/v1\/(openstack\/)?flavors(\?.*)?$/,
     "flavors/list.json",
     "getFlavors",
     overrides.getFlavors,

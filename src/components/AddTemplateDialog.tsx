@@ -149,6 +149,25 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
 
   const connected = ghStatus?.connected === true;
 
+  // Live-Grund, warum der Import-Button (noch) nicht klickbar ist. Reihenfolge
+  // entspricht der natürlichen Bearbeitungsreihenfolge: erst Tab/Verbindung,
+  // dann Pflichtfelder, dann URL-Format. `null` = ready to import.
+  const disabledReason: string | null = (() => {
+    if (ghStatusLoading) return 'GitHub-Verbindungsstatus wird geprüft…';
+    if (activeTab !== 'github') {
+      return 'Manueller Upload ist nicht angebunden — bitte den GitHub-Tab nutzen.';
+    }
+    if (!connected) {
+      return 'GitHub-Account verbinden, um zu importieren.';
+    }
+    if (!name.trim()) return 'Bitte einen Namen angeben.';
+    if (!githubUrl.trim()) return 'Bitte eine GitHub-URL angeben.';
+    if (!/^https?:\/\/github\.com\//i.test(githubUrl.trim())) {
+      return 'GitHub-URL muss mit https://github.com/ beginnen.';
+    }
+    return null;
+  })();
+
   return (
     <Dialog
       open={open}
@@ -347,7 +366,17 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
           </Alert>
         )}
 
-        <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
+        <div className="flex flex-col gap-2 pt-4 border-t">
+          {/* Lokaler Hinweis direkt am Button: wenn disabled, sagen wir warum.
+              Die globalen Banner (GitHub nicht verbunden, Manual-Tab) bleiben
+              — der Helper hier ist die zusätzliche Erklärung am Aktionsort. */}
+          {disabledReason && !submitting && (
+            <p className="text-xs text-slate-500 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              {disabledReason}
+            </p>
+          )}
+          <div className="flex flex-col sm:flex-row gap-3">
           <Button
             variant="outline"
             onClick={() => {
@@ -361,7 +390,8 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
           </Button>
           <Button
             onClick={handleImport}
-            disabled={submitting || activeTab !== 'github' || !connected || ghStatusLoading}
+            disabled={submitting || disabledReason !== null}
+            title={disabledReason ?? undefined}
             className="flex-1 bg-teal-500 hover:bg-teal-600 text-white"
           >
             {submitting ? (
@@ -376,6 +406,7 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
               </>
             )}
           </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

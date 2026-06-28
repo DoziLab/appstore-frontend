@@ -5,7 +5,8 @@ import {
   Settings,
   ChevronRight,
   LogOut,
-  Shield
+  Shield,
+  Server,
 } from "lucide-react";
 import { useMemo } from "react";
 import { useKeycloak } from "@react-keycloak/web";
@@ -27,15 +28,31 @@ export function Sidebar({ logo }: SidebarProps) {
   const { keycloak, initialized } = useKeycloak();
   const location = useLocation();
 
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-    { id: 'courses', label: 'Kurse', icon: BookOpen, path: '/courses' },
-    { id: 'appstore', label: 'App Store', icon: Store, path: '/appstore' },
-    { id: 'admin', label: 'Admin Monitoring', icon: Shield, path: '/admin' },
-  ];
-
   // tokenParsed ist typisiert als unknown | KeycloakTokenParsed, daher casten wir vorsichtig
   const token = (keycloak?.tokenParsed ?? {}) as Record<string, any>;
+  const roles: string[] = token?.realm_access?.roles ?? [];
+  const isAdmin = roles.includes("admin");
+  const isLecturer = roles.includes("lecturer") || roles.includes("teacher");
+  const isStudent = roles.includes("student") && !isLecturer && !isAdmin;
+
+  // Studenten haben einen reduzierten Navigations-Stack — alles Lecturer-
+  // spezifische würde im Backend 403 produzieren und sollte deshalb gar
+  // nicht erst klickbar sein.
+  const navItems = isStudent
+    ? [
+        {
+          id: "student-dashboard",
+          label: "Meine Deployments",
+          icon: Server,
+          path: "/student/dashboard",
+        },
+      ]
+    : [
+        { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
+        { id: "courses", label: "Kurse", icon: BookOpen, path: "/courses" },
+        { id: "appstore", label: "App Store", icon: Store, path: "/appstore" },
+        { id: "admin", label: "Admin Monitoring", icon: Shield, path: "/admin" },
+      ];
 
   const displayName = useMemo(() => {
     // Typische Claims: name, preferred_username, email
@@ -48,14 +65,11 @@ export function Sidebar({ logo }: SidebarProps) {
   }, [token.name, token.preferred_username, token.email]);
 
   const roleLabel = useMemo(() => {
-    const roles: string[] = token?.realm_access?.roles ?? [];
-    if (roles.includes("admin")) return "Admin";
-    if (roles.includes("lecturer") || roles.includes("teacher")) return "Dozent";
-    if (roles.includes("student")) return "Student";
+    if (isAdmin) return "Admin";
+    if (isLecturer) return "Dozent";
+    if (isStudent) return "Student";
     return "Benutzer";
-  }, [token]);
-
-  const isAdmin = ((token?.realm_access?.roles ?? []) as string[]).includes("admin");
+  }, [isAdmin, isLecturer, isStudent]);
 
   const initials = initialsFromName(displayName);
 
@@ -70,13 +84,17 @@ export function Sidebar({ logo }: SidebarProps) {
   // Check if we're in a deployment wizard to disable navigation
   const deploymentActive = location.pathname.startsWith('/deploy/');
 
+  // Studenten haben keinen Lecturer-Wizard und auch keine /dashboard-Route —
+  // das Logo soll sie zu ihrer eigenen Übersicht führen.
+  const homePath = isStudent ? "/student/dashboard" : "/dashboard";
+
   return (
     <aside className="relative w-64 bg-white border-r border-slate-200 flex flex-col">
       {/* Logo */}
       <NavLink
-        to="/dashboard"
+        to={homePath}
         className="p-6 border-b border-slate-200 block transition-opacity hover:opacity-80"
-        aria-label="Zum Dashboard"
+        aria-label="Zur Startseite"
       >
         <img src={logo} alt="DoziLab" className="h-40 w-auto" />
       </NavLink>

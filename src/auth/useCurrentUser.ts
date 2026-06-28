@@ -14,6 +14,10 @@ export type CurrentUser = {
   email: string | null;
   isAdmin: boolean;
   isLecturer: boolean;
+  // Realm-Role "student" aus Keycloak. Reine Studenten (kein Lecturer/Admin)
+  // werden im Router auf den /student/* Namespace gelenkt; ihre API ist
+  // /api/v1/student/* — Lecturer-Endpoints geben für sie 403.
+  isStudent: boolean;
   authenticated: boolean;
 };
 
@@ -28,6 +32,7 @@ export function useCurrentUser(): CurrentUser {
     email: token.email ?? null,
     isAdmin: roles.includes("admin"),
     isLecturer: roles.includes("lecturer") || roles.includes("teacher"),
+    isStudent: roles.includes("student"),
     authenticated: !!keycloak?.authenticated,
   };
 }

@@ -106,13 +106,16 @@ export function AppStore({ onDeploy }: AppStoreProps) {
     try {
       setIsLoading(true);
       setError(null);
+      // Wir geben hier bewusst keinen Status-/Visibility-Filter mit — das
+      // Backend wendet die richtige Sichtbarkeitslogik bereits an:
+      //   • Admins   → alle Templates
+      //   • Owner    → alle eigenen (auch private, auch pending/rejected)
+      //   • andere   → public + mind. eine approved Version
+      // Würden wir hier z. B. `status: 'approved'` schicken, würden frisch
+      // importierte eigene Templates (Version pending oder private = null)
+      // aus der Liste fallen, sobald das Backend den Filter respektiert.
       const response = await getTemplates({
-        // Hinweis: das Backend ignoriert `status` derzeit als Filter — es
-        // liefert für Owner immer alle eigenen Templates aus und für andere
-        // nur public + mindestens eine approved Version. Genau das wollen wir
-        // hier (Owner muss seine Pending-Templates verwalten können).
-        status: 'approved',
-        page_size: 100, // Get all templates
+        page_size: 100,
       });
       setTemplates(response.data);
       return response.data;

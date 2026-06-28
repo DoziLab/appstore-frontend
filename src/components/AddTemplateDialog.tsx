@@ -7,7 +7,7 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Alert, AlertDescription } from './ui/alert';
-import { AlertCircle, CheckCircle2, Github, FileText, Loader2, Plug } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Github, FileText, Loader2, Plug, Lock, Globe } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import {
   getGithubInstallationStatus,
@@ -26,8 +26,9 @@ interface AddTemplateDialogProps {
 /**
  * Erlaubt Dozenten, ein Template aus einem GitHub-Repo zu importieren. Der
  * Backend-Endpoint `POST /api/v1/templates/import-from-github` legt das
- * Template plus seine erste Version an; die Version landet zunächst auf
- * `approval_status = pending`, bis ein Admin sie freigibt.
+ * Template plus seine erste Version an. Mit `visibility` steuert der Nutzer,
+ * ob das Template als „private" (kein Approval-Flow, sofort nutzbar) oder
+ * „public" (Marktplatz, Lecturer-Import → pending → Admin-Freigabe) anlegt.
  *
  * Voraussetzung: der Dozent hat seinen GitHub-Account bereits über die
  * Einstellungen verbunden — sonst kann das Backend das Repo nicht lesen und
@@ -47,6 +48,10 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
   const [iconUrl, setIconUrl] = useState('');
   const [githubUrl, setGithubUrl] = useState('');
   const [appYamlPath, setAppYamlPath] = useState('');
+  // Visibility: Private = direkt nutzbar, kein Approval. Public = Marktplatz,
+  // braucht Admin-Freigabe (für Lecturer). Default ist bewusst Private —
+  // entspricht auch dem Backend-Default und ist der weniger destruktive Pfad.
+  const [visibility, setVisibility] = useState<'private' | 'public'>('private');
 
   // Manual-Tab (UI-only, kein Backend-Support)
   const [heatTemplate, setHeatTemplate] = useState('');
@@ -77,6 +82,7 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
     setIconUrl('');
     setGithubUrl('');
     setAppYamlPath('');
+    setVisibility('private');
     setHeatTemplate('');
     setCloudInit('');
     setAppYaml('');
@@ -124,9 +130,13 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
         icon_url: iconUrl.trim() || null,
         github_url: githubUrl.trim(),
         app_yaml_path: appYamlPath.trim() || null,
+        visibility,
       });
       toast.success('Template aus GitHub importiert', {
-        description: 'Die neue Version wartet auf Admin-Freigabe.',
+        description:
+          visibility === 'private'
+            ? 'Privates Template — sofort für dich verwendbar.'
+            : 'Öffentliches Template — Version wartet auf Admin-Freigabe.',
       });
       onImported?.();
       resetForm();
@@ -148,6 +158,25 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
   };
 
   const connected = ghStatus?.connected === true;
+
+  // Live-Grund, warum der Import-Button (noch) nicht klickbar ist. Reihenfolge
+  // entspricht der natürlichen Bearbeitungsreihenfolge: erst Tab/Verbindung,
+  // dann Pflichtfelder, dann URL-Format. `null` = ready to import.
+  const disabledReason: string | null = (() => {
+    if (ghStatusLoading) return 'GitHub-Verbindungsstatus wird geprüft…';
+    if (activeTab !== 'github') {
+      return 'Manueller Upload ist nicht angebunden — bitte den GitHub-Tab nutzen.';
+    }
+    if (!connected) {
+      return 'GitHub-Account verbinden, um zu importieren.';
+    }
+    if (!name.trim()) return 'Bitte einen Namen angeben.';
+    if (!githubUrl.trim()) return 'Bitte eine GitHub-URL angeben.';
+    if (!/^https?:\/\/github\.com\//i.test(githubUrl.trim())) {
+      return 'GitHub-URL muss mit https://github.com/ beginnen.';
+    }
+    return null;
+  })();
 
   return (
     <Dialog
@@ -298,6 +327,52 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
                 Maximal 50 Dateien pro Ordner, max. 1 MB pro Datei.
               </p>
             </div>
+
+            {/* Sichtbarkeit: bestimmt, ob das Template gleich im Marktplatz
+                landet (Public → Admin-Freigabe nötig) oder erst privat bleibt
+                (Private → kein Approval-Flow, direkt nutzbar). Default Private
+                entspricht dem Backend-Default und ist konservativ. */}
+            <div className="space-y-2">
+              <Label className="text-slate-700">Sichtbarkeit</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setVisibility('private')}
+                  className={`flex items-start gap-3 p-3 rounded-lg border text-left transition ${
+                    visibility === 'private'
+                      ? 'border-teal-500 bg-teal-50 ring-1 ring-teal-500'
+                      : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                  aria-pressed={visibility === 'private'}
+                >
+                  <Lock className="w-4 h-4 mt-0.5 text-slate-600 shrink-0" />
+                  <div className="space-y-0.5">
+                    <p className="text-sm text-slate-900">Privat (nur ich)</p>
+                    <p className="text-xs text-slate-500">
+                      Sofort verwendbar, keine Admin-Freigabe nötig.
+                    </p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisibility('public')}
+                  className={`flex items-start gap-3 p-3 rounded-lg border text-left transition ${
+                    visibility === 'public'
+                      ? 'border-teal-500 bg-teal-50 ring-1 ring-teal-500'
+                      : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                  aria-pressed={visibility === 'public'}
+                >
+                  <Globe className="w-4 h-4 mt-0.5 text-slate-600 shrink-0" />
+                  <div className="space-y-0.5">
+                    <p className="text-sm text-slate-900">Öffentlich (Marktplatz)</p>
+                    <p className="text-xs text-slate-500">
+                      Im App Store sichtbar, sobald ein Admin die erste Version freigibt.
+                    </p>
+                  </div>
+                </button>
+              </div>
+            </div>
           </TabsContent>
 
           {/* Tab 2: Manual (Platzhalter — nicht im Backend-Support) */}
@@ -347,7 +422,17 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
           </Alert>
         )}
 
-        <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
+        <div className="flex flex-col gap-2 pt-4 border-t">
+          {/* Lokaler Hinweis direkt am Button: wenn disabled, sagen wir warum.
+              Die globalen Banner (GitHub nicht verbunden, Manual-Tab) bleiben
+              — der Helper hier ist die zusätzliche Erklärung am Aktionsort. */}
+          {disabledReason && !submitting && (
+            <p className="text-xs text-slate-500 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              {disabledReason}
+            </p>
+          )}
+          <div className="flex flex-col sm:flex-row gap-3">
           <Button
             variant="outline"
             onClick={() => {
@@ -361,7 +446,8 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
           </Button>
           <Button
             onClick={handleImport}
-            disabled={submitting || activeTab !== 'github' || !connected || ghStatusLoading}
+            disabled={submitting || disabledReason !== null}
+            title={disabledReason ?? undefined}
             className="flex-1 bg-teal-500 hover:bg-teal-600 text-white"
           >
             {submitting ? (
@@ -376,6 +462,7 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
               </>
             )}
           </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

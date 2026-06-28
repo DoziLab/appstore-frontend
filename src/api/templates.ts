@@ -26,14 +26,19 @@ export type UserFileDefinition = {
   mode?: "all_stacks" | "per_group";
 };
 
-// Approval lebt ausschließlich auf der Version, nicht mehr auf dem Template
-// (Migration a7c4f2b91d34_per_version_approval_and_github_app). Werte
-// entsprechen 1:1 dem Backend-Enum `TemplateVersionApprovalStatus`.
+// Approval lebt ausschließlich auf der Version, nicht mehr auf dem Template.
+// Approval-Status pro TemplateVersion. Seit dem Backend-Wechsel auf
+// „Approval-Flow only for public templates" kann der Status für eine
+// Version eines Private-Templates **null** sein — dort gibt es schlicht
+// keinen Approval-Workflow. Public-Templates haben weiterhin pending /
+// approved / rejected / deprecated.
+// Migration: a7c4f2b91d34_per_version_approval_and_github_app.
 export type TemplateVersionApprovalStatus =
   | "pending"
   | "approved"
   | "rejected"
-  | "deprecated";
+  | "deprecated"
+  | null;
 
 export type TemplateVersionDto = {
   id: string;

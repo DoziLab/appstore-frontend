@@ -4,8 +4,12 @@
 //
 //   1. `deriveTemplateOverallStatus(template)` leitet eine UI-taugliche
 //      Aggregations-Bewertung aus den Versionen ab. Reihenfolge:
+//        - Hat eine `approval_status === null` & is_active Version
+//          (Private-Template — kein Approval-Flow, direkt nutzbar) → "active"
 //        - Hat eine APPROVED & is_active Version  → "active"
 //        - Hat eine APPROVED Version              → "approved"
+//        - Hat eine Version mit approval_status === null
+//          (Private-Template, ohne is_active markiert) → "active"
 //        - Hat PENDING Versionen                  → "pending"
 //        - Hat NUR REJECTED/DEPRECATED            → "rejected"
 //        - Keine Versionen                        → "empty"
@@ -20,7 +24,7 @@
 import type { TemplateDto, TemplateVersionApprovalStatus } from "../api/templates";
 
 export type TemplateOverallStatus =
-  | "active"     // mind. eine approved Version ist aktiv → deploybar
+  | "active"     // mind. eine deploybare Version (approved+aktiv oder Private)
   | "approved"   // approved Versionen vorhanden, aber keine aktive
   | "pending"    // wartet auf Admin-Approval
   | "rejected"   // alles abgelehnt oder veraltet
@@ -32,9 +36,19 @@ export function deriveTemplateOverallStatus(
   const versions = template.versions ?? [];
   if (versions.length === 0) return "empty";
 
+  // Private-Templates: Versionen tragen approval_status === null und sind
+  // für den Owner ohne weiteren Workflow nutzbar.
+  const privateVersions = versions.filter((v) => v.approval_status === null);
+  if (privateVersions.some((v) => v.is_active)) return "active";
+
   const approved = versions.filter((v) => v.approval_status === "approved");
   if (approved.some((v) => v.is_active)) return "active";
   if (approved.length > 0) return "approved";
+
+  // Private-Versionen ohne is_active-Flag: trotzdem als „nutzbar" anzeigen,
+  // damit ein frisch importiertes Private-Template nicht als „pending"
+  // beim Owner aufschlägt.
+  if (privateVersions.length > 0) return "active";
 
   if (versions.some((v) => v.approval_status === "pending")) return "pending";
   return "rejected";
@@ -43,7 +57,7 @@ export function deriveTemplateOverallStatus(
 /** Label + Tailwind-Klassen für jedes Enum, an einer Stelle. */
 export function badgeStyle(
   status: TemplateVersionApprovalStatus,
-): { text: string; cls: string } {
+): { text: string; cls: string } | null {
   switch (status) {
     case "approved":
       return { text: "genehmigt", cls: "bg-green-100 text-green-700" };
@@ -53,6 +67,10 @@ export function badgeStyle(
       return { text: "abgelehnt", cls: "bg-red-100 text-red-700" };
     case "deprecated":
       return { text: "veraltet", cls: "bg-slate-200 text-slate-600" };
+    case null:
+      // Private-Template-Version — kein Approval-Workflow, deshalb auch
+      // kein Badge. Caller darf einfach nichts rendern.
+      return null;
   }
 }
 

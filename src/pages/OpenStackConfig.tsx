@@ -390,7 +390,9 @@ export function OpenStackConfig() {
           </Card>
           </section>
 
-          {/* GitHub-Integration — eigene Scrollspy-Section, damit sie auch
+          {/* GitHub-Integration — eigenständige Section zwischen Verbindung
+              und Authentifizierung, jetzt mit Scrollspy-Hook (#139). */
+          /* GitHub-Integration — eigene Scrollspy-Section, damit sie auch
               in der Sidebar-Navigation einen eigenen Tab bekommt
               (siehe Issue #127). */}
           <section

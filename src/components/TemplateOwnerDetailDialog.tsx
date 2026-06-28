@@ -98,6 +98,12 @@ export function TemplateOwnerDetailDialog({
   // Admin-only-Riegel im Service ist weg. Wir blenden den Button daher für
   // alle ein, die diesen Dialog sehen (Owner sehen ihn; Admins sehen alle).
   const [visibilityBusy, setVisibilityBusy] = useState(false);
+  // Visibility-Wechsel ist nicht-destruktiv-aber-folgenreich: das Backend
+  // räumt bei public → private den kompletten Approval-Status aller Versionen
+  // ab (approval_status=null, approved_by/_at/reason geleert), bei
+  // private → public werden alle null-Versionen auf pending gesetzt. Daher
+  // erst confirmen, dann patchen.
+  const [confirmVisibilityChange, setConfirmVisibilityChange] = useState(false);
 
   // Edit-Modus für Metadaten (name/description/repo_url/icon_url). Visibility
   // hat seinen eigenen Toggle weiter oben, daher hier nicht enthalten.
@@ -195,8 +201,9 @@ export function TemplateOwnerDetailDialog({
   };
 
   // Visibility umschalten — seit Backend-Commit 2641a01 für Owner-or-Admin
-  // erlaubt. Wir berechnen das Zielniveau aus dem aktuellen Wert, damit ein
-  // schneller Doppelklick nicht in eine Race läuft.
+  // erlaubt. Der eigentliche PATCH läuft erst nach Bestätigung im
+  // Confirm-Dialog (siehe `confirmVisibilityChange`), damit der Nutzer den
+  // Side-Effect auf die Versionen versteht, bevor er ihn auslöst.
   const handleToggleVisibility = async () => {
     const next = template.visibility === "public" ? "private" : "public";
     setVisibilityBusy(true);
@@ -216,6 +223,7 @@ export function TemplateOwnerDetailDialog({
       );
     } finally {
       setVisibilityBusy(false);
+      setConfirmVisibilityChange(false);
     }
   };
 
@@ -346,7 +354,7 @@ export function TemplateOwnerDetailDialog({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={handleToggleVisibility}
+                onClick={() => setConfirmVisibilityChange(true)}
                 disabled={visibilityBusy}
                 className="h-7 text-xs"
                 title={
@@ -581,7 +589,13 @@ export function TemplateOwnerDetailDialog({
               <ul className="space-y-2">
                 {versions.map((version) => {
                   const isPending = version.approval_status === "pending";
-                  const showAdminActions = isAdmin && isPending;
+                  // Approval-Flow läuft seit dem Backend-Briefing in #122
+                  // nur noch für Public-Templates. Bei Legacy-Daten kann ein
+                  // Private-Template noch eine pending-Version tragen — der
+                  // Approve/Reject-API würde dort 400 antworten. Visibility
+                  // ist die Quelle der Wahrheit, deshalb hier zusätzlich gaten.
+                  const isPublic = template.visibility === "public";
+                  const showAdminActions = isAdmin && isPending && isPublic;
                   return (
                     <li
                       key={version.id}
@@ -599,6 +613,11 @@ export function TemplateOwnerDetailDialog({
                             <ApprovalBadge
                               status={version.approval_status}
                               variant="version"
+                              tooltip={
+                                version.approval_status === "rejected"
+                                  ? version.rejection_reason ?? undefined
+                                  : undefined
+                              }
                             />
                           </div>
                           <p className="text-xs text-slate-500 mt-1 font-mono break-all">
@@ -724,7 +743,14 @@ export function TemplateOwnerDetailDialog({
               </ul>
             </section>
 
-            {!isAdmin && versions.some((v) => v.approval_status === "pending") && (
+            {/* Hinweis nur bei public-Templates: Approval-Flow läuft seit
+                #122 ausschließlich für public. Bei einem Legacy-Private-
+                Template mit pending-Versionen würde der Banner sonst auf
+                eine Approval-Queue verweisen, die für dieses Template nie
+                feuert. */}
+            {!isAdmin
+              && template.visibility === "public"
+              && versions.some((v) => v.approval_status === "pending") && (
               <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800">
                 <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
                 <span>
@@ -846,6 +872,45 @@ export function TemplateOwnerDetailDialog({
               disabled={deletingVersionId !== null}
             >
               {deletingVersionId !== null ? "Wird gelöscht…" : "Löschen"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {/* Confirm: Visibility-Wechsel. Beide Richtungen sind technisch
+          non-destruktiv, aber beide räumen Server-seitig in den Versionen
+          auf — Briefing aus #122 fordert daher explizit eine Warnung. */}
+      <AlertDialog
+        open={confirmVisibilityChange}
+        onOpenChange={(o) => !visibilityBusy && setConfirmVisibilityChange(o)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {template.visibility === "public"
+                ? "Template auf privat zurückstellen?"
+                : "Template öffentlich machen?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {template.visibility === "public"
+                ? "Approval-Status aller Versionen wird zurückgesetzt; das Template ist danach nur für dich (und Admins) sichtbar. Bestehende Deployments laufen weiter."
+                : 'Alle bisher privaten Versionen werden zur Admin-Freigabe vorgemerkt (Status „wartet auf Freigabe"). Sobald mindestens eine Version freigegeben ist, taucht das Template im öffentlichen App Store auf.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row justify-end gap-2">
+            <AlertDialogCancel className="mt-0" disabled={visibilityBusy}>
+              Abbrechen
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              onClick={handleToggleVisibility}
+              disabled={visibilityBusy}
+              className="bg-teal-500 hover:bg-teal-600 text-white"
+            >
+              {visibilityBusy
+                ? "Wird geändert…"
+                : template.visibility === "public"
+                  ? "Auf privat stellen"
+                  : "Öffentlich schalten"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

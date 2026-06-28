@@ -61,9 +61,21 @@ export type AccessType =
   | "database";
 
 export type CredentialAccess = {
+  /**
+   * DB id of the access entry. Used to address the dedicated SSH-key
+   * download endpoint (lecturer + student) — `/credentials/access/{id}/ssh-key`.
+   */
+  id: string;
   access_type: AccessType;
   username: string | null;
   password: string | null;
+  /**
+   * Decrypted SSH private key in OpenSSH PEM format. Present for SSH
+   * accesses where a keypair was generated. Lecturer view can embed it in
+   * the bundle download; student view always uses the dedicated PEM
+   * endpoint instead.
+   */
+  ssh_private_key: string | null;
   connection_url: string | null;
   port: number | null;
   /**
@@ -124,6 +136,13 @@ export type DeploymentCreateRequest = {
     groups: Array<{
       group_name: string;
       group_index: number;
+      // course_groups.id der zugehörigen Gruppe. Optional für Backwards-
+      // Compat (alte Wizards / Lecturer-Workflows ohne Course-Groups),
+      // aber funktional notwendig: ohne diese ID bleibt
+      // DeploymentInstanceAccess.group_id NULL und Studenten sehen das
+      // Deployment nie über /api/v1/student/*. Der Wizard löst die ID
+      // beim Submit via getCourseGroups/createCourseGroup auf.
+      course_group_id?: string | null;
       students: Array<{
         id: string;
         username: string;

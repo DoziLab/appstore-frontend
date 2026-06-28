@@ -6,9 +6,6 @@ import {
   AlertCircle,
   XCircle,
   ArrowLeft,
-  Eye,
-  EyeOff,
-  Copy,
   Download,
   Loader2,
   ChevronDown,
@@ -25,8 +22,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,6 +50,7 @@ import {
 import { type LogPhase, type PhaseStatus } from "./DeploymentDetailsPage";
 import { getExpiryState } from "../utils/deployment";
 import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
+import { CredentialInstanceCard } from "../components/credentials/CredentialInstanceCard";
 
 interface DeploymentStep {
   id: string;
@@ -961,6 +957,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
                     <CredentialInstanceCard
                       key={instance.instance_id}
                       instance={instance}
+                      mode="lecturer"
                       passwordVisibility={passwordVisibility}
                       togglePasswordVisibility={togglePasswordVisibility}
                       handleCopy={handleCopy}
@@ -977,268 +974,10 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
 }
 
 // ── Credentials helpers ───────────────────────────────────────────────────────
+// CredentialInstanceCard + AccessRow leben jetzt in
+// components/credentials/CredentialInstanceCard.tsx — geteilt mit dem
+// Student-View (mode="student"). Hier nur noch der mode="lecturer"-Caller.
 
-type AccessLike = {
-  access_type: string;
-  username: string | null;
-  password: string | null;
-  connection_url: string | null;
-  port: number | null;
-  /**
-   * course_groups.id this credential belongs to. NULL = lecturer/admin row
-   * (shown in Dozent tab). Non-NULL = student group row (Gruppen tab,
-   * accordion section per group_name).
-   */
-  group_id: string | null;
-  /** Human-readable group name from the JOIN on course_groups.name. */
-  group_name: string | null;
-};
-
-type CredentialInstanceLike = {
-  instance_id: string;
-  vm_name: string | null;
-  openstack_stack_id: string | null;
-  accesses: AccessLike[];
-};
-
-function CredentialInstanceCard({
-  instance,
-  passwordVisibility,
-  togglePasswordVisibility,
-  handleCopy,
-  getMaskedPassword,
-}: {
-  instance: CredentialInstanceLike;
-  passwordVisibility: Record<string, boolean>;
-  togglePasswordVisibility: (key: string) => void;
-  handleCopy: (value: string | null | undefined, label: string) => void;
-  getMaskedPassword: (pw: string | null | undefined) => string;
-}) {
-  // Split accesses by ownership: group_id IS NULL → lecturer/admin row →
-  // "Dozent" tab; group_id is a course_groups.id → student row → "Gruppen"
-  // tab, one accordion section per group_name.
-  const teacherAccesses = instance.accesses.filter((a) => a.group_id == null);
-  const groupAccesses = instance.accesses.filter((a) => a.group_id != null);
-
-  // Group the group-accesses by their group identity so each group becomes
-  // one collapsible accordion row. Prefer group_name for display; fall back
-  // to the bare group_id if the JOIN didn't yield a name (shouldn't happen
-  // in practice but keeps the UI safe).
-  const groupsByLabel = new Map<string, AccessLike[]>();
-  for (const a of groupAccesses) {
-    const key = a.group_name || a.group_id || "Gruppe";
-    const list = groupsByLabel.get(key) ?? [];
-    list.push(a);
-    groupsByLabel.set(key, list);
-  }
-
-  // Default tab: prefer "dozent" if there are teacher entries, else "gruppen".
-  // If neither exists the card has no tabs (and no instance content to show).
-  const defaultTab = teacherAccesses.length > 0 ? "dozent" : "gruppen";
-
-  return (
-    <Card className="border-slate-200">
-      <CardHeader>
-        <CardTitle className="text-base">{instance.vm_name || "VM"}</CardTitle>
-        <CardDescription>Stack ID: {instance.openstack_stack_id || "-"}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Tabs defaultValue={defaultTab} className="w-full">
-          <TabsList className="mb-4">
-            {teacherAccesses.length > 0 && (
-              <TabsTrigger value="dozent">
-                Dozent
-                <Badge variant="secondary" className="ml-2">{teacherAccesses.length}</Badge>
-              </TabsTrigger>
-            )}
-            {groupsByLabel.size > 0 && (
-              <TabsTrigger value="gruppen">
-                Gruppen
-                <Badge variant="secondary" className="ml-2">{groupsByLabel.size}</Badge>
-              </TabsTrigger>
-            )}
-          </TabsList>
-
-          {teacherAccesses.length > 0 && (
-            <TabsContent value="dozent" className="space-y-3">
-              {teacherAccesses.map((access, idx) => (
-                <AccessRow
-                  key={`teacher-${idx}`}
-                  accessKey={`${instance.instance_id}-teacher-${access.access_type}-${idx}`}
-                  access={access}
-                  passwordVisibility={passwordVisibility}
-                  togglePasswordVisibility={togglePasswordVisibility}
-                  handleCopy={handleCopy}
-                  getMaskedPassword={getMaskedPassword}
-                />
-              ))}
-            </TabsContent>
-          )}
-
-          {groupsByLabel.size > 0 && (
-            <TabsContent value="gruppen">
-              <Accordion
-                type="multiple"
-                defaultValue={Array.from(groupsByLabel.keys()).slice(0, 1)}
-                className="space-y-2"
-              >
-                {Array.from(groupsByLabel.entries()).map(([label, accesses]) => (
-                  <AccordionItem
-                    key={label}
-                    value={label}
-                    className="border border-slate-200 rounded-lg px-3"
-                  >
-                    <AccordionTrigger className="hover:no-underline">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-slate-900">{label}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {accesses.length} {accesses.length === 1 ? "Zugang" : "Zugänge"}
-                        </Badge>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="space-y-3 pt-2">
-                      {accesses.map((access, idx) => (
-                        <AccessRow
-                          key={`${label}-${idx}`}
-                          accessKey={`${instance.instance_id}-${label}-${access.access_type}-${idx}`}
-                          access={access}
-                          passwordVisibility={passwordVisibility}
-                          togglePasswordVisibility={togglePasswordVisibility}
-                          handleCopy={handleCopy}
-                          getMaskedPassword={getMaskedPassword}
-                        />
-                      ))}
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            </TabsContent>
-          )}
-        </Tabs>
-      </CardContent>
-    </Card>
-  );
-}
-
-function AccessRow({
-  accessKey,
-  access,
-  passwordVisibility,
-  togglePasswordVisibility,
-  handleCopy,
-  getMaskedPassword,
-}: {
-  accessKey: string;
-  access: AccessLike;
-  passwordVisibility: Record<string, boolean>;
-  togglePasswordVisibility: (key: string) => void;
-  handleCopy: (value: string | null | undefined, label: string) => void;
-  getMaskedPassword: (pw: string | null | undefined) => string;
-}) {
-  const accessTypeLabels: Record<string, string> = {
-    ssh: "SSH",
-    web_url: "Web URL",
-    guacamole: "Guacamole",
-    rdp: "RDP",
-    vnc: "VNC",
-    database: "Database",
-  };
-
-  const urlLabel =
-    access.access_type === "ssh" ? "SSH-Befehl" : access.access_type === "web_url" ? "URL" : "Connection URL";
-
-  const isVisible = passwordVisibility[accessKey] === true;
-
-  return (
-    <div className="rounded-lg border border-slate-200 p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h4 className="text-sm font-medium text-slate-900">
-          {accessTypeLabels[access.access_type] || access.access_type}
-        </h4>
-        <Badge variant="outline">{access.access_type}</Badge>
-      </div>
-
-      <div className="grid gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-slate-500">Username</span>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-900">{access.username ?? "-"}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleCopy(access.username, "Username")}
-              disabled={!access.username}
-            >
-              <Copy className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-slate-500">Password</span>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-900">
-              {isVisible ? access.password ?? "-" : getMaskedPassword(access.password)}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => togglePasswordVisibility(accessKey)}
-              disabled={!access.password}
-            >
-              {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleCopy(access.password, "Password")}
-              disabled={!access.password}
-            >
-              <Copy className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-slate-500">{urlLabel}</span>
-          <div className="flex items-center gap-2">
-            {access.connection_url ? (
-              access.access_type === "web_url" ? (
-                <a
-                  href={access.connection_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-blue-600 hover:underline break-all"
-                >
-                  {access.connection_url}
-                </a>
-              ) : (
-                <code className="text-sm bg-slate-100 px-2 py-0.5 rounded break-all font-mono">
-                  {access.connection_url}
-                </code>
-              )
-            ) : (
-              <span className="text-sm text-slate-400">-</span>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleCopy(access.connection_url, urlLabel)}
-              disabled={!access.connection_url}
-            >
-              <Copy className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-slate-500">Port</span>
-          <span className="text-sm text-slate-900">{access.port ?? "-"}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ── Phase helpers ─────────────────────────────────────────────────────────────
 

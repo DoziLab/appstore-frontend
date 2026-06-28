@@ -61,9 +61,18 @@ export type AccessType =
   | "database";
 
 export type CredentialAccess = {
+  // Backend-Primärschlüssel des Access-Eintrags. Wird für die SSH-Key-
+  // Download-URL gebraucht. Bei sehr alten Responses (vor Schema-Erweiterung)
+  // kann das Feld fehlen — wir behandeln das defensiv und blenden den
+  // Download-Button dann aus.
+  id?: string | null;
   access_type: AccessType;
   username: string | null;
   password: string | null;
+  // PEM-encoded OpenSSH private key (mehrzeilig). `null` bei Deployments, die
+  // vor dem SSH-Key-Feature angelegt wurden oder bei Group-Accesses ohne
+  // `ssh_key: generate` in der app.yaml.
+  ssh_private_key?: string | null;
   connection_url: string | null;
   port: number | null;
 };
@@ -256,6 +265,67 @@ export async function deleteDeployment(deploymentId: string, openstackProjectId:
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(text || res.statusText);
+  }
+}
+
+/**
+ * Lädt den SSH Private Key eines Access-Eintrags als `.pem`-Datei in den
+ * Browser. Backend gibt das PEM als `application/x-pem-file` mit
+ * `Content-Disposition: attachment; filename="id_ed25519_<user>"` zurück. Wir
+ * parsen den Dateinamen, fallen sonst auf `id_ed25519_<username|access>.pem`
+ * zurück und triggern den Browser-Download über ein temporäres Anchor-Element
+ * (gleiches Pattern wie der existierende Logs/Credentials-Markdown-Export).
+ *
+ * Wirft ein `Error` mit numerischem `.status`, damit der Caller 400/403/404
+ * unterscheiden kann (z. B. „kein Key gesetzt" vs. „keine Berechtigung").
+ */
+export async function downloadSshKey(
+  deploymentId: string,
+  accessId: string,
+  openstackProjectId: string | null,
+  fallbackUsername: string | null,
+): Promise<void> {
+  await keycloak.updateToken(30).catch(() => {});
+  const res = await fetch(
+    `/api/v1/deployments/${deploymentId}/credentials/access/${accessId}/ssh-key${projectQuery(openstackProjectId)}`,
+    {
+      method: "GET",
+      headers: keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {},
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    const err = new Error(text || res.statusText) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+
+  const disposition = res.headers.get("content-disposition") || "";
+  // Content-Disposition: attachment; filename="id_ed25519_lecturer"
+  // Quoted und unquoted Varianten abdecken; `.pem`-Suffix nachziehen, damit
+  // Editoren das File als PEM erkennen.
+  let filename = "";
+  const match = disposition.match(/filename\*?=(?:UTF-8'')?\"?([^\";]+)\"?/i);
+  if (match?.[1]) filename = decodeURIComponent(match[1]).trim();
+  if (!filename) {
+    const safeUser = (fallbackUsername || "user").replace(/[^a-zA-Z0-9._-]+/g, "_");
+    filename = `id_ed25519_${safeUser}`;
+  }
+  if (!/\.pem$/i.test(filename)) filename += ".pem";
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    // setTimeout, damit Safari/Firefox die Blob-URL nicht revoken, bevor der
+    // Download gestartet wurde.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 }
 

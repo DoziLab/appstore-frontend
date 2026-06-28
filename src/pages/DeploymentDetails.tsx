@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import React from "react";
 import {
   CheckCircle2,
@@ -19,6 +19,8 @@ import {
   AlertTriangle,
   AlertOctagon,
   Calendar,
+  Key,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -48,11 +50,13 @@ import {
   DeploymentLogDto,
   getDeploymentCredentials,
   extendDeployment,
+  downloadSshKey,
   type RuntimeMonths,
 } from "../api/deployments";
 import { type LogPhase, type PhaseStatus } from "./DeploymentDetailsPage";
 import { getExpiryState } from "../utils/deployment";
 import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
+import keycloak from "../auth/keycloak";
 
 interface DeploymentStep {
   id: string;
@@ -103,6 +107,13 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
   const [credentialsError, setCredentialsError] = useState<string | null>(null);
   const [credentialsData, setCredentialsData] = useState<DeploymentCredentialsResponse | null>(null);
   const [passwordVisibility, setPasswordVisibility] = useState<Record<string, boolean>>({});
+  // Pro Access-Eintrag merken wir uns, ob die mehrzeilige PEM bereits inline
+  // aufgeklappt wurde. Standard: zugeklappt — die meisten Nutzer wollen den
+  // Download-Button, nicht den rohen PEM-Text.
+  const [sshKeyVisibility, setSshKeyVisibility] = useState<Record<string, boolean>>({});
+  // Welche Downloads gerade fliegen (Access-ID → in-flight). Verhindert
+  // Doppelklicks und lässt uns einen Spinner pro Zeile anzeigen.
+  const [sshKeyDownloading, setSshKeyDownloading] = useState<Record<string, boolean>>({});
   // Inline extend-action state (B6). Pessimistic: button disabled while
   // request flies, error shown via toast, success refreshes the page so the
   // new expires_at lands in `deployment` via the parent's data loader.
@@ -183,6 +194,55 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
     }));
   };
 
+  const toggleSshKeyVisibility = (key: string) => {
+    setSshKeyVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Username des eingeloggten Lecturers — Heuristik für „dies ist der
+  // Admin-Eintrag" laut Briefing. Wenn der `username` eines Access-Eintrags
+  // dem Lecturer entspricht (z. B. `lecturer`), zeigen wir das als
+  // Admin-Zugang an. Backend liefert (noch) kein explizites `is_admin`-Flag.
+  const currentUsername = useMemo<string | null>(() => {
+    const t = (keycloak?.tokenParsed ?? {}) as Record<string, any>;
+    const u = (t.preferred_username || "").toString().trim();
+    return u || null;
+  }, []);
+
+  const handleDownloadSshKey = useCallback(
+    async (accessId: string, username: string | null) => {
+      setSshKeyDownloading((prev) => ({ ...prev, [accessId]: true }));
+      try {
+        await downloadSshKey(deployment.id, accessId, activeProjectId, username);
+        toast.success("SSH-Key heruntergeladen.");
+      } catch (err) {
+        const status = (err as { status?: number }).status;
+        if (status === 400) {
+          toast.error("openstack_project_id fehlt — bitte Projekt wählen.");
+        } else if (status === 401) {
+          toast.error("Session abgelaufen — bitte erneut anmelden.");
+        } else if (status === 403) {
+          toast.error("Keine Berechtigung für diesen SSH-Key.");
+        } else if (status === 404) {
+          // Im 404-Fall kann der Backend-Detail-Text zwischen „Deployment
+          // nicht gefunden", „Access-Eintrag nicht gefunden" und „kein SSH-
+          // Key hinterlegt" unterscheiden — wir können das hier nicht
+          // sauber auseinanderhalten, also bleibt es bei einer allgemeinen
+          // Meldung. Der häufigste Fall (alte Deployments) ist „kein Key".
+          toast.error("Für diesen Zugang ist kein SSH-Key hinterlegt.");
+        } else {
+          toast.error("SSH-Key-Download fehlgeschlagen.");
+        }
+      } finally {
+        setSshKeyDownloading((prev) => {
+          const next = { ...prev };
+          delete next[accessId];
+          return next;
+        });
+      }
+    },
+    [deployment.id, activeProjectId],
+  );
+
   const getMaskedPassword = (value: string | null) => {
     if (!value) return "-";
     return "*".repeat(Math.max(8, value.length));
@@ -231,14 +291,20 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
         const accessBlocks = instance.accesses
           .map((access) => {
             const title = accessTypeLabels[access.access_type] || access.access_type;
-            return [
+            const lines: string[] = [
               title,
               `Username: ${access.username ?? "-"}`,
               `Password: ${access.password ?? "-"}`,
               `Connection URL: ${access.connection_url ?? "-"}`,
               `Port: ${access.port ?? "-"}`,
-              "",
-            ].join("\n");
+            ];
+            // PEM nur exportieren, wenn vorhanden — sonst landen massenhaft
+            // „SSH Private Key: -"-Zeilen im Markdown.
+            if (access.ssh_private_key) {
+              lines.push("SSH Private Key:", access.ssh_private_key);
+            }
+            lines.push("");
+            return lines.join("\n");
           })
           .join("\n");
 
@@ -829,13 +895,46 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
                         {instance.accesses.map((access, index) => {
                           const accessKey = `${instance.instance_id}-${access.access_type}-${index}`;
                           const isVisible = passwordVisibility[accessKey] === true;
+                          // SSH-Key-State pro Zeile. Wir bevorzugen die echte
+                          // Access-ID als Schlüssel (vom Backend stabil), fallen
+                          // aber auf accessKey zurück, wenn die ID (noch) fehlt
+                          // — z. B. wenn ein älterer Backend-Build geladen ist.
+                          const sshKeyKey = access.id || accessKey;
+                          const sshKeyVisible = sshKeyVisibility[sshKeyKey] === true;
+                          const sshKeyAvailable =
+                            access.access_type === "ssh" &&
+                            !!access.ssh_private_key &&
+                            access.ssh_private_key.length > 0;
+                          // Admin-Heuristik: der Eintrag, dessen username dem
+                          // eingeloggten Lecturer entspricht. Bewusst case-
+                          // insensitive, da Keycloak preferred_username
+                          // gelegentlich klein-, OpenStack-User aber Original-
+                          // Casing trägt.
+                          const isAdminAccess =
+                            access.access_type === "ssh" &&
+                            !!currentUsername &&
+                            !!access.username &&
+                            access.username.toLowerCase() === currentUsername.toLowerCase();
+                          const sshDownloadInFlight = !!sshKeyDownloading[sshKeyKey];
 
                           return (
                             <div key={accessKey} className="rounded-lg border border-slate-200 p-4 space-y-3">
-                              <div className="flex items-center justify-between">
-                                <h4 className="text-sm font-medium text-slate-900">
-                                  {accessTypeLabels[access.access_type] || access.access_type}
-                                </h4>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <h4 className="text-sm font-medium text-slate-900">
+                                    {accessTypeLabels[access.access_type] || access.access_type}
+                                  </h4>
+                                  {isAdminAccess && (
+                                    <Badge
+                                      variant="default"
+                                      className="bg-teal-100 text-teal-700 hover:bg-teal-100 gap-1"
+                                      title="Dieser Eintrag ist dein Dozenten-Zugang. SSH-Key gibt dir sudo-Rechte auf der VM."
+                                    >
+                                      <ShieldCheck className="w-3 h-3" />
+                                      Admin
+                                    </Badge>
+                                  )}
+                                </div>
                                 <Badge variant="outline">{access.access_type}</Badge>
                               </div>
 
@@ -926,6 +1025,74 @@ export function DeploymentDetails({ deployment, onBack, onDelete }: DeploymentDe
                                     {access.port ?? "-"}
                                   </span>
                                 </div>
+
+                                {access.access_type === "ssh" && sshKeyAvailable && (
+                                  <div className="space-y-2 pt-2 border-t border-slate-100">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+                                        <Key className="w-3.5 h-3.5" />
+                                        SSH Private Key
+                                        {isAdminAccess && (
+                                          <span className="text-slate-400">· Admin-Zugang</span>
+                                        )}
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => toggleSshKeyVisibility(sshKeyKey)}
+                                          title={sshKeyVisible ? "Key ausblenden" : "Key anzeigen"}
+                                        >
+                                          {sshKeyVisible ? (
+                                            <EyeOff className="w-4 h-4" />
+                                          ) : (
+                                            <Eye className="w-4 h-4" />
+                                          )}
+                                        </Button>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => handleCopy(access.ssh_private_key ?? null, "SSH Private Key")}
+                                          disabled={!access.ssh_private_key}
+                                          title="In Zwischenablage kopieren"
+                                        >
+                                          <Copy className="w-4 h-4" />
+                                        </Button>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => {
+                                            // Ohne id können wir den dedizierten
+                                            // Download-Endpoint nicht aufrufen
+                                            // (URL braucht die access_id). In dem
+                                            // unwahrscheinlichen Fall (alter
+                                            // Response-Build) blocken wir und
+                                            // weisen den Nutzer auf den Inline-
+                                            // Copy-Pfad hin.
+                                            if (!access.id) {
+                                              toast.error("Download nicht möglich (fehlende Access-ID). Bitte Copy benutzen.");
+                                              return;
+                                            }
+                                            void handleDownloadSshKey(access.id, access.username);
+                                          }}
+                                          disabled={!access.id || sshDownloadInFlight}
+                                          title="Als .pem-Datei herunterladen"
+                                        >
+                                          {sshDownloadInFlight ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                          ) : (
+                                            <Download className="w-4 h-4" />
+                                          )}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                    {sshKeyVisible && (
+                                      <pre className="text-xs bg-slate-50 border border-slate-200 rounded-md p-3 font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-64">
+{access.ssh_private_key}
+                                      </pre>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           );

@@ -13,8 +13,10 @@ import {
   getGithubInstallationStatus,
   importTemplateFromGithub,
   startGithubInstall,
+  VERSION_ERROR_CODES,
   type GithubInstallationStatus,
 } from '../api/github';
+import { ApiError } from '../api/http';
 
 interface AddTemplateDialogProps {
   open: boolean;
@@ -136,7 +138,7 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
         description:
           visibility === 'private'
             ? 'Privates Template — sofort für dich verwendbar.'
-            : 'Öffentliches Template — Version wartet auf Admin-Freigabe.',
+            : 'Template wartet auf Erst-Freigabe (privat bis Admin approved).',
       });
       onImported?.();
       resetForm();
@@ -147,15 +149,49 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
         navigate('/appstore');
       }
     } catch (err) {
-      // Die Backend-Fehlertexte sind aussagekräftig (z.B. „Folder contains 62
-      // files which exceeds the limit of 50.") — wir zeigen sie unverändert.
-      const msg = err instanceof Error ? err.message : 'Import fehlgeschlagen.';
+      // Strukturierte Versions-Validierungs-Fehler bekommen einen klar
+      // handlungsorientierten Text (mit Hinweis auf die app.yaml im Repo);
+      // alles andere fällt auf den generischen Backend-Text zurück.
+      const msg = humanizeImportError(err);
       setErrorMessage(msg);
       toast.error('Import fehlgeschlagen', { description: msg });
     } finally {
       setSubmitting(false);
     }
   };
+
+  /**
+   * Konvertiert Backend-Fehler in einen User-tauglichen Hinweis.
+   * Reagiert speziell auf die strukturierten ``VERSION_*``-Codes aus dem
+   * Versions-Validator; bei anderen Fehlern wird die Backend-Message
+   * unverändert übernommen (sie sind ohnehin meist gut formuliert,
+   * z.B. „Folder contains 62 files which exceeds the limit of 50").
+   */
+  function humanizeImportError(err: unknown): string {
+    if (err instanceof ApiError) {
+      switch (err.code) {
+        case VERSION_ERROR_CODES.MISSING_IN_MANIFEST:
+          return (
+            "Deine `app.yaml` enthält kein `app.version`-Feld (oder es ist leer). "
+            + "Bitte ergänze z. B. `app:\n  version: 1.0.0` im Repo und importiere erneut."
+          );
+        case VERSION_ERROR_CODES.NOT_SEMVER:
+          return (
+            "`app.version` in deiner app.yaml ist kein gültiges Semver. "
+            + "Format: `MAJOR.MINOR.PATCH`, z. B. `1.0.0` oder `2.0.1-beta`."
+          );
+        case VERSION_ERROR_CODES.NOT_STRICTLY_GREATER:
+        case VERSION_ERROR_CODES.ALREADY_EXISTS:
+          // Hier eher unwahrscheinlich (Erst-Import auf neues Template hat
+          // keine Vorgänger), aber wenn doch: klare Anweisung statt
+          // Standard-Text.
+          return err.message;
+        default:
+          return err.message;
+      }
+    }
+    return err instanceof Error ? err.message : 'Import fehlgeschlagen.';
+  }
 
   const connected = ghStatus?.connected === true;
 
@@ -413,7 +449,9 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
                   <div className="space-y-0.5">
                     <p className="text-sm text-slate-900">Öffentlich (Marktplatz)</p>
                     <p className="text-xs text-slate-500">
-                      Im App Store sichtbar, sobald ein Admin die erste Version freigibt.
+                      Bleibt zunächst privat. Sobald ein Admin die erste
+                      Version freigibt, wird das Template im App Store
+                      sichtbar.
                     </p>
                   </div>
                 </button>

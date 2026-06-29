@@ -71,6 +71,17 @@ export type TemplateDto = {
   repo_url: string;
   icon_url: string | null;
   visibility: string;
+  /**
+   * True wenn der Owner das Template als „öffentlich" angelegt hat, aber
+   * noch keine Version genehmigt wurde. Das Template ist in dem Zustand
+   * weiterhin `visibility === "private"` — sobald ein Admin die erste
+   * Version approved, flippt Backend `visibility → "public"` und
+   * `publish_requested → false` atomar.
+   *
+   * UI-Konsequenz: für den Owner Badge „wartet auf Erst-Freigabe", auch
+   * wenn `visibility` noch privat ist. Siehe `lib/template-status.ts`.
+   */
+  publish_requested?: boolean;
   // Hinweis: Approval lebt nur noch pro Version. Der Backend-Endpoint
   // `GET /templates` liefert seit der Per-Version-Migration KEINEN
   // `approval_status` mehr auf Template-Ebene. Wenn Code früher

@@ -97,7 +97,30 @@ export type ImportNewVersionBody = {
   github_url: string;
   app_yaml_path?: string | null;
   is_active?: boolean;
+  /**
+   * Wenn der `app.version`-String der neu importierten Version bereits im
+   * Template existiert: `true` → Backend löscht die bestehende Row inkl.
+   * Files und ersetzt sie durch die neue. Blockiert, wenn aktive
+   * Deployments an der zu ersetzenden Row hängen (`VERSION_REPLACE_BLOCKED_BY_DEPLOYMENTS`).
+   * Default `false` → Backend antwortet bei Kollision mit
+   * `VERSION_ALREADY_EXISTS`; Frontend bietet dem Owner dann zwei Wege:
+   * im Repo bumpen oder Replace bewusst auslösen.
+   */
+  replace_existing?: boolean;
 };
+// Backend-Fehler-Codes für Versions-Validierung (siehe
+// `appstore-backend/src/utils/version_validator.py`). Wir spiegeln sie hier
+// als String-Union, damit die UI-Komponenten ohne Magic-Strings darauf
+// branchen können.
+export const VERSION_ERROR_CODES = {
+  NOT_SEMVER: "VERSION_NOT_SEMVER",
+  MISSING_IN_MANIFEST: "VERSION_MISSING_IN_MANIFEST",
+  NOT_STRICTLY_GREATER: "VERSION_NOT_STRICTLY_GREATER",
+  ALREADY_EXISTS: "VERSION_ALREADY_EXISTS",
+  REPLACE_BLOCKED_BY_DEPLOYMENTS: "VERSION_REPLACE_BLOCKED_BY_DEPLOYMENTS",
+} as const;
+export type VersionErrorCode =
+  (typeof VERSION_ERROR_CODES)[keyof typeof VERSION_ERROR_CODES];
 
 export async function importTemplateFromGithub(
   body: ImportNewTemplateBody,
@@ -153,6 +176,9 @@ export type TemplateVersionQueueItem = {
     name: string;
     owner_id: string;
     visibility: "private" | "public";
+    /** True wenn das Template auf seine Erst-Genehmigung wartet. Admin-UI
+     *  zeigt einen Hinweis „erstmalige Veröffentlichung" am Karten-Header. */
+    publish_requested?: boolean;
   };
 };
 

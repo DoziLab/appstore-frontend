@@ -702,13 +702,13 @@ export function AdminMonitoring() {
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-slate-900">{template.name}</h3>
+                          <h3 className="text-slate-900 break-words">{template.name}</h3>
                           {template.versions?.[0]?.version && (
                             <Badge variant="outline">{template.versions[0].version}</Badge>
                           )}
                         </div>
                         {template.description && (
-                          <p className="text-sm text-slate-600 mb-3">{template.description}</p>
+                          <p className="text-sm text-slate-600 mb-3 break-words">{template.description}</p>
                         )}
                         <div className="flex items-center gap-4 text-sm text-slate-500">
                           <span>Eingereicht: {new Date(template.created_at).toLocaleString()}</span>

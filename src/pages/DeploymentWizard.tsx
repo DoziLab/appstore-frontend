@@ -877,7 +877,16 @@ export function DeploymentWizard({
           groups: stack.assignedGroups.map((group) => ({
             group_name: group.groupName,
             group_index: group.groupId ? parseInt(group.groupId.replace(/\D/g, '')) || stackIndex + 1 : stackIndex + 1,
-            // course_group_id is resolved by the backend (get-or-create by name).
+            // Backend (DoziLab/appstore-backend#169) materialisiert die
+            // Mitgliedschaftskette synchron beim Deploy-POST:
+            // CourseMember/CourseGroup/GroupMember werden idempotent per
+            // (course_id, name) und (user_id, course_id) upgesertet, und die
+            // aufgelöste `course_group_id` wird in deployment_parameters
+            // zurückgeschrieben, bevor der Celery-Task Credentials persistiert.
+            // Daher sendet der Wizard hier explizit null — das Frontend hat
+            // keine zuverlässige Quelle für die persistierte CourseGroup-ID
+            // (Chicken-and-Egg auf dem ersten Deploy eines Courses), und der
+            // Read-Pfad /api/v1/student/deployments funktioniert trotzdem.
             course_group_id: null,
             students: group.students.map((student) => ({
               id: student.id,

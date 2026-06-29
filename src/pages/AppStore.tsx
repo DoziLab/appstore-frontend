@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Server, Database, GitBranch, Container, Shield, Code, Laptop, Boxes, Search, Plus, AlertCircle, Eye, Lock, User, Users } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -99,7 +99,20 @@ export function AppStore({ onDeploy }: AppStoreProps) {
   const [visibilityFilter, setVisibilityFilter] = useState<'all' | 'public' | 'private'>('all');
   const [ownershipFilter, setOwnershipFilter] = useState<'all' | 'mine' | 'others'>('all');
 
-  const { userId, isAdmin } = useCurrentUser();
+  const { username, isAdmin } = useCurrentUser();
+
+  // Backend liefert `template.owner_id` als interne `users.id` (DB-PK),
+  // unser Keycloak-Token hat aber nur `sub` (= `users.external_id`).
+  // Wir leiten die interne ID aus der Liste ab: sobald ≥1 Template
+  // existiert, dessen `owner_username` zu unserem `preferred_username`
+  // passt, kennen wir unsere `users.id` und können sauber per ID
+  // vergleichen. Direkter Vergleich per Username scheidet aus, weil
+  // `owner_username` für Service-Accounts / Pre-Migration-User `null`
+  // sein kann (siehe Kommentar in src/api/templates.ts).
+  const myInternalUserId = useMemo(() => {
+    if (!username) return null;
+    return templates.find((t) => t.owner_username === username)?.owner_id ?? null;
+  }, [templates, username]);
 
   // Fetch templates from backend
   const fetchTemplates = async (): Promise<TemplateDto[]> => {
@@ -140,10 +153,10 @@ export function AppStore({ onDeploy }: AppStoreProps) {
     if (visibilityFilter !== 'all' && template.visibility !== visibilityFilter) {
       return false;
     }
-    if (ownershipFilter === 'mine' && template.owner_id !== userId) {
+    if (ownershipFilter === 'mine' && template.owner_id !== myInternalUserId) {
       return false;
     }
-    if (ownershipFilter === 'others' && template.owner_id === userId) {
+    if (ownershipFilter === 'others' && template.owner_id === myInternalUserId) {
       return false;
     }
     return true;
@@ -333,7 +346,7 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                           setSelectedTemplate(template);
                           // Owner → eigene Detailseite mit Versionsverwaltung;
                           // alle anderen → bestehender generischer Modal.
-                          if (userId && template.owner_id === userId) {
+                          if (myInternalUserId && template.owner_id === myInternalUserId) {
                             setOwnerDetailsOpen(true);
                           } else {
                             setDetailsModalOpen(true);

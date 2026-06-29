@@ -121,7 +121,7 @@ export function DeploymentWizard({
   const [groupStackAssignments, setGroupStackAssignments] = useState<
     GroupStackAssignment[]
   >(() => initialState?.groupStackAssignments ?? []);
-  const [numberOfStacks, setNumberOfStacks] = useState<number>(
+  const [numberOfStacks, setNumberOfStacks] = useState<string | number>(
     () => initialState?.groupStackAssignments?.length || 1,
   );
   const [numberOfGroups, setNumberOfGroups] = useState<string | number>(
@@ -370,8 +370,9 @@ export function DeploymentWizard({
         setStudentGroups(groups);
       }
       // Initialize stacks if needed
-      if (groupStackAssignments.length === 0 && numberOfStacks > 0) {
-        const stacks = Array.from({ length: numberOfStacks }).map((_, i) => ({
+      const stackCount = typeof numberOfStacks === "number" ? numberOfStacks : parseInt(numberOfStacks) || 1;
+      if (groupStackAssignments.length === 0 && stackCount > 0) {
+        const stacks = Array.from({ length: stackCount }).map((_, i) => ({
           stackId: `stack-${i + 1}`,
           stackName: `Stack ${i + 1}`,
           assignedGroups: [],
@@ -380,7 +381,7 @@ export function DeploymentWizard({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deploymentMode, keycloakMembers, numberOfStacks, numberOfGroups]);
+  }, [deploymentMode, keycloakMembers]);
 
  // Helper function to validate and apply group count
   const validateAndApplyGroupCount = useCallback(() => {
@@ -572,29 +573,39 @@ export function DeploymentWizard({
       studentGroups.length > 0 &&
       groupStackAssignments.length > 0
     ) {
-      // Filter groups that have students
-      const groupsWithStudents = studentGroups.filter(
-        (g) => g.students.length > 0,
-      );
-
-      if (groupsWithStudents.length === 0) return;
-
-      // Distribute groups evenly across stacks using round-robin
+      // Distribute all groups evenly across stacks using round-robin
       // This ensures all stacks get groups when there are more groups than stacks
       const updatedStacks = groupStackAssignments.map((stack) => ({
         ...stack,
         assignedGroups: [] as StudentGroup[],
       }));
 
-      groupsWithStudents.forEach((group, index) => {
+      studentGroups.forEach((group, index) => {
         const stackIndex = index % groupStackAssignments.length;
         updatedStacks[stackIndex].assignedGroups.push(group);
       });
 
-      setGroupStackAssignments(updatedStacks);
+      // Check if the distribution or group contents changed
+      const hasChanges = updatedStacks.some((stack, idx) => {
+        const currentStack = groupStackAssignments[idx];
+        if (!currentStack) return true;
+        if (stack.assignedGroups.length !== currentStack.assignedGroups.length) return true;
+        return stack.assignedGroups.some((group, gIdx) => {
+          const currentGroup = currentStack.assignedGroups[gIdx];
+          if (!currentGroup || group.groupId !== currentGroup.groupId) return true;
+          // Also check if group contents changed (students, name, etc.)
+          if (group.groupName !== currentGroup.groupName) return true;
+          if (group.students.length !== currentGroup.students.length) return true;
+          return false;
+        });
+      });
+
+      if (hasChanges) {
+        setGroupStackAssignments(updatedStacks);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studentGroups, deploymentMode]);
+  }, [studentGroups, groupStackAssignments, deploymentMode]);
 
   // One-shot guard: keep the failed deployment's parameters when the template
   // version data first loads in the retry flow, otherwise the default-init
@@ -1453,20 +1464,24 @@ export function DeploymentWizard({
               <div>
                 <Label>Anzahl der Server</Label>
                 <Input
-                  type="number"
-                  min="1"
-                  max="50"
+                  type="text"
+                  inputMode="numeric"
                   className="mt-2"
                   value={numberOfStacks}
                   onChange={(e) => {
-                    // Allow empty input while typing
                     const inputValue = e.target.value;
+                    // Allow empty input
                     if (inputValue === "") {
-                      setNumberOfStacks(0); // Temporarily allow 0 for empty state
+                      setNumberOfStacks("");
                       return;
                     }
-                    const parsed = parseInt(inputValue);
-                    if (!isNaN(parsed)) {
+                    // Only allow digits
+                    if (!/^\d+$/.test(inputValue)) {
+                      return;
+                    }
+                    // Remove leading zeros and update
+                    const parsed = parseInt(inputValue, 10);
+                    if (!isNaN(parsed) && parsed >= 0 && parsed <= 50) {
                       setNumberOfStacks(parsed);
                     }
                   }}

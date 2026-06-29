@@ -247,7 +247,12 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
                     <Button
                       size="sm"
                       onClick={handleConnectGithub}
-                      className="bg-slate-900 hover:bg-slate-800 text-white shrink-0"
+                      className="shrink-0"
+                      // bg-slate-900 wird in der vor-gebackenen index.css
+                      // nicht generiert, sodass text-white auf transparentem
+                      // Hintergrund stehen würde — der Button wäre unsichtbar
+                      // (#149).
+                      style={{ backgroundColor: '#0f172a', color: '#ffffff' }}
                     >
                       <Github className="w-4 h-4 mr-2" />
                       GitHub verbinden

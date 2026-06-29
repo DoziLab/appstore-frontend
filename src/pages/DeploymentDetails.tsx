@@ -77,6 +77,16 @@ interface Deployment {
    */
   rawStatus?: string;
   course: string;
+  templateName?: string;
+  templateVersion?: string;
+  deploymentMode?: string;
+  groupCount?: number;
+  stackCount?: number;
+  studentCount?: number;
+  credentialSetCount?: number;
+  runtimeMonths?: number;
+  groupNames?: string[];
+  deploymentParameters?: any;
   startedAt: string;
   completedAt?: string;
   estimatedTimeRemaining?: string;
@@ -121,6 +131,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
   const [retryInFlight, setRetryInFlight] = useState(false);
   const [deleteInFlight, setDeleteInFlight] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
 
   // ── Status-driven delete/cancel action ────────────────────────────────────
   //
@@ -499,6 +510,19 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
           <div>
             <h1 className="text-slate-900 mb-2">{deployment.name}</h1>
             <p className="text-slate-600">{deployment.course}</p>
+            {deployment.templateName && (
+              <p className="text-sm text-slate-500 mt-1">
+                Template: {deployment.templateName}{deployment.templateVersion ? ` (${deployment.templateVersion})` : ''}
+              </p>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4 text-xs"
+              onClick={() => setDetailsDialogOpen(true)}
+            >
+              Details anzeigen
+            </Button>
           </div>
           <div className="flex flex-col items-end gap-3">
             {getStatusBadge()}
@@ -507,21 +531,18 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
               Gestartet: {new Date(deployment.startedAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
             </p>
             {deployment.expires_at && (
-              <div className="flex items-center gap-3">
+              <div className="flex flex-col items-end gap-2">
+                <p className="text-sm text-slate-500">
+                  Ablaufdatum: {new Date(deployment.expires_at).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                </p>
                 <Button
-                  variant="outline"
                   size="sm"
-                  className="text-xs"
+                  className="w-full bg-teal-500 hover:bg-teal-600 text-white"
                   disabled={extendInFlight}
                   onClick={() => setExtendDialogOpen(true)}
                 >
                   Verlängern
                 </Button>
-                <div className="flex items-center gap-1.5">
-                  <p className="text-sm text-slate-500">
-                    Ablaufdatum: {new Date(deployment.expires_at).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}
-                  </p>
-                </div>
               </div>
             )}
 
@@ -571,6 +592,55 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
                 </AlertDialogContent>
               </AlertDialog>
             )}
+
+            {/* Details dialog */}
+            <AlertDialog open={detailsDialogOpen} onOpenChange={setDetailsDialogOpen}>
+              <AlertDialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+                <AlertDialogHeader className="flex-shrink-0">
+                  <AlertDialogTitle>Deployment-Details</AlertDialogTitle>
+                </AlertDialogHeader>
+                <div className="space-y-6 py-4 overflow-y-auto flex-1">
+                  {/* Stack-Zuweisungen */}
+                  {deployment.groupNames && deployment.groupNames.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold text-slate-900 mb-3">Stack-Zuweisungen</h3>
+                      <div className="space-y-3">
+                        {deployment.stackCount && Array.from({ length: deployment.stackCount }).map((_, idx) => (
+                          <div key={idx} className="bg-slate-50 p-3 rounded-md">
+                            <p className="font-medium text-slate-900 mb-1">Stack {idx + 1}</p>
+                            <p className="text-sm text-slate-600">
+                              {deployment.groupNames && deployment.groupNames.length > 0 ? 
+                                `${Math.ceil(deployment.groupNames.length / (deployment.stackCount || 1))} Gruppe(n)` : 
+                                'Keine Zuweisungen'}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Konfiguration */}
+                  {deployment.deploymentParameters && (
+                    <div>
+                      <h3 className="font-semibold text-slate-900 mb-3">Konfiguration</h3>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        {Object.entries(deployment.deploymentParameters.parameters || {}).map(([key, value]) => (
+                          <div key={key}>
+                            <span className="text-slate-500">{key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</span>
+                            <p className="text-slate-900 font-medium">
+                              {typeof value === 'boolean' ? (value ? 'Ja' : 'Nein') : String(value)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <AlertDialogFooter className="flex-shrink-0">
+                  <AlertDialogCancel>Schließen</AlertDialogCancel>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       </div>

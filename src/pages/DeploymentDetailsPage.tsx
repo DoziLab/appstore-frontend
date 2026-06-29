@@ -481,6 +481,47 @@ export function DeploymentDetailsPage() {
         resolvedCourseName = backendDeployment.course.name;
       }
 
+      // Parse deployment_parameters to extract details
+      let deploymentParams: any = {};
+      let groupNames: string[] = [];
+      let stackCount = 0;
+      let groupCount = 0;
+      let studentCount = 0;
+      let runtimeMonths: number | undefined;
+
+      try {
+        if (backendDeployment.deployment_parameters) {
+          deploymentParams = typeof backendDeployment.deployment_parameters === 'string'
+            ? JSON.parse(backendDeployment.deployment_parameters)
+            : backendDeployment.deployment_parameters;
+          
+          // Extract stack and group info
+          if (deploymentParams.stack_assignments) {
+            stackCount = deploymentParams.stack_assignments.length;
+            deploymentParams.stack_assignments.forEach((stack: any) => {
+              if (stack.assigned_groups) {
+                groupCount += stack.assigned_groups.length;
+                stack.assigned_groups.forEach((group: any) => {
+                  if (group.group_name) groupNames.push(group.group_name);
+                  if (group.student_count) studentCount += group.student_count;
+                });
+              }
+            });
+          }
+        }
+
+        // Calculate runtime months from expires_at
+        if (backendDeployment.expires_at && backendDeployment.created_at) {
+          const createdMs = new Date(backendDeployment.created_at).getTime();
+          const expiresMs = new Date(backendDeployment.expires_at).getTime();
+          if (Number.isFinite(createdMs) && Number.isFinite(expiresMs) && expiresMs > createdMs) {
+            runtimeMonths = Math.round((expiresMs - createdMs) / (1000 * 60 * 60 * 24 * 30));
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to parse deployment_parameters:', err);
+      }
+
       return {
         id: backendDeployment.id,
         name: backendDeployment.name || "Unnamed Deployment",
@@ -491,6 +532,16 @@ export function DeploymentDetailsPage() {
         // alone (queued and creating both map to "deploying").
         rawStatus: (backendDeployment.status ?? "").toString().toLowerCase(),
         course: resolvedCourseName,
+        templateName: backendDeployment.template_version?.template_name || undefined,
+        templateVersion: backendDeployment.template_version?.version || undefined,
+        deploymentMode: backendDeployment.deployment_mode || undefined,
+        groupCount: groupCount > 0 ? groupCount : undefined,
+        stackCount: stackCount > 0 ? stackCount : undefined,
+        studentCount: studentCount > 0 ? studentCount : undefined,
+        credentialSetCount: groupCount > 0 ? groupCount : undefined,
+        runtimeMonths,
+        groupNames: groupNames.length > 0 ? groupNames : undefined,
+        deploymentParameters: deploymentParams,
         startedAt: backendDeployment.created_at,
         completedAt:
           mappedStatus === "running" || mappedStatus === "failed"

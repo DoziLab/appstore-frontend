@@ -578,17 +578,17 @@ export function DeploymentWizard({
 
       if (groupsWithStudents.length === 0) return;
 
-      // Distribute groups evenly across stacks
-      const groupsPerStack = Math.ceil(
-        groupsWithStudents.length / groupStackAssignments.length,
-      );
-      const updatedStacks = groupStackAssignments.map((stack, index) => ({
+      // Distribute groups evenly across stacks using round-robin
+      // This ensures all stacks get groups when there are more groups than stacks
+      const updatedStacks = groupStackAssignments.map((stack) => ({
         ...stack,
-        assignedGroups: groupsWithStudents.slice(
-          index * groupsPerStack,
-          (index + 1) * groupsPerStack,
-        ),
+        assignedGroups: [] as StudentGroup[],
       }));
+
+      groupsWithStudents.forEach((group, index) => {
+        const stackIndex = index % groupStackAssignments.length;
+        updatedStacks[stackIndex].assignedGroups.push(group);
+      });
 
       setGroupStackAssignments(updatedStacks);
     }

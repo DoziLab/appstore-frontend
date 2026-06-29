@@ -124,7 +124,7 @@ export function DeploymentWizard({
   const [numberOfStacks, setNumberOfStacks] = useState<number>(
     () => initialState?.groupStackAssignments?.length || 1,
   );
-  const [numberOfGroups, setNumberOfGroups] = useState<number>(
+  const [numberOfGroups, setNumberOfGroups] = useState<string | number>(
     () => initialState?.studentGroups?.length || 1,
   );
   const [templateVersions, setTemplateVersions] = useState<
@@ -361,7 +361,8 @@ export function DeploymentWizard({
     } else if (deploymentMode === "per_group" && keycloakMembers.length > 0) {
       // Manual mode - initialize empty groups if needed
       if (studentGroups.length === 0) {
-        const groups = Array.from({ length: numberOfGroups }).map((_, i) => ({
+        const groupCount = typeof numberOfGroups === "number" ? numberOfGroups : parseInt(numberOfGroups) || 1;
+        const groups = Array.from({ length: groupCount }).map((_, i) => ({
           groupId: `group-${i + 1}`,
           groupName: `Gruppe ${i + 1}`,
           students: [],
@@ -1333,20 +1334,24 @@ export function DeploymentWizard({
               <div>
                 <Label>Anzahl der Gruppen</Label>
                 <Input
-                  type="number"
-                  min="1"
-                  max="50"
+                  type="text"
+                  inputMode="numeric"
                   className="mt-2"
                   value={numberOfGroups}
                   onChange={(e) => {
-                    // Allow empty input while typing
                     const inputValue = e.target.value;
+                    // Allow empty input
                     if (inputValue === "") {
-                      setNumberOfGroups(0); // Temporarily allow 0 for empty state
+                      setNumberOfGroups("");
                       return;
                     }
-                    const parsed = parseInt(inputValue);
-                    if (!isNaN(parsed)) {
+                    // Only allow digits
+                    if (!/^\d+$/.test(inputValue)) {
+                      return;
+                    }
+                    // Remove leading zeros and update
+                    const parsed = parseInt(inputValue, 10);
+                    if (!isNaN(parsed) && parsed >= 0 && parsed <= 50) {
                       setNumberOfGroups(parsed);
                     }
                   }}

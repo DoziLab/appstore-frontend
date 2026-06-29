@@ -159,6 +159,18 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
 
   const connected = ghStatus?.connected === true;
 
+  // Hinweis-Heuristik: Eine `tree/<ref>/<ordner>`-URL ist im Backend kein
+  // gültiger app.yaml-Pfad (der Backend-Parser füllt `path_from_url` mit dem
+  // Ordnernamen und prüft hart auf `.yaml`/`.yml`-Endung — schlägt fehl).
+  // Wenn der Nutzer also eine tree-URL eingibt und das Pfad-Feld leer lässt,
+  // warnen wir inline, statt ihn in den Backend-Roundtrip laufen zu lassen.
+  // Eine `blob/.../app.yaml`-URL ist davon nicht betroffen.
+  const treeUrlNeedsPath = (() => {
+    const url = githubUrl.trim();
+    if (!url || appYamlPath.trim()) return false;
+    return /^https?:\/\/github\.com\/[^/]+\/[^/]+\/tree\/[^/]+\/.+/i.test(url);
+  })();
+
   // Live-Grund, warum der Import-Button (noch) nicht klickbar ist. Reihenfolge
   // entspricht der natürlichen Bearbeitungsreihenfolge: erst Tab/Verbindung,
   // dann Pflichtfelder, dann URL-Format. `null` = ready to import.
@@ -304,34 +316,57 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
               <Input
                 id="github-url"
                 type="url"
-                placeholder="https://github.com/owner/repo/tree/main/postgres"
+                placeholder="https://github.com/owner/repo/blob/main/postgres/app.yaml"
                 value={githubUrl}
                 onChange={(e) => setGithubUrl(e.target.value)}
                 className="font-mono text-sm"
                 maxLength={1000}
               />
-              <p className="text-xs text-slate-500">
-                Repo-Wurzel, <code>.../tree/&lt;branch&gt;/&lt;ordner&gt;</code> oder
-                {' '}<code>.../blob/&lt;ref&gt;/&lt;pfad&gt;/app.yaml</code> sind alle erlaubt.
-              </p>
+              <div className="text-xs text-slate-500 space-y-1">
+                <p>Erlaubte URL-Formen:</p>
+                <ul className="list-disc pl-5 space-y-0.5">
+                  <li>
+                    <code>https://github.com/&lt;owner&gt;/&lt;repo&gt;</code> — dann{' '}
+                    <strong>Pfad zur <code>app.yaml</code> angeben</strong>
+                    {' '}(z. B. <code>unterordner/app.yaml</code>).
+                  </li>
+                  <li>
+                    <code>.../tree/&lt;branch&gt;/&lt;ordner&gt;</code> — dann ebenfalls{' '}
+                    <strong>Pfad zur <code>app.yaml</code> angeben</strong>
+                    {' '}(z. B. <code>&lt;ordner&gt;/app.yaml</code>).
+                  </li>
+                  <li>
+                    <code>.../blob/&lt;ref&gt;/&lt;pfad&gt;/app.yaml</code> — Pfad-Feld kann leer bleiben.
+                  </li>
+                </ul>
+              </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="app-yaml-path" className="text-slate-700">
-                Pfad zur <code>app.yaml</code> (optional)
+                Pfad zur <code>app.yaml</code> {treeUrlNeedsPath ? <span className="text-red-500">*</span> : '(optional)'}
               </Label>
               <Input
                 id="app-yaml-path"
-                placeholder="app.yaml"
+                placeholder="unterordner/app.yaml"
                 value={appYamlPath}
                 onChange={(e) => setAppYamlPath(e.target.value)}
                 className="font-mono text-sm"
                 maxLength={500}
               />
               <p className="text-xs text-slate-500">
-                Standard ist <code>app.yaml</code> direkt im angegebenen Ordner.
+                Relativ zur Repo-Wurzel; muss auf <code>.yaml</code> oder <code>.yml</code> enden.
                 Maximal 50 Dateien pro Ordner, max. 1 MB pro Datei.
               </p>
+              {treeUrlNeedsPath && (
+                <Alert className="border-amber-200 bg-amber-50">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-amber-800 text-xs">
+                    Die URL zeigt auf einen Ordner (<code>tree/…</code>). Bitte den{' '}
+                    Pfad zur <code>app.yaml</code> ergänzen — sonst lehnt der Import ab.
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
 
             {/* Sichtbarkeit: bestimmt, ob das Template gleich im Marktplatz

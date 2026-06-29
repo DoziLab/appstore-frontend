@@ -150,8 +150,21 @@ export function AppStore({ onDeploy }: AppStoreProps) {
     if (!template.name.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false;
     }
-    if (visibilityFilter !== 'all' && template.visibility !== visibilityFilter) {
-      return false;
+    if (visibilityFilter !== 'all') {
+      // „Öffentlich" filtert auch eigene Templates ein, deren Marktplatz-
+      // Veröffentlichung noch auf Erst-Genehmigung wartet (publish_requested):
+      // sie tragen aktuell visibility=private, gehören aber konzeptuell in den
+      // „Öffentlich"-Tab — sonst verschwinden sie für den Owner aus dem Blick.
+      // „Privat" zeigt nur „echt-private" (kein laufender Marktplatz-Wunsch).
+      if (visibilityFilter === 'public') {
+        const isPublicLike =
+          template.visibility === 'public' || template.publish_requested === true;
+        if (!isPublicLike) return false;
+      } else if (visibilityFilter === 'private') {
+        if (template.visibility !== 'private' || template.publish_requested === true) {
+          return false;
+        }
+      }
     }
     if (ownershipFilter === 'mine' && template.owner_id !== myInternalUserId) {
       return false;
@@ -308,6 +321,18 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                             Öffentlich
                           </Badge>
                         )}
+                        {/* Erst-Veröffentlichung-Hinweis: das Template ist
+                            noch PRIVATE in der DB, aber der Owner hat es
+                            für die Marketplace beantragt. Wir zeigen es
+                            visuell wie ein angefragtes „öffentlich" —
+                            blau-amber-Mix wäre verwirrend, deshalb
+                            durchgängig amber wie der overall-badge. */}
+                        {template.visibility === 'private'
+                          && template.publish_requested === true && (
+                            <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">
+                              Öffentlich (offen)
+                            </Badge>
+                        )}
                       </div>
                     </div>
                     <CardTitle className="text-slate-900 line-clamp-2 min-h-[3.5rem]">{template.name}</CardTitle>
@@ -436,6 +461,12 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                 />
                 {selectedTemplate.visibility === 'public' && (
                   <Badge className="bg-blue-100 text-blue-700">Öffentlich</Badge>
+                )}
+                {selectedTemplate.visibility === 'private'
+                  && selectedTemplate.publish_requested === true && (
+                    <Badge className="bg-amber-100 text-amber-700">
+                      Öffentlich (offen)
+                    </Badge>
                 )}
               </div>
 

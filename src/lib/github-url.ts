@@ -85,3 +85,29 @@ export function buildGithubUrl(parts: {
     .join("/");
   return `${base}/${refSeg}/${pathSeg}`;
 }
+
+/** Baut eine GitHub-Edit-URL für eine konkrete Datei. Genutzt vom UI, wenn
+ *  ein Backend-Fehler dem Owner empfiehlt „bumpe `app.version` im Repo": der
+ *  Edit-Button springt direkt in GitHubs Web-Editor für die `app.yaml`.
+ *
+ *  Format laut GitHub-Convention:
+ *    https://github.com/{owner}/{repo}/edit/{ref}/{path}
+ *  Falls kein ref bekannt ist, fallen wir auf `main` zurück — der Owner kann
+ *  im GitHub-UI nachträglich den Branch wechseln, das ist weniger störend
+ *  als ein 404 wegen fehlendem Branch.
+ */
+export function buildGithubEditUrl(parts: {
+  owner: string;
+  repo: string;
+  ref?: string | null;
+  path: string;
+}): string {
+  const ref = parts.ref ?? "main";
+  const refSeg = encodeURIComponent(ref);
+  const pathSeg = parts.path
+    .split("/")
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join("/");
+  return `https://github.com/${parts.owner}/${parts.repo}/edit/${refSeg}/${pathSeg}`;
+}

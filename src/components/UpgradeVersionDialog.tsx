@@ -1,15 +1,22 @@
-// Auswahl- und Bestätigungsdialog für „Aktualisieren": der Owner wählt eine
-// strikt neuere, bereits importierte Version, das Backend setzt sie via
-// POST /api/v1/template-versions/{id}/activate als aktiv (und deaktiviert
-// dabei automatisch die bisherige Aktive). Approval ist hier kein Faktor —
-// inaktive Versionen können den Status `pending`/`approved`/`rejected` haben;
-// das wird zur Information angezeigt, blockiert die Aktivierung aber nicht.
+// „Aktive Version ändern" — Auswahl- und Bestätigungsdialog: der Owner
+// wählt eine bereits importierte Version (auch ältere!), das Backend setzt
+// sie via POST /api/v1/template-versions/{id}/activate als aktiv und
+// deaktiviert dabei automatisch die bisherige Aktive. Approval ist hier
+// kein Faktor — inaktive Versionen können den Status `pending`/`approved`/
+// `rejected` haben; das wird zur Information angezeigt, blockiert die
+// Aktivierung aber nicht.
 //
-// Die Vorauswahl der Kandidaten (Downgrade-Filter) macht der Aufrufer in
-// TemplateOwnerDetailDialog; hier kommt nur die fertige Liste an.
+// Downgrade-Hinweis: bewusst keine Strictly-Newer-Sperre. Wenn die jüngste
+// Version z.B. einen Bug hat, soll der Owner zurück auf eine ältere
+// Version wechseln können. Backend (`activate_version` +
+// `deactivate_other_versions`) erlaubt das atomar.
+//
+// Die Vorauswahl der Kandidaten macht der Aufrufer in
+// TemplateOwnerDetailDialog; hier kommt nur die fertige Liste an. Aktive
+// Version wird vom Aufrufer aus der Liste ausgeschlossen.
 
 import { useEffect, useState } from "react";
-import { ArrowUpCircle, GitBranch } from "lucide-react";
+import { ArrowLeftRight, GitBranch } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import {
   Dialog,
@@ -34,7 +41,7 @@ interface Props {
   onActivated: () => void;
 }
 
-export function UpgradeVersionDialog({
+export function ChangeActiveVersionDialog({
   open,
   onOpenChange,
   candidates,
@@ -55,7 +62,7 @@ export function UpgradeVersionDialog({
     setBusy(true);
     try {
       await activateTemplateVersion(selected);
-      toast.success("Version aktiviert.");
+      toast.success("Aktive Version geändert.");
       onActivated();
     } catch (err) {
       toast.error(
@@ -71,12 +78,13 @@ export function UpgradeVersionDialog({
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ArrowUpCircle className="w-5 h-5 text-teal-600" />
-            Auf neuere Version aktualisieren
+            <ArrowLeftRight className="w-5 h-5 text-teal-600" />
+            Aktive Version ändern
           </DialogTitle>
           <DialogDescription>
-            Wähle eine bereits importierte, neuere Version. Downgrades sind
-            nicht möglich.
+            Wähle die Version, die im Deployment-Wizard vorausgewählt werden
+            soll. Du kannst auch zu einer älteren Version wechseln —
+            Downgrades sind erlaubt.
           </DialogDescription>
         </DialogHeader>
 
@@ -88,8 +96,9 @@ export function UpgradeVersionDialog({
 
         {candidates.length === 0 ? (
           <p className="text-sm text-slate-500 italic">
-            Keine neuere Version verfügbar. Importiere zunächst eine neue
-            Version aus dem verknüpften Repository.
+            Es gibt keine weitere Version, die du aktivieren könntest.
+            Importiere zunächst eine neue Version aus dem verknüpften
+            Repository.
           </p>
         ) : (
           <RadioGroup
@@ -133,10 +142,14 @@ export function UpgradeVersionDialog({
             onClick={handleActivate}
             disabled={!selected || busy || candidates.length === 0}
           >
-            {busy ? "Wird aktiviert…" : "Aktivieren"}
+            {busy ? "Wird aktiviert…" : "Als aktiv setzen"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
+
+// Backwards-compat alias: andere Imports referenzieren ggf. noch den alten
+// Namen. Wenn alle Aufrufer umgezogen sind, kann dieser Re-Export raus.
+export { ChangeActiveVersionDialog as UpgradeVersionDialog };

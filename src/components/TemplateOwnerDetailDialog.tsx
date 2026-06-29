@@ -2,23 +2,25 @@
 // generischen Details-Modal aus AppStore.tsx. Zeigt alle Felder, listet
 // Versionen mit ihrem Approval-Status, und bietet zwei Aktionen:
 //
-//   • „Aktualisieren" — eine neuere bereits importierte Version aktivieren
-//     (POST /api/v1/template-versions/{id}/activate). Kein Downgrade möglich:
-//     die Auswahl ist auf strikt-neuere Versionen als die aktuell aktive
-//     beschränkt (siehe `lib/version.ts → isStrictlyNewer`).
+//   • „Aktive Version ändern" — eine bereits importierte Version zur aktiven
+//     (= Standard-Vorauswahl im Deployment-Wizard) machen
+//     (POST /api/v1/template-versions/{id}/activate). Downgrades auf ältere
+//     Versionen sind erlaubt — die Auswahl umfasst ALLE nicht-aktiven
+//     Versionen, ohne Strict-Newer-Beschränkung.
 //
 //   • „Approven/Ablehnen" — nur sichtbar für Admins (Backend setzt
 //     `require_roles(ADMIN)` auf den Approve-Endpunkten). Wenn der Owner
 //     selbst Admin ist, kann er das also auf seinem eigenen Template tun;
 //     ansonsten muss ein Admin die Approval-Queue abarbeiten.
 //
-// Der eigentliche Versions-Upgrade-Dialog liegt in einem eigenen Component
-// (UpgradeVersionDialog), damit das hier nicht zu groß wird.
+// Der eigentliche „Aktive Version ändern"-Dialog liegt in einem eigenen
+// Component (ChangeActiveVersionDialog, datei UpgradeVersionDialog.tsx aus
+// Migration-Gründen), damit das hier nicht zu groß wird.
 
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
-  ArrowUpCircle,
+  ArrowLeftRight,
   Calendar,
   Check,
   CheckCircle2,
@@ -67,9 +69,8 @@ import {
   type TemplateUpdatePayload,
   type TemplateVersionDto,
 } from "../api/templates";
-import { isStrictlyNewer } from "../lib/version";
 import { deriveTemplateOverallStatus } from "../lib/template-status";
-import { UpgradeVersionDialog } from "./UpgradeVersionDialog";
+import { ChangeActiveVersionDialog } from "./UpgradeVersionDialog";
 import { CheckRemoteVersionsDialog } from "./CheckRemoteVersionsDialog";
 
 interface Props {
@@ -157,13 +158,12 @@ export function TemplateOwnerDetailDialog({
   // leiten wir hier eine UI-taugliche Aggregations-Bewertung ab.
   const overallStatus = deriveTemplateOverallStatus(template);
 
-  // Versionen, auf die der Owner hochziehen kann: strikt neuer als die
-  // aktuelle aktive Version. Wenn (noch) keine aktive existiert, jede.
-  const upgradeCandidates = versions.filter((v) => {
-    if (v.is_active) return false;
-    if (!activeVersion) return true;
-    return isStrictlyNewer(v, activeVersion);
-  });
+  // Kandidaten für „Aktive Version ändern": alle nicht-aktiven Versionen.
+  // Bewusst KEIN strict-newer-Filter mehr — der Owner darf jederzeit auch
+  // zu einer älteren Version zurück (z.B. wenn die jüngste einen Bug
+  // hat). Backend (`activate_version` + `deactivate_other_versions`)
+  // unterstützt den Switch in beide Richtungen atomar.
+  const activeChangeCandidates = versions.filter((v) => !v.is_active);
 
   const handleApprove = async (versionId: string) => {
     setBusyVersionId(versionId);
@@ -537,16 +537,16 @@ export function TemplateOwnerDetailDialog({
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={upgradeCandidates.length === 0}
+                    disabled={activeChangeCandidates.length === 0}
                     onClick={() => setUpgradeOpen(true)}
                     title={
-                      upgradeCandidates.length === 0
-                        ? "Keine neuere Version verfügbar"
-                        : undefined
+                      activeChangeCandidates.length === 0
+                        ? "Es gibt keine weitere Version, die du aktivieren könntest"
+                        : "Aktive Version (Standard-Vorauswahl im Deployment-Wizard) ändern"
                     }
                   >
-                    <ArrowUpCircle className="w-4 h-4 mr-2" />
-                    Aktualisieren
+                    <ArrowLeftRight className="w-4 h-4 mr-2" />
+                    Aktive Version ändern
                   </Button>
                 </div>
               </div>
@@ -782,10 +782,10 @@ export function TemplateOwnerDetailDialog({
         </DialogContent>
       </Dialog>
 
-      <UpgradeVersionDialog
+      <ChangeActiveVersionDialog
         open={upgradeOpen}
         onOpenChange={setUpgradeOpen}
-        candidates={upgradeCandidates}
+        candidates={activeChangeCandidates}
         activeVersion={activeVersion ?? null}
         onActivated={() => {
           setUpgradeOpen(false);
@@ -799,7 +799,7 @@ export function TemplateOwnerDetailDialog({
         onOpenChange={setCheckRemoteOpen}
         onImported={() => {
           // Liste neu laden, damit die frisch importierten Versionen
-          // in der Versionsliste und im Aktualisieren-Dialog auftauchen.
+          // in der Versionsliste und im „Aktive Version ändern"-Dialog auftauchen.
           onChanged();
         }}
       />

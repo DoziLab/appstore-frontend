@@ -57,6 +57,25 @@ export function GithubIntegrationCard() {
     refresh();
   }, []);
 
+  // Wenn der Nutzer per Browser-Back oder Tab-Wechsel zurückkommt (z.B. von
+  // der GitHub-Install-Page, ohne dass /github/connected unsere Komponente
+  // neu gemountet hat — etwa weil die Navigation gecancelt wurde oder per
+  // Back-Button), kann `busy` aus dem vorigen handleConnect()-Aufruf noch
+  // auf true stehen. Das macht den Connect-Button via disabled:opacity-50
+  // auf bg-slate-900 optisch fast unsichtbar (#149). Reset, sobald die Page
+  // wieder im Vordergrund ist bzw. aus dem bfcache wieder angezeigt wird.
+  useEffect(() => {
+    const reset = () => {
+      if (document.visibilityState === 'visible') setBusy(false);
+    };
+    document.addEventListener('visibilitychange', reset);
+    window.addEventListener('pageshow', reset);
+    return () => {
+      document.removeEventListener('visibilitychange', reset);
+      window.removeEventListener('pageshow', reset);
+    };
+  }, []);
+
   const handleConnect = async () => {
     setBusy(true);
     try {

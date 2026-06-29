@@ -88,6 +88,13 @@ export function DeploymentWizard({
   >([]);
   const [numberOfStacks, setNumberOfStacks] = useState<number>(1);
   const [numberOfGroups, setNumberOfGroups] = useState<number>(1);
+  // Raw string inputs for the number fields. We keep these separate from the
+  // numeric state so the user can transiently clear the field (e.g. backspace
+  // the existing "1" before typing "2") without us ever pushing a 0 into the
+  // DOM. A 0 would otherwise trip the browser's native min="1" validation and
+  // show a "Wert muss größer als oder gleich 1 sein" tooltip mid-edit.
+  const [numberOfStacksInput, setNumberOfStacksInput] = useState<string>("1");
+  const [numberOfGroupsInput, setNumberOfGroupsInput] = useState<string>("1");
   const [templateVersions, setTemplateVersions] = useState<
     TemplateVersionDto[]
   >([]);
@@ -289,20 +296,21 @@ export function DeploymentWizard({
 
  // Helper function to validate and apply group count
   const validateAndApplyGroupCount = useCallback(() => {
-    let value = numberOfGroups;
-    if (typeof value === "string") {
-      value = parseInt(value) || 1;
-    }
-    // Round down if decimal
-    value = Math.floor(value);
-    // Constrain to valid range
-    value = Math.max(1, Math.min(50, value));
+    // Read from the raw string input so an empty/invalid value falls back to
+    // 1 instead of getting stuck at whatever transient state the numeric
+    // setter had during typing.
+    const parsed = parseInt(numberOfGroupsInput, 10);
+    const value = Math.max(
+      1,
+      Math.min(50, Number.isFinite(parsed) ? Math.floor(parsed) : 1),
+    );
     setNumberOfGroups(value);
-    
+    setNumberOfGroupsInput(String(value));
+
     // Update studentGroups to match the new count
     const currentGroupCount = studentGroups.length;
     let updatedGroups = [...studentGroups];
-    
+
     if (value > currentGroupCount) {
       // Add new empty groups
       for (let i = currentGroupCount; i < value; i++) {
@@ -316,21 +324,19 @@ export function DeploymentWizard({
       // Remove groups from the end
       updatedGroups = updatedGroups.slice(0, value);
     }
-    
+
     setStudentGroups(updatedGroups);
-  }, [numberOfGroups, studentGroups]);
+  }, [numberOfGroupsInput, studentGroups]);
 
   // Helper function to validate and apply stack count
   const validateAndApplyStackCount = useCallback(() => {
-    let value = numberOfStacks;
-    if (typeof value === "string") {
-      value = parseInt(value) || 1;
-    }
-    // Round down if decimal
-    value = Math.floor(value);
-    // Constrain to valid range
-    value = Math.max(1, Math.min(50, value));
+    const parsed = parseInt(numberOfStacksInput, 10);
+    const value = Math.max(
+      1,
+      Math.min(50, Number.isFinite(parsed) ? Math.floor(parsed) : 1),
+    );
     setNumberOfStacks(value);
+    setNumberOfStacksInput(String(value));
     // Initialize stacks
     const stacks = Array.from({ length: value }).map((_, i) => ({
       stackId: `stack-${i + 1}`,
@@ -338,7 +344,7 @@ export function DeploymentWizard({
       assignedGroups: [],
     }));
     setGroupStackAssignments(stacks);
-  }, [numberOfStacks]);
+  }, [numberOfStacksInput]);
 
   // Validation function for step 0
   const validateStep0 = useCallback((): boolean => {
@@ -387,6 +393,7 @@ export function DeploymentWizard({
   // Update numberOfGroups when studentGroups changes (for UI consistency)
   useEffect(() => {
     setNumberOfGroups(studentGroups.length);
+    setNumberOfGroupsInput(String(studentGroups.length));
   }, [studentGroups.length]);
 
   // Auto-update group names when only one student is in a group
@@ -1060,18 +1067,12 @@ export function DeploymentWizard({
                   min="1"
                   max="50"
                   className="mt-2"
-                  value={numberOfGroups}
+                  value={numberOfGroupsInput}
                   onChange={(e) => {
-                    // Allow empty input while typing
-                    const inputValue = e.target.value;
-                    if (inputValue === "") {
-                      setNumberOfGroups(0); // Temporarily allow 0 for empty state
-                      return;
-                    }
-                    const parsed = parseInt(inputValue);
-                    if (!isNaN(parsed)) {
-                      setNumberOfGroups(parsed);
-                    }
+                    // Keep the raw string so the field may transiently be
+                    // empty while the user is editing — normalization happens
+                    // on blur / Enter via validateAndApplyGroupCount.
+                    setNumberOfGroupsInput(e.target.value);
                   }}
                   onKeyDown={(e) => {
                     // Validate and apply when Enter is pressed
@@ -1199,18 +1200,12 @@ export function DeploymentWizard({
                   min="1"
                   max="50"
                   className="mt-2"
-                  value={numberOfStacks}
+                  value={numberOfStacksInput}
                   onChange={(e) => {
-                    // Allow empty input while typing
-                    const inputValue = e.target.value;
-                    if (inputValue === "") {
-                      setNumberOfStacks(0); // Temporarily allow 0 for empty state
-                      return;
-                    }
-                    const parsed = parseInt(inputValue);
-                    if (!isNaN(parsed)) {
-                      setNumberOfStacks(parsed);
-                    }
+                    // Keep the raw string so the field may transiently be
+                    // empty while the user is editing — normalization happens
+                    // on blur / Enter via validateAndApplyStackCount.
+                    setNumberOfStacksInput(e.target.value);
                   }}
                   onKeyDown={(e) => {
                     // Validate and apply when Enter is pressed

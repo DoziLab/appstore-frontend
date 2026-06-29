@@ -220,7 +220,13 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
               <Alert className="border-amber-200 bg-amber-50">
                 <Plug className="h-4 w-4 text-amber-600" />
                 <AlertDescription className="text-amber-800">
-                  <div className="flex items-center justify-between gap-3">
+                  {/* w-full auf den inneren Wrapper: AlertDescription ist ein
+                      CSS-Grid-Item mit justify-items:start, das Kinder sonst
+                      auf ihre intrinsische Breite schrumpft — dann hat das
+                      flex justify-between nichts zum Auseinanderschieben und
+                      der „GitHub verbinden"-Button rutscht aus dem
+                      DialogContent (siehe #149). */}
+                  <div className="flex items-center justify-between gap-3 w-full">
                     <span>
                       Dein GitHub-Account ist noch nicht verbunden. Ohne Verbindung
                       kann das Backend keine privaten oder organisationsinternen

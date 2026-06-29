@@ -850,11 +850,11 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
               <CardTitle>Aktionen</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {deployment.status === 'running' && (
+              {/*deployment.status === 'running' && (
                 <Button variant="outline" className="w-full opacity-50 cursor-not-allowed" disabled>
                   VM starten
                 </Button>
-              )}
+              )*/}
 
               {/* Retry-from-failed (separate flow from the delete/cleanup action) */}
               {deployment.status === 'failed' && (

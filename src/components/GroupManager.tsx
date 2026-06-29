@@ -94,14 +94,16 @@ export function GroupManager({
     const numGroups = groups.length;
     if (numGroups === 0 || students.length === 0) return;
 
-    const studentsPerGroup = Math.ceil(students.length / numGroups);
-    const newGroups = groups.map((group, index) => ({
+    // Use round-robin distribution to ensure all groups get students
+    const newGroups = groups.map((group) => ({
       ...group,
-      students: students.slice(
-        index * studentsPerGroup,
-        (index + 1) * studentsPerGroup
-      ),
+      students: [] as KeycloakUser[],
     }));
+
+    students.forEach((student, index) => {
+      const groupIndex = index % numGroups;
+      newGroups[groupIndex].students.push(student);
+    });
 
     onGroupsChange(newGroups);
   };
@@ -216,7 +218,7 @@ export function GroupManager({
                         onChange={(e) =>
                           renameGroup(group.groupId, e.target.value)
                         }
-                        className="text-sm font-medium border-0 focus-visible:ring-0 px-0"
+                        className="text-sm font-medium border-0 focus-visible:ring-0 pl-3"
                       />
                       <Badge variant="secondary" className="text-xs">
                         {group.students.length} Student

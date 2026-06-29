@@ -14,7 +14,8 @@
 //    sowieso raus; wir bleiben defensiv und erwarten group_id != null in
 //    allen rows). SSH-Key-Download geht über onDownloadSshKey-Prop, die
 //    den dedizierten /access/{id}/ssh-key-Endpoint anstößt.
-import { Copy, Download, Eye, EyeOff } from "lucide-react";
+import { useState } from "react";
+import { Copy, Download, Eye, EyeOff, Key, Loader2, ShieldCheck } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -59,8 +60,26 @@ export interface CredentialInstanceCardProps {
    * der die Funktion mit (accessId, username) aufruft. Im Student-Mode
    * unbedingt setzen — dort gibt's keinen eingebetteten ssh_private_key
    * im Bundle-Download, der dedizierte Endpoint ist der einzige Pfad.
+   *
+   * Im Lecturer-Mode ebenfalls setzen, sobald wir den `/access/{id}/ssh-key`-
+   * Endpoint nutzen wollen — er liefert den PEM-Body via Browser-Download
+   * statt über das eingebettete Feld. Inline-Anzeige + Copy funktionieren
+   * unabhängig vom Handler (greifen direkt auf `access.ssh_private_key`).
+   *
+   * Darf eine `Promise` zurückgeben — die Row zeigt während des Requests
+   * einen Spinner, damit der Nutzer keinen Doppelklick auslöst.
    */
-  onDownloadSshKey?: (accessId: string, username: string | null) => void;
+  onDownloadSshKey?: (
+    accessId: string,
+    username: string | null,
+  ) => void | Promise<void>;
+  /**
+   * Username des eingeloggten Lecturers (Keycloak `preferred_username`).
+   * Wird als Heuristik für „dies ist der Admin-Zugang" verwendet — das
+   * Backend liefert (noch) kein explizites `is_admin`-Flag, also matchen
+   * wir case-insensitive gegen `access.username`. Im Student-Mode irrelevant.
+   */
+  currentUsername?: string | null;
 }
 
 export function CredentialInstanceCard({
@@ -71,6 +90,7 @@ export function CredentialInstanceCard({
   handleCopy,
   getMaskedPassword,
   onDownloadSshKey,
+  currentUsername,
 }: CredentialInstanceCardProps) {
   // Lecturer-View: Dozent-Zeilen (group_id IS NULL) vs. Gruppen-Zeilen.
   // Student-View: alle Zeilen sind Gruppen-Zeilen (Backend filtert NULL aus),
@@ -142,6 +162,7 @@ export function CredentialInstanceCard({
                     handleCopy={handleCopy}
                     getMaskedPassword={getMaskedPassword}
                     onDownloadSshKey={onDownloadSshKey}
+                    currentUsername={currentUsername}
                   />
                 ))}
               </TabsContent>
@@ -157,6 +178,7 @@ export function CredentialInstanceCard({
                   handleCopy={handleCopy}
                   getMaskedPassword={getMaskedPassword}
                   onDownloadSshKey={onDownloadSshKey}
+                  currentUsername={currentUsername}
                 />
               </TabsContent>
             )}
@@ -170,6 +192,7 @@ export function CredentialInstanceCard({
             handleCopy={handleCopy}
             getMaskedPassword={getMaskedPassword}
             onDownloadSshKey={onDownloadSshKey}
+            currentUsername={currentUsername}
           />
         ) : (
           <p className="text-sm text-slate-500">Keine Zugänge verfügbar.</p>
@@ -187,6 +210,7 @@ function GroupAccordion({
   handleCopy,
   getMaskedPassword,
   onDownloadSshKey,
+  currentUsername,
 }: {
   groupsByLabel: Map<string, CredentialAccess[]>;
   instanceId: string;
@@ -194,7 +218,11 @@ function GroupAccordion({
   togglePasswordVisibility: (key: string) => void;
   handleCopy: (value: string | null | undefined, label: string) => void;
   getMaskedPassword: (pw: string | null | undefined) => string;
-  onDownloadSshKey?: (accessId: string, username: string | null) => void;
+  onDownloadSshKey?: (
+    accessId: string,
+    username: string | null,
+  ) => void | Promise<void>;
+  currentUsername?: string | null;
 }) {
   return (
     <Accordion
@@ -227,6 +255,7 @@ function GroupAccordion({
                 handleCopy={handleCopy}
                 getMaskedPassword={getMaskedPassword}
                 onDownloadSshKey={onDownloadSshKey}
+                currentUsername={currentUsername}
               />
             ))}
           </AccordionContent>
@@ -244,6 +273,7 @@ function AccessRow({
   handleCopy,
   getMaskedPassword,
   onDownloadSshKey,
+  currentUsername,
 }: {
   accessKey: string;
   access: CredentialAccess;
@@ -251,7 +281,11 @@ function AccessRow({
   togglePasswordVisibility: (key: string) => void;
   handleCopy: (value: string | null | undefined, label: string) => void;
   getMaskedPassword: (pw: string | null | undefined) => string;
-  onDownloadSshKey?: (accessId: string, username: string | null) => void;
+  onDownloadSshKey?: (
+    accessId: string,
+    username: string | null,
+  ) => void | Promise<void>;
+  currentUsername?: string | null;
 }) {
   const urlLabel =
     access.access_type === "ssh"
@@ -261,19 +295,66 @@ function AccessRow({
         : "Connection URL";
 
   const isVisible = passwordVisibility[accessKey] === true;
-  // SSH-Key-Download nur zeigen, wenn (a) der Caller einen Handler liefert,
-  // (b) es ein SSH-Access ist und (c) der Backend-Eintrag tatsächlich eine
-  // access.id liefert. Lecturer-Mode kann optional ohne Handler laufen und
-  // den Key im Bundle-Download mitschicken.
+
+  // Inline-PEM-Anzeige hat einen eigenen Toggle — Standard zugeklappt,
+  // weil die meisten Nutzer den Download- oder Copy-Pfad wollen, nicht den
+  // rohen Text. State lebt lokal in der Row: kein Parent muss das wissen
+  // und es überlebt einen Re-Mount der Card sowieso nicht.
+  const [sshKeyVisible, setSshKeyVisible] = useState(false);
+  // In-flight-Flag für den Download. Verhindert Doppelklicks und treibt den
+  // Loader im Button.
+  const [sshDownloading, setSshDownloading] = useState(false);
+
+  // SSH-Key-Block nur zeigen, wenn der Eintrag (a) ein SSH-Access ist und
+  // (b) tatsächlich einen PEM trägt. Alte Deployments (vor Feature-Rollout)
+  // haben `ssh_private_key === null` und sollen die Sektion gar nicht erst
+  // sehen. Eye/Copy hängen am eingebetteten Feld — funktionieren also auch
+  // ohne Download-Handler. Der Download-Button braucht zusätzlich eine
+  // `access.id` (Backend liefert die seit der Schema-Erweiterung immer mit,
+  // aber wir bleiben defensiv).
+  const hasPrivateKey =
+    access.access_type === "ssh" && !!access.ssh_private_key;
   const canDownloadKey =
-    !!onDownloadSshKey && access.access_type === "ssh" && !!access.id;
+    hasPrivateKey && !!onDownloadSshKey && !!access.id;
+
+  // Admin-Heuristik: Der Access-Eintrag, dessen `username` zum eingeloggten
+  // Lecturer (Keycloak `preferred_username`) passt, ist der Admin-Zugang.
+  // Backend liefert (noch) kein explizites Flag. Case-insensitive, weil
+  // Keycloak und OpenStack-User unterschiedliches Casing tragen können.
+  const isAdminAccess =
+    access.access_type === "ssh" &&
+    !!currentUsername &&
+    !!access.username &&
+    access.username.toLowerCase() === currentUsername.toLowerCase();
+
+  const triggerDownload = async () => {
+    if (!onDownloadSshKey || !access.id || sshDownloading) return;
+    setSshDownloading(true);
+    try {
+      await onDownloadSshKey(access.id, access.username);
+    } finally {
+      setSshDownloading(false);
+    }
+  };
 
   return (
     <div className="rounded-lg border border-slate-200 p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h4 className="text-sm font-medium text-slate-900">
-          {accessTypeLabels[access.access_type] || access.access_type}
-        </h4>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <h4 className="text-sm font-medium text-slate-900">
+            {accessTypeLabels[access.access_type] || access.access_type}
+          </h4>
+          {isAdminAccess && (
+            <Badge
+              variant="default"
+              className="bg-teal-100 text-teal-700 hover:bg-teal-100 gap-1"
+              title="Dieser Eintrag ist dein Dozenten-Zugang. SSH-Key gibt dir sudo-Rechte auf der VM."
+            >
+              <ShieldCheck className="w-3 h-3" />
+              Admin
+            </Badge>
+          )}
+        </div>
         <Badge variant="outline">{access.access_type}</Badge>
       </div>
 
@@ -361,17 +442,60 @@ function AccessRow({
           <span className="text-sm text-slate-900">{access.port ?? "-"}</span>
         </div>
 
-        {canDownloadKey && (
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs text-slate-500">SSH Private Key</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onDownloadSshKey?.(access.id, access.username)}
-            >
-              <Download className="w-4 h-4 mr-2" />
-              PEM herunterladen
-            </Button>
+        {hasPrivateKey && (
+          <div className="space-y-2 pt-2 border-t border-slate-100">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+                <Key className="w-3.5 h-3.5" />
+                SSH Private Key
+                {isAdminAccess && (
+                  <span className="text-slate-400">· Admin-Zugang</span>
+                )}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSshKeyVisible((v) => !v)}
+                  title={sshKeyVisible ? "Key ausblenden" : "Key anzeigen"}
+                >
+                  {sshKeyVisible ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCopy(access.ssh_private_key, "SSH Private Key")}
+                  disabled={!access.ssh_private_key}
+                  title="In Zwischenablage kopieren"
+                >
+                  <Copy className="w-4 h-4" />
+                </Button>
+                {canDownloadKey && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={triggerDownload}
+                    disabled={sshDownloading}
+                    title="Als .pem-Datei herunterladen"
+                  >
+                    {sshDownloading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4" />
+                    )}
+                  </Button>
+                )}
+              </div>
+            </div>
+            {sshKeyVisible && (
+              <pre className="text-xs bg-slate-50 border border-slate-200 rounded-md p-3 font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-64">
+{access.ssh_private_key}
+              </pre>
+            )}
           </div>
         )}
       </div>

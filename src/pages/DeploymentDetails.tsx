@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import React from "react";
 import {
   CheckCircle2,
@@ -45,12 +45,14 @@ import {
   DeploymentLogDto,
   getDeploymentCredentials,
   extendDeployment,
+  downloadSshKey,
   type RuntimeMonths,
 } from "../api/deployments";
 import { type LogPhase, type PhaseStatus } from "./DeploymentDetailsPage";
 import { getExpiryState } from "../utils/deployment";
 import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
 import { CredentialInstanceCard } from "../components/credentials/CredentialInstanceCard";
+import keycloak from "../auth/keycloak";
 
 interface DeploymentStep {
   id: string;
@@ -261,6 +263,45 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
     return "*".repeat(Math.max(8, value.length));
   };
 
+  // Username des eingeloggten Lecturers — Heuristik für „dies ist der
+  // Admin-Eintrag" laut Backend-Briefing. Wenn der `username` eines Access-
+  // Eintrags dem entspricht, badged die CredentialInstanceCard die Zeile als
+  // Admin-Zugang. Backend liefert (noch) kein explizites `is_admin`-Flag.
+  const currentUsername = useMemo<string | null>(() => {
+    const t = (keycloak?.tokenParsed ?? {}) as Record<string, any>;
+    const u = (t.preferred_username || "").toString().trim();
+    return u || null;
+  }, []);
+
+  const handleDownloadSshKey = useCallback(
+    async (accessId: string, username: string | null) => {
+      try {
+        await downloadSshKey(deployment.id, accessId, activeProjectId, username);
+        toast.success("SSH-Key heruntergeladen.");
+      } catch (err) {
+        const status = (err as { status?: number }).status;
+        if (status === 400) {
+          toast.error("openstack_project_id fehlt — bitte Projekt wählen.");
+        } else if (status === 401) {
+          toast.error("Session abgelaufen — bitte erneut anmelden.");
+        } else if (status === 403) {
+          toast.error("Keine Berechtigung für diesen SSH-Key.");
+        } else if (status === 404) {
+          // Backend unterscheidet im 404er-Body zwischen „Deployment nicht
+          // gefunden", „Access-Eintrag nicht gefunden" und „kein SSH-Key
+          // hinterlegt". Wir können das hier nicht sauber auseinanderhalten,
+          // also bleibt es bei einer allgemeinen Meldung. Der mit Abstand
+          // häufigste Fall (alte Deployments) ist „kein Key" — die Card
+          // sollte den Button gar nicht erst anzeigen, aber falls doch:
+          toast.error("Für diesen Zugang ist kein SSH-Key hinterlegt.");
+        } else {
+          toast.error("SSH-Key-Download fehlgeschlagen.");
+        }
+      }
+    },
+    [deployment.id, activeProjectId],
+  );
+
   const loadCredentials = useCallback(async () => {
     if (credentialsLoading) return;
     setCredentialsLoading(true);
@@ -300,14 +341,22 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
         const accessBlocks = instance.accesses
           .map((access) => {
             const title = accessTypeLabels[access.access_type] || access.access_type;
-            return [
+            const lines: string[] = [
               title,
               `Username: ${access.username ?? "-"}`,
               `Password: ${access.password ?? "-"}`,
               `Connection URL: ${access.connection_url ?? "-"}`,
               `Port: ${access.port ?? "-"}`,
-              "",
-            ].join("\n");
+            ];
+            // PEM nur einfügen, wenn vorhanden — sonst landen massenhaft
+            // „SSH Private Key: -"-Zeilen im Bundle und vermitteln, dass
+            // jeder Eintrag einen Key hätte, was vor dem Feature-Rollout
+            // nicht stimmt.
+            if (access.ssh_private_key) {
+              lines.push("SSH Private Key:", access.ssh_private_key);
+            }
+            lines.push("");
+            return lines.join("\n");
           })
           .join("\n");
         return `${header}${accessBlocks}`.trimEnd();
@@ -962,6 +1011,8 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
                       togglePasswordVisibility={togglePasswordVisibility}
                       handleCopy={handleCopy}
                       getMaskedPassword={getMaskedPassword}
+                      onDownloadSshKey={handleDownloadSshKey}
+                      currentUsername={currentUsername}
                     />
                   ))}
                 </div>

@@ -239,6 +239,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
     rdp: "RDP",
     vnc: "VNC",
     database: "Database",
+    activation_link: "Aktivierungslink",
   };
 
   const handleCopy = useCallback(async (value: string | null, label: string) => {

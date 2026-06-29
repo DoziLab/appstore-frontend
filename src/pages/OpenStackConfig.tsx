@@ -9,6 +9,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Progress } from '../components/ui/progress';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../components/ui/alert-dialog';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { toast } from 'sonner@2.0.3';
 import {
   listOpenstackProjects,
   getOpenstackProject,
@@ -48,7 +49,6 @@ export function OpenStackConfig() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [formFeedback, setFormFeedback] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
   const [yamlFeedback, setYamlFeedback] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
-  const [deleteFeedback, setDeleteFeedback] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [form, setForm] = useState<OpenstackCredentialsCreate>({
@@ -104,12 +104,10 @@ export function OpenStackConfig() {
     if (!data.password.trim() && existingProject) {
       setFormFeedback({ type: 'error', message: 'Bitte geben Sie das Passwort ein, um die Zugangsdaten zu aktualisieren.' });
       setYamlFeedback(null);
-      setDeleteFeedback(null);
       return;
     }
     setFormFeedback(null);
     setYamlFeedback(null);
-    setDeleteFeedback(null);
     setSaveLoading(true);
     try {
       if (existingProject) {
@@ -119,7 +117,6 @@ export function OpenStackConfig() {
       }
       setFormFeedback({ type: 'success', message: 'Zugangsdaten erfolgreich gespeichert.' });
       setYamlFeedback(null);
-      setDeleteFeedback(null);
       setForm((prev) => ({ ...prev, password: '' }));
       // Refresh project list to get updated data
       const projects = await listOpenstackProjects();
@@ -196,14 +193,12 @@ export function OpenStackConfig() {
     if (syntaxErr) {
       setYamlFeedback({ type: 'error', message: syntaxErr });
       setFormFeedback(null);
-      setDeleteFeedback(null);
       return;
     }
     const result = parseCloudsYaml(yamlInput);
     if (typeof result === 'string') {
       setYamlFeedback({ type: 'error', message: result });
       setFormFeedback(null);
-      setDeleteFeedback(null);
       return;
     }
     const merged: OpenstackCredentialsCreate = {
@@ -222,12 +217,10 @@ export function OpenStackConfig() {
     if (!data.password.trim() && existingProject) {
       setYamlFeedback({ type: 'error', message: 'Bitte geben Sie das Passwort ein, um die Zugangsdaten zu aktualisieren.' });
       setFormFeedback(null);
-      setDeleteFeedback(null);
       return;
     }
     setYamlFeedback(null);
     setFormFeedback(null);
-    setDeleteFeedback(null);
     setYamlLoading(true);
     try {
       if (existingProject) {
@@ -237,7 +230,6 @@ export function OpenStackConfig() {
       }
       setYamlFeedback({ type: 'success', message: 'Zugangsdaten erfolgreich gespeichert.' });
       setFormFeedback(null);
-      setDeleteFeedback(null);
       setForm((prev) => ({ ...prev, password: '' }));
       const projects = await listOpenstackProjects();
       if (projects.length > 0) setExistingProject(projects[0]);
@@ -257,13 +249,11 @@ export function OpenStackConfig() {
       await deleteOpenstackProject(existingProject.id);
       setExistingProject(null);
       setForm({ auth_url: '', username: '', password: '', user_domain_name: 'Default', region_name: '', openstack_project_id: '', openstack_project_name: '' });
-      setDeleteFeedback({ type: 'success', message: 'Projekt erfolgreich entfernt.' });
+      toast.success('Projekt erfolgreich entfernt.');
       setFormFeedback(null);
       setYamlFeedback(null);
     } catch (err) {
-      setDeleteFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Fehler beim Löschen des Projekts' });
-      setFormFeedback(null);
-      setYamlFeedback(null);
+      toast.error(err instanceof Error ? err.message : 'Fehler beim Löschen des Projekts');
     } finally {
       setDeleteLoading(false);
     }
@@ -285,13 +275,13 @@ export function OpenStackConfig() {
   // Hover-only behaviour: no scroll-based observer
 
   return (
-    <div className="p-8 h-screen box-border flex flex-col">
-      <div className="mb-6 flex-none">
+    <div className="p-8">
+      <div className="mb-6">
         <h1 className="text-slate-900 mb-2">Einstellungen</h1>
         <p className="text-slate-600">Verwalten Sie Ihre OpenStack-Konfiguration und Systemeinstellungen</p>
       </div>
 
-      <div className="flex gap-8 flex-1 overflow-hidden">
+      <div className="flex gap-8">
         {/* Left: internal nav — shrinks to the widest tab label */}
         <aside className="md:block flex-shrink-0 w-auto">
           <nav className="space-y-2">
@@ -338,12 +328,11 @@ export function OpenStackConfig() {
         </aside>
 
         {/* Right: content */}
-        <main className="flex-1 overflow-auto pr-4 space-y-6 settings-scroll">
+        <main className="flex-1 pr-4 space-y-6">
           {/* Connection Status Card */}
           <section
             ref={connectionRef}
             data-section="connection"
-            className="min-h-[120px]"
             aria-labelledby="connection-heading"
             onMouseEnter={() => setHoveredSection('connection')}
             onMouseLeave={() => setHoveredSection(null)}
@@ -365,7 +354,7 @@ export function OpenStackConfig() {
                     )}
                   </div>
                   <div>
-                    <p className="text-slate-900">Verbindungsstatus</p>
+                    <p className="text-slate-900" id="connection-heading">Verbindungsstatus</p>
                     <p className="text-sm text-slate-500">
                       {credentialsLoading ? 'Wird geprüft...' :
                        connectionStatus === 'connected'
@@ -391,10 +380,8 @@ export function OpenStackConfig() {
           </section>
 
           {/* GitHub-Integration — eigenständige Section zwischen Verbindung
-              und Authentifizierung, jetzt mit Scrollspy-Hook (#139). */
-          /* GitHub-Integration — eigene Scrollspy-Section, damit sie auch
-              in der Sidebar-Navigation einen eigenen Tab bekommt
-              (siehe Issue #127). */}
+              und Authentifizierung, mit eigenem Sidebar-Tab und Hover-Hook
+              (siehe #127, #139). */}
           <section
             ref={githubRef}
             data-section="github"
@@ -408,7 +395,6 @@ export function OpenStackConfig() {
           <section
             ref={authRef}
             data-section="authentication"
-            className="min-h-[320px]"
             onMouseEnter={() => setHoveredSection('authentication')}
             onMouseLeave={() => setHoveredSection(null)}
           >
@@ -518,18 +504,21 @@ export function OpenStackConfig() {
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
-                      <Button
-                        type="submit"
-                        className="w-full bg-teal-500 hover:bg-teal-600 text-white mt-4"
-                        disabled={saveLoading || credentialsLoading}
-                      >
-                        {saveLoading ? 'Wird gespeichert...' : 'Zugangsdaten speichern'}
-                      </Button>
-                      {formFeedback && (
-                        <div className={`mt-2 p-3 rounded-lg ${formFeedback.type === 'error' ? 'bg-red-50 border border-red-200 text-sm text-red-700' : 'bg-green-50 border border-green-200 text-sm text-green-700'}`}>
-                          {formFeedback.message}
-                        </div>
-                      )}
+                  </div>
+
+                  <div>
+                    <Button
+                      type="submit"
+                      className="w-full bg-teal-500 hover:bg-teal-600 text-white"
+                      disabled={saveLoading || credentialsLoading}
+                    >
+                      {saveLoading ? 'Wird gespeichert...' : 'Zugangsdaten speichern'}
+                    </Button>
+                    {formFeedback && (
+                      <div className={`mt-2 p-3 rounded-lg ${formFeedback.type === 'error' ? 'bg-red-50 border border-red-200 text-sm text-red-700' : 'bg-green-50 border border-green-200 text-sm text-green-700'}`}>
+                        {formFeedback.message}
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -589,11 +578,6 @@ export function OpenStackConfig() {
                           >
                             {deleteLoading ? 'Wird gelöscht...' : 'Entfernen'}
                           </Button>
-                          {deleteFeedback && (
-                            <div className={`w-full mt-3 p-3 rounded-lg ${deleteFeedback.type === 'error' ? 'bg-red-50 border border-red-200 text-sm text-red-700' : 'bg-green-50 border border-green-200 text-sm text-green-700'}`}>
-                              {deleteFeedback.message}
-                            </div>
-                          )}
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
@@ -606,7 +590,6 @@ export function OpenStackConfig() {
           <section
             ref={quotasRef}
             data-section="quotas"
-            className="min-h-[240px]"
             onMouseEnter={() => setHoveredSection('quotas')}
             onMouseLeave={() => setHoveredSection(null)}
           >

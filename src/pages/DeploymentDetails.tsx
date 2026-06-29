@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   AlertOctagon,
   Calendar,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -52,6 +53,24 @@ import { type LogPhase, type PhaseStatus } from "./DeploymentDetailsPage";
 import { getExpiryState } from "../utils/deployment";
 import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
 import { CredentialInstanceCard } from "../components/credentials/CredentialInstanceCard";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
+import {
+  getCourseGroups,
+  getGroupMembers,
+  moveGroupMember,
+  type CourseGroupDto,
+  type GroupMemberDto,
+} from "../api/courses";
+import {
+  getKeycloakGroupMembers,
+  type KeycloakUser,
+} from "../api/keycloak";
 import keycloak from "../auth/keycloak";
 
 interface DeploymentStep {
@@ -77,6 +96,19 @@ interface Deployment {
    */
   rawStatus?: string;
   course: string;
+  /**
+   * Backend course UUID (resolved by DeploymentDetailsPage from
+   * `backendDeployment.course_id`). Drives the Groups/Members section's
+   * API calls (`getCourseGroups(courseId)` etc.). Undefined for deployments
+   * that aren't linked to a course — section is hidden in that case.
+   */
+  courseId?: string;
+  /**
+   * Keycloak group ID of the course, used to resolve member display names
+   * (firstName/lastName) via the Keycloak admin API. Optional — falls back
+   * to the bare user_id from the backend if missing.
+   */
+  keycloakCourseId?: string;
   startedAt: string;
   completedAt?: string;
   estimatedTimeRemaining?: string;
@@ -1021,6 +1053,16 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
             </CardContent>
           )}
         </Card>
+
+        {/* Groups & Group-Members (Issue #120) — only when the deployment is
+            linked to a course. The card fetches groups + members on demand
+            so a user that never expands it pays no API cost. */}
+        {deployment.courseId && (
+          <CourseGroupsCard
+            courseId={deployment.courseId}
+            keycloakCourseId={deployment.keycloakCourseId}
+          />
+        )}
     </div>
   );
 }
@@ -1180,4 +1222,307 @@ function DeploymentPhaseList({ phases, isLive }: { phases: LogPhase[]; isLive: b
       ))}
     </div>
   );
+}
+
+// ── Course groups & members ──────────────────────────────────────────────────
+//
+// Issue #120: show the groups + members assigned to the deployment's course,
+// and let an admin move a single member into a different group of the same
+// course. Two backend reads (`getCourseGroups`, `getGroupMembers`) plus one
+// optional Keycloak read to resolve display names. The actual move uses a
+// PATCH endpoint that does NOT exist on the staging backend yet — we wire
+// the call regardless so this lands as soon as the backend ships, and we
+// surface a clear "noch nicht verfügbar" toast on the 404/405 we get today.
+
+type MemberWithUser = GroupMemberDto & { user?: KeycloakUser };
+
+function CourseGroupsCard({
+  courseId,
+  keycloakCourseId,
+}: {
+  courseId: string;
+  keycloakCourseId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [groups, setGroups] = useState<CourseGroupDto[]>([]);
+  // members keyed by group_id so a single move only invalidates one bucket.
+  const [membersByGroup, setMembersByGroup] = useState<
+    Record<string, MemberWithUser[]>
+  >({});
+  // user_id → KeycloakUser, filled from a single getKeycloakGroupMembers
+  // call on the course's Keycloak group (avoids one fetch per user).
+  const [userIndex, setUserIndex] = useState<Map<string, KeycloakUser>>(
+    new Map(),
+  );
+  // groupMemberId currently being moved → disables its select + shows spinner.
+  const [movingMemberId, setMovingMemberId] = useState<string | null>(null);
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // 1. Groups for this course
+      const groupsResp = await getCourseGroups(courseId);
+      const groupList = groupsResp.data ?? [];
+
+      // 2. Members per group — parallel
+      const memberLists = await Promise.all(
+        groupList.map((g) =>
+          getGroupMembers(courseId, g.id)
+            .then((r) => r.data ?? [])
+            .catch(() => [] as GroupMemberDto[]),
+        ),
+      );
+
+      // 3. Keycloak user lookup (best-effort — if it fails we render user_ids)
+      let index = new Map<string, KeycloakUser>();
+      if (keycloakCourseId) {
+        try {
+          const usersResp = await getKeycloakGroupMembers(keycloakCourseId, {
+            max: 500,
+            briefRepresentation: true,
+          });
+          index = new Map(
+            (usersResp.data ?? []).map((u) => [u.id, u] as const),
+          );
+        } catch {
+          // ignore — the section degrades gracefully to raw user_ids
+        }
+      }
+
+      const byGroup: Record<string, MemberWithUser[]> = {};
+      groupList.forEach((g, i) => {
+        byGroup[g.id] = memberLists[i].map((m) => ({
+          ...m,
+          user: index.get(m.user_id),
+        }));
+      });
+
+      setGroups(groupList);
+      setMembersByGroup(byGroup);
+      setUserIndex(index);
+    } catch (err) {
+      const e = err as Error & { status?: number };
+      if (e.status === 403) {
+        setError("Keine Berechtigung, Gruppen und Mitglieder einzusehen.");
+      } else if (e.status === 404) {
+        setError("Kurs nicht gefunden.");
+      } else {
+        setError(e.message || "Laden fehlgeschlagen.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [courseId, keycloakCourseId]);
+
+  // Lazy-load: only fetch the first time the card is expanded.
+  const fetchedRef = useRef(false);
+  useEffect(() => {
+    if (!open || fetchedRef.current) return;
+    fetchedRef.current = true;
+    void loadAll();
+  }, [open, loadAll]);
+
+  const handleMove = useCallback(
+    async (member: MemberWithUser, fromGroupId: string, toGroupId: string) => {
+      if (movingMemberId) return;
+      if (fromGroupId === toGroupId) return;
+      setMovingMemberId(member.id);
+
+      // Optimistic update — flip the row to the new group locally.
+      const prev = membersByGroup;
+      setMembersByGroup((cur) => {
+        const next = { ...cur };
+        next[fromGroupId] = (next[fromGroupId] ?? []).filter(
+          (m) => m.id !== member.id,
+        );
+        next[toGroupId] = [
+          ...(next[toGroupId] ?? []),
+          { ...member, group_id: toGroupId },
+        ];
+        return next;
+      });
+
+      try {
+        await moveGroupMember(courseId, fromGroupId, member.id, toGroupId);
+        toast.success("Mitglied verschoben.");
+      } catch (err) {
+        // Roll back the optimistic update on any failure.
+        setMembersByGroup(prev);
+        const e = err as Error & { status?: number };
+        if (e.status === 404 || e.status === 405) {
+          // Endpoint not deployed yet — make this explicit to the user
+          // instead of showing a generic 500/404 stub.
+          toast.error(
+            "Mitglieder-Wechsel ist serverseitig noch nicht verfügbar.",
+          );
+        } else if (e.status === 403) {
+          toast.error("Keine Berechtigung, Mitglieder zu verschieben.");
+        } else {
+          toast.error(e.message || "Verschieben fehlgeschlagen.");
+        }
+      } finally {
+        setMovingMemberId(null);
+      }
+    },
+    [courseId, membersByGroup, movingMemberId],
+  );
+
+  const totalMembers = Object.values(membersByGroup).reduce(
+    (sum, arr) => sum + arr.length,
+    0,
+  );
+
+  return (
+    <Card className="border-slate-200 shadow-sm">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Users className="w-5 h-5 text-slate-600" />
+            <div>
+              <CardTitle>Gruppen & Mitglieder</CardTitle>
+              <CardDescription>
+                Gruppen dieses Kurses anzeigen und Mitglieder zwischen Gruppen
+                verschieben.
+              </CardDescription>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+          >
+            {open ? (
+              <>
+                <ChevronDown className="w-4 h-4 mr-1" /> Einklappen
+              </>
+            ) : (
+              <>
+                <ChevronRight className="w-4 h-4 mr-1" /> Anzeigen
+              </>
+            )}
+          </Button>
+        </div>
+      </CardHeader>
+
+      {open && (
+        <CardContent className="space-y-4">
+          {loading && (
+            <div className="flex items-center gap-2 text-slate-500">
+              <Loader2 className="w-4 h-4 animate-spin" /> Lade Gruppen…
+            </div>
+          )}
+
+          {!loading && error && (
+            <div className="space-y-3">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <span className="text-sm text-red-700">{error}</span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  fetchedRef.current = true;
+                  void loadAll();
+                }}
+              >
+                Erneut versuchen
+              </Button>
+            </div>
+          )}
+
+          {!loading && !error && groups.length === 0 && (
+            <p className="text-sm text-slate-500">
+              Für diesen Kurs sind keine Gruppen angelegt.
+            </p>
+          )}
+
+          {!loading && !error && groups.length > 0 && (
+            <>
+              <div className="text-sm text-slate-500">
+                {groups.length} Gruppe{groups.length === 1 ? "" : "n"},{" "}
+                {totalMembers} Mitglied{totalMembers === 1 ? "" : "er"}.
+              </div>
+              <div className="space-y-3">
+                {groups.map((group) => {
+                  const members = membersByGroup[group.id] ?? [];
+                  return (
+                    <div
+                      key={group.id}
+                      className="border border-slate-200 rounded-lg p-3 bg-slate-50/50"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{group.name}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {members.length}{" "}
+                            {members.length === 1 ? "Mitglied" : "Mitglieder"}
+                          </Badge>
+                        </div>
+                      </div>
+                      {members.length === 0 ? (
+                        <p className="text-xs text-slate-400 pl-1">
+                          Keine Mitglieder in dieser Gruppe.
+                        </p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {members.map((m) => (
+                            <li
+                              key={m.id}
+                              className="flex items-center justify-between gap-3 px-2 py-1 rounded hover:bg-slate-100"
+                            >
+                              <span className="text-sm text-slate-700 truncate">
+                                {memberDisplayName(m, userIndex)}
+                              </span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {movingMemberId === m.id && (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
+                                )}
+                                <Select
+                                  value={group.id}
+                                  disabled={movingMemberId !== null}
+                                  onValueChange={(toGroupId) =>
+                                    handleMove(m, group.id, toGroupId)
+                                  }
+                                >
+                                  <SelectTrigger className="h-7 text-xs w-[160px]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {groups.map((g) => (
+                                      <SelectItem key={g.id} value={g.id}>
+                                        {g.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
+function memberDisplayName(
+  m: MemberWithUser,
+  userIndex: Map<string, KeycloakUser>,
+): string {
+  const u = m.user ?? userIndex.get(m.user_id);
+  if (!u) return m.user_id;
+  const full = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
+  if (full && u.username) return `${full} (${u.username})`;
+  return full || u.username || m.user_id;
 }

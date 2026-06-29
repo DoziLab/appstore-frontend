@@ -160,7 +160,11 @@ export function GithubIntegrationCard() {
             <Button
               onClick={handleConnect}
               disabled={busy}
-              className="bg-slate-900 hover:bg-slate-800 text-white"
+              // bg-slate-900 wird in der vor-gebackenen index.css nicht
+              // generiert — text-white würde dadurch auf weißem Card-
+              // Hintergrund unsichtbar (#149). Inline-Style ist im Repo
+              // der etablierte Workaround (siehe Trennen-Button unten).
+              style={{ backgroundColor: '#0f172a', color: '#ffffff' }}
             >
               <Github className="w-4 h-4 mr-2" />
               GitHub verbinden

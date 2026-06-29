@@ -1036,7 +1036,7 @@ export function DeploymentWizard({
             </SelectTrigger>
             <SelectContent>
               {param.enum.map((option) => (
-                <SelectItem key={option} value={option}>
+                <SelectItem key={String(option)} value={String(option)}>
                   {option}
                 </SelectItem>
               ))}

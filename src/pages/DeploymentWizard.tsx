@@ -49,11 +49,6 @@ import {
   createDeployment,
   type DeploymentCreateRequest,
 } from "../api/deployments";
-import {
-  getMyCourses,
-  getCourseGroups,
-  createCourseGroup,
-} from "../api/courses";
 import { GroupManager, type StudentGroup } from "../components/GroupManager";
 import keycloak from "../auth/keycloak";
 import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
@@ -147,13 +142,6 @@ export function DeploymentWizard({
   );
   const [selectedKeycloakGroupId, setSelectedKeycloakGroupId] =
     useState<string>(() => initialState?.keycloakGroupId ?? "");
-  // Interne course_id (UUID aus `courses.id` im appstore-backend), die zur
-  // ausgewählten Keycloak-Group passt. Brauchen wir, um beim Submit pro
-  // Wizard-Gruppe eine `course_groups`-Row zu erzeugen/finden und deren
-  // `id` als `course_group_id` ins Deployment-Payload zu legen — ohne
-  // diese ID können Studenten ihre Credentials nicht über /api/v1/student/
-  // sehen. Null, solange noch nicht aufgelöst oder kein Match existiert.
-  const [internalCourseId, setInternalCourseId] = useState<string | null>(null);
   const [deploymentName, setDeploymentName] = useState<string>(
     () => initialState?.deploymentName ?? "",
   );
@@ -278,37 +266,6 @@ export function DeploymentWizard({
     }
     loadKeycloakGroupMembers();
   }, [selectedKeycloakGroupId, loadKeycloakGroupMembers]);
-
-  // Resolve the internal `courses.id` for the chosen Keycloak group. We need
-  // this to create/find `course_groups` rows on submit. Falls fehlschlägt,
-  // bleibt internalCourseId null — der Wizard deployt dann ohne
-  // course_group_id (Backwards-Compat: Backend macht ein Best-Effort-Backfill
-  // über Name, aber Studenten könnten ihre Credentials verlieren).
-  useEffect(() => {
-    if (!selectedKeycloakGroupId) {
-      setInternalCourseId(null);
-      return;
-    }
-    let cancelled = false;
-    getMyCourses({
-      page: 1,
-      page_size: 200,
-      openstack_project_id: activeProjectId,
-    })
-      .then((resp) => {
-        if (cancelled) return;
-        const match = (resp.data || []).find(
-          (c) => c.keycloak_course_id === selectedKeycloakGroupId,
-        );
-        setInternalCourseId(match?.id ?? null);
-      })
-      .catch(() => {
-        if (!cancelled) setInternalCourseId(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedKeycloakGroupId, activeProjectId]);
 
   // Auto-create groups and stacks when deployment mode or members change.
   // Skipped on the very first run when `initialState` was supplied (retry
@@ -895,67 +852,12 @@ export function DeploymentWizard({
         userFilesPayload[name] = base64;
       }
 
-      // Pro Wizard-Group eine course_groups-Row sicherstellen. Backend stempelt
-      // die FK dann auf alle generierten Credential-Rows, was Studenten den
-      // Zugriff via /api/v1/student/* freigibt. Ohne diesen Schritt bleibt
-      // group_id NULL und Studenten sehen nichts.
-      //
-      // Strategie: existierende course_groups holen, per Name matchen,
-      // unbekannte Namen via POST anlegen. Ein Toast/Error blockt das Deploy
-      // bewusst — wenn der Course-Group-Mechanismus kaputt ist, will der
-      // Lecturer das sofort wissen, statt erst nach dem Deploy bei Student-
-      // Reports zu merken, dass Credentials unsichtbar sind.
-      const wizardGroupToCourseGroupId = new Map<string, string>();
-      if (internalCourseId) {
-        try {
-          const existingResp = await getCourseGroups(internalCourseId);
-          const byName = new Map<string, string>();
-          for (const g of existingResp.data || []) {
-            byName.set(g.name, g.id);
-          }
-          // Sammeln aller distinct Wizard-Group-Namen (nach Group-ID, da der
-          // gleiche Name nicht mehrfach in einem Stack vorkommen sollte, aber
-          // wir bleiben defensiv).
-          const distinctWizardGroups = new Map<string, { id: string; name: string }>();
-          for (const stack of groupStackAssignments) {
-            for (const g of stack.assignedGroups) {
-              distinctWizardGroups.set(g.groupId, {
-                id: g.groupId,
-                name: g.groupName,
-              });
-            }
-          }
-          for (const wg of distinctWizardGroups.values()) {
-            const existingId = byName.get(wg.name);
-            if (existingId) {
-              wizardGroupToCourseGroupId.set(wg.id, existingId);
-              continue;
-            }
-            const created = await createCourseGroup(internalCourseId, wg.name);
-            wizardGroupToCourseGroupId.set(wg.id, created.data.id);
-            // Cache für den Fall, dass mehrere Wizard-Groups denselben Namen
-            // tragen — sollte nicht passieren, aber wir reusen die ID.
-            byName.set(wg.name, created.data.id);
-          }
-        } catch (err) {
-          console.error("Course-group resolution failed:", err);
-          setError(
-            "Die Kursgruppen konnten nicht angelegt werden. Studenten würden ihre Credentials nicht sehen — Deployment wurde abgebrochen.",
-          );
-          setIsDeploying(false);
-          return;
-        }
-      }
-
       // Build deployment request with stack assignments
       const deploymentData: DeploymentCreateRequest = {
         name: deploymentName.trim(),
         template_version_id: selectedVersionId,
         course_id: selectedKeycloakGroupId,
         openstack_project_id: activeProjectId,
-        // Wizard runtime select holds a stringified value; backend expects an
-        // integer from ALLOWED_RUNTIME_MONTHS (1/3/4/6/12/24). Cast is safe
-        // because the <Select> options are constrained to those values.
         runtime_months: parseInt(runtime, 10) as DeploymentCreateRequest["runtime_months"],
         parameters: heatParameters,
         ...(Object.keys(userFilesPayload).length > 0 && { user_files: userFilesPayload }),
@@ -963,11 +865,8 @@ export function DeploymentWizard({
           groups: stack.assignedGroups.map((group) => ({
             group_name: group.groupName,
             group_index: group.groupId ? parseInt(group.groupId.replace(/\D/g, '')) || stackIndex + 1 : stackIndex + 1,
-            // Auflösung aus dem Map oben. Null, wenn kein internalCourseId
-            // ermittelt werden konnte (kein Course für die Keycloak-Group):
-            // Backend hat dafür einen Backfill-Versuch, aber Studenten sehen
-            // ggf. nichts. Lecturer-Flow funktioniert unverändert.
-            course_group_id: wizardGroupToCourseGroupId.get(group.groupId) ?? null,
+            // course_group_id is resolved by the backend (get-or-create by name).
+            course_group_id: null,
             students: group.students.map((student) => ({
               id: student.id,
               username: student.username || "",

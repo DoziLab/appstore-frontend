@@ -465,7 +465,6 @@ export function AdminMonitoring() {
                   <TableRow>
                     <TableHead>Dozent</TableHead>
                     <TableHead>Deployments</TableHead>
-                    <TableHead>VMs</TableHead>
                     <TableHead>Letzte Aktivität</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
@@ -503,11 +502,6 @@ export function AdminMonitoring() {
                           <Badge variant="outline">
                             {stats.running} / {stats.total}
                           </Badge>
-                        </TableCell>
-
-                        {/* VMs */}
-                        <TableCell>
-                          {stats.total}
                         </TableCell>
 
                         {/* Letzte Aktivität */}

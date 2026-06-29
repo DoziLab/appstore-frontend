@@ -1,0 +1,35 @@
+{
+  "success": true,
+  "message": "Deployment created",
+  "data": {
+    "id": "dep-new-001",
+    "name": "test-deploy-from-wizard",
+    "template_version_id": "tv-wp-1",
+    "course_id": "grp-test-1",
+    "deployment_mode": "per_group",
+    "status": "QUEUED",
+    "openstack_stack_id": null,
+    "config_json": null,
+    "deployment_parameters": null,
+    "access_types_json": "[]",
+    "expires_at": "2026-10-27T00:00:00Z",
+    "expiry_warning_at": "2026-10-13T00:00:00Z",
+    "created_at": "2026-06-27T10:00:00Z",
+    "updated_at": "2026-06-27T10:00:00Z",
+    "template_version": {
+      "id": "tv-wp-1",
+      "version": "1.0.0",
+      "template_id": "tpl-wp-0001",
+      "template_name": "WordPress"
+    },
+    "course": {
+      "id": "grp-test-1",
+      "name": "Test-Gruppe",
+      "lecturer_id": "user-lec-1"
+    },
+    "instances": []
+  },
+  "errors": null,
+  "timestamp": "2026-06-27T10:00:00Z",
+  "request_id": "req-create-deployment"
+}

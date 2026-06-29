@@ -1,0 +1,19 @@
+{
+  "compute": {
+    "cores": { "available": 32, "limit": 64, "used": 32 },
+    "instances": { "available": 18, "limit": 20, "used": 2 },
+    "ram": { "available": 65536, "limit": 131072, "used": 65536 }
+  },
+  "network": {
+    "floatingip": { "available": 8, "limit": 10, "used": 2 },
+    "network": { "available": 9, "limit": 10, "used": 1 }
+  },
+  "volume": {
+    "gigabytes": { "available": 900, "limit": 1000, "used": 100 },
+    "volumes": { "available": 48, "limit": 50, "used": 2 }
+  },
+  "project_id": "ks-uuid-alpha",
+  "project_name": "ProjectAlpha",
+  "owner_user_id": "user-lec-1",
+  "fetched_at": "2026-06-27T00:00:00Z"
+}

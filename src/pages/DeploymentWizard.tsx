@@ -1113,7 +1113,7 @@ export function DeploymentWizard({
               </div>
             </div>
             {selectedTemplate?.description && (
-              <p className="text-xs text-slate-600 mt-2">
+              <p className="text-xs text-slate-600 mt-2 break-words">
                 {selectedTemplate.description}
               </p>
             )}

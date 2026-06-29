@@ -335,9 +335,13 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                         )}
                       </div>
                     </div>
-                    <CardTitle className="text-slate-900 line-clamp-2 min-h-[3.5rem]">{template.name}</CardTitle>
+                    {/* break-words: ohne diese Regel sprengt ein langer
+                        leerzeichenfreier Name/Beschreibung (z. B. "lorem"-
+                        Wiederholung) die Karte über die Grid-Spalte hinaus —
+                        line-clamp greift nur auf umgebrochene Zeilen. */}
+                    <CardTitle className="text-slate-900 line-clamp-2 min-h-[3.5rem] break-words">{template.name}</CardTitle>
                     <CardDescription className="text-slate-600 min-h-[4.5rem]">
-                      <p className="line-clamp-3 text-sm leading-relaxed">
+                      <p className="line-clamp-3 text-sm leading-relaxed break-words">
                         {template.description || 'Keine Beschreibung verfügbar'}
                       </p>
                     </CardDescription>
@@ -445,7 +449,7 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                 <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${getTemplateStyle(selectedTemplate.name).color} flex items-center justify-center text-white`}>
                   {React.createElement(getTemplateStyle(selectedTemplate.name).icon, { className: "w-5 h-5" })}
                 </div>
-                <span>{selectedTemplate.name}</span>
+                <span className="break-words">{selectedTemplate.name}</span>
               </DialogTitle>
               <DialogDescription>
                 Template-Details und Informationen
@@ -473,7 +477,7 @@ export function AppStore({ onDeploy }: AppStoreProps) {
               {/* Description */}
               <div>
                 <h3 className="text-sm font-semibold text-slate-900 mb-2">Beschreibung</h3>
-                <p className="text-sm text-slate-600 leading-relaxed">
+                <p className="text-sm text-slate-600 leading-relaxed break-words">
                   {selectedTemplate.description || 'Keine Beschreibung verfügbar'}
                 </p>
               </div>

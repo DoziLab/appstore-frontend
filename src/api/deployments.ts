@@ -58,7 +58,8 @@ export type AccessType =
   | "guacamole"
   | "rdp"
   | "vnc"
-  | "database";
+  | "database"
+  | "activation_link";
 
 export type CredentialAccess = {
   /**

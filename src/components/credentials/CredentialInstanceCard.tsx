@@ -44,6 +44,10 @@ const accessTypeLabels: Record<string, string> = {
   rdp: "RDP",
   vnc: "VNC",
   database: "Database",
+  // Einmaliger Setup-Link, den das Playbook auf der VM erzeugt (z.B.
+  // Overleaf-CLI). Keine Passwort-Zeile, klickbarer Link im Verbindungs-
+  // Feld — siehe AccessRow weiter unten.
+  activation_link: "Aktivierungslink",
 };
 
 export type CredentialsMode = "lecturer" | "student";
@@ -292,7 +296,9 @@ function AccessRow({
       ? "SSH-Befehl"
       : access.access_type === "web_url"
         ? "URL"
-        : "Connection URL";
+        : access.access_type === "activation_link"
+          ? "Aktivierungslink"
+          : "Connection URL";
 
   const isVisible = passwordVisibility[accessKey] === true;
 
@@ -374,42 +380,44 @@ function AccessRow({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-slate-500">Password</span>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-900">
-              {isVisible
-                ? (access.password ?? "-")
-                : getMaskedPassword(access.password)}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => togglePasswordVisibility(accessKey)}
-              disabled={!access.password}
-            >
-              {isVisible ? (
-                <EyeOff className="w-4 h-4" />
-              ) : (
-                <Eye className="w-4 h-4" />
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleCopy(access.password, "Password")}
-              disabled={!access.password}
-            >
-              <Copy className="w-4 h-4" />
-            </Button>
+        {access.access_type !== "activation_link" && (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs text-slate-500">Password</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-900">
+                {isVisible
+                  ? (access.password ?? "-")
+                  : getMaskedPassword(access.password)}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => togglePasswordVisibility(accessKey)}
+                disabled={!access.password}
+              >
+                {isVisible ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleCopy(access.password, "Password")}
+                disabled={!access.password}
+              >
+                <Copy className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-slate-500">{urlLabel}</span>
           <div className="flex items-center gap-2">
             {access.connection_url ? (
-              access.access_type === "web_url" ? (
+              access.access_type === "web_url" || access.access_type === "activation_link" ? (
                 <a
                   href={access.connection_url}
                   target="_blank"

@@ -1,12 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { Server, Database, GitBranch, Container, Shield, Code, Laptop, Boxes, Search, Plus, AlertCircle, X } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Server, Database, GitBranch, Container, Shield, Code, Laptop, Boxes, Search, Plus, AlertCircle, Eye, Lock, User, Users } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { AddTemplateDialog } from '../components/AddTemplateDialog';
+import { TemplateOwnerDetailDialog } from '../components/TemplateOwnerDetailDialog';
+import { ApprovalBadge } from '../components/ApprovalBadge';
 import { getTemplates, type TemplateDto } from '../api/templates';
+import { deriveTemplateOverallStatus } from '../lib/template-status';
+import { useCurrentUser } from '../auth/useCurrentUser';
 import type { LucideIcon } from 'lucide-react';
 
 interface AppStoreProps {
@@ -84,44 +88,94 @@ export function AppStore({ onDeploy }: AppStoreProps) {
   const [templates, setTemplates] = useState<TemplateDto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState('Alle');
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDto | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [ownerDetailsOpen, setOwnerDetailsOpen] = useState(false);
+
+  // Filter-Flags: visibility = öffentlich/privat, ownership = eigene/fremde.
+  // 'all' bedeutet jeweils „kein Filter". Wir filtern client-seitig, weil das
+  // Listing-Endpoint sowieso nur die für den User sichtbaren Templates liefert
+  // und ein zweiter Roundtrip pro Filterklick unnötig wäre.
+  const [visibilityFilter, setVisibilityFilter] = useState<'all' | 'public' | 'private'>('all');
+  const [ownershipFilter, setOwnershipFilter] = useState<'all' | 'mine' | 'others'>('all');
+
+  const { username, isAdmin } = useCurrentUser();
+
+  // Backend liefert `template.owner_id` als interne `users.id` (DB-PK),
+  // unser Keycloak-Token hat aber nur `sub` (= `users.external_id`).
+  // Wir leiten die interne ID aus der Liste ab: sobald ≥1 Template
+  // existiert, dessen `owner_username` zu unserem `preferred_username`
+  // passt, kennen wir unsere `users.id` und können sauber per ID
+  // vergleichen. Direkter Vergleich per Username scheidet aus, weil
+  // `owner_username` für Service-Accounts / Pre-Migration-User `null`
+  // sein kann (siehe Kommentar in src/api/templates.ts).
+  const myInternalUserId = useMemo(() => {
+    if (!username) return null;
+    return templates.find((t) => t.owner_username === username)?.owner_id ?? null;
+  }, [templates, username]);
 
   // Fetch templates from backend
-  useEffect(() => {
-    const fetchTemplates = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const response = await getTemplates({
-          status: 'approved', // Only show approved templates
-          page_size: 100, // Get all templates
-        });
-        setTemplates(response.data);
-      } catch (err) {
-        console.error('Failed to fetch templates:', err);
-        setError(err instanceof Error ? err.message : 'Fehler beim Laden der Templates');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const fetchTemplates = async (): Promise<TemplateDto[]> => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      // Wir geben hier bewusst keinen Status-/Visibility-Filter mit — das
+      // Backend wendet die richtige Sichtbarkeitslogik bereits an:
+      //   • Admins   → alle Templates
+      //   • Owner    → alle eigenen (auch private, auch pending/rejected)
+      //   • andere   → public + mind. eine approved Version
+      // Würden wir hier z. B. `status: 'approved'` schicken, würden frisch
+      // importierte eigene Templates (Version pending oder private = null)
+      // aus der Liste fallen, sobald das Backend den Filter respektiert.
+      const response = await getTemplates({
+        page_size: 100,
+      });
+      setTemplates(response.data);
+      return response.data;
+    } catch (err) {
+      console.error('Failed to fetch templates:', err);
+      setError(err instanceof Error ? err.message : 'Fehler beim Laden der Templates');
+      return [];
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchTemplates();
   }, []);
 
-  // Filter templates by search query
-  const filteredTemplates = templates.filter(template =>
-    template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (template.description && template.description.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  // Filter templates by search query + flags
+  const filteredTemplates = templates.filter((template) => {
+    if (!template.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+      return false;
+    }
+    if (visibilityFilter !== 'all') {
+      // „Öffentlich" filtert auch eigene Templates ein, deren Marktplatz-
+      // Veröffentlichung noch auf Erst-Genehmigung wartet (publish_requested):
+      // sie tragen aktuell visibility=private, gehören aber konzeptuell in den
+      // „Öffentlich"-Tab — sonst verschwinden sie für den Owner aus dem Blick.
+      // „Privat" zeigt nur „echt-private" (kein laufender Marktplatz-Wunsch).
+      if (visibilityFilter === 'public') {
+        const isPublicLike =
+          template.visibility === 'public' || template.publish_requested === true;
+        if (!isPublicLike) return false;
+      } else if (visibilityFilter === 'private') {
+        if (template.visibility !== 'private' || template.publish_requested === true) {
+          return false;
+        }
+      }
+    }
+    if (ownershipFilter === 'mine' && template.owner_id !== myInternalUserId) {
+      return false;
+    }
+    if (ownershipFilter === 'others' && template.owner_id === myInternalUserId) {
+      return false;
+    }
+    return true;
+  });
 
-  // Get unique categories from templates
-  const categories = ['Alle'];
-  
-  const displayTemplates = selectedCategory === 'Alle' 
-    ? filteredTemplates 
-    : filteredTemplates;
+  const displayTemplates = filteredTemplates;
 
   return (
     <div className="p-8 space-y-8">
@@ -142,28 +196,78 @@ export function AppStore({ onDeploy }: AppStoreProps) {
       </div>
 
       {/* Search and Filter */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input
-            type="text"
-            placeholder="Templates durchsuchen..."
-            className="pl-10"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
+              type="text"
+              placeholder="Templates durchsuchen..."
+              className="pl-10"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          {categories.map((category) => (
-            <Button
-              key={category}
-              variant={selectedCategory === category ? "default" : "outline"}
-              className={selectedCategory === category ? "bg-teal-500 hover:bg-teal-600" : ""}
-              onClick={() => setSelectedCategory(category)}
-            >
-              {category}
-            </Button>
-          ))}
+
+        {/* Filter-Flags: visibility + ownership. Wir nutzen Toggle-Chips
+            statt Selects, damit man auf einen Blick sieht, was aktiv ist. */}
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-slate-500 mr-1">Sichtbarkeit:</span>
+          <Button
+            size="sm"
+            variant={visibilityFilter === 'all' ? 'default' : 'outline'}
+            className={visibilityFilter === 'all' ? 'bg-teal-500 hover:bg-teal-600 text-white' : ''}
+            onClick={() => setVisibilityFilter('all')}
+          >
+            Alle
+          </Button>
+          <Button
+            size="sm"
+            variant={visibilityFilter === 'public' ? 'default' : 'outline'}
+            className={visibilityFilter === 'public' ? 'bg-teal-500 hover:bg-teal-600 text-white' : ''}
+            onClick={() => setVisibilityFilter('public')}
+          >
+            <Eye className="w-3.5 h-3.5 mr-1.5" />
+            Öffentlich
+          </Button>
+          <Button
+            size="sm"
+            variant={visibilityFilter === 'private' ? 'default' : 'outline'}
+            className={visibilityFilter === 'private' ? 'bg-teal-500 hover:bg-teal-600 text-white' : ''}
+            onClick={() => setVisibilityFilter('private')}
+          >
+            <Lock className="w-3.5 h-3.5 mr-1.5" />
+            Privat
+          </Button>
+
+          <span className="text-slate-500 ml-4 mr-1">Besitz:</span>
+          <Button
+            size="sm"
+            variant={ownershipFilter === 'all' ? 'default' : 'outline'}
+            className={ownershipFilter === 'all' ? 'bg-teal-500 hover:bg-teal-600 text-white' : ''}
+            onClick={() => setOwnershipFilter('all')}
+          >
+            Alle
+          </Button>
+          <Button
+            size="sm"
+            variant={ownershipFilter === 'mine' ? 'default' : 'outline'}
+            className={ownershipFilter === 'mine' ? 'bg-teal-500 hover:bg-teal-600 text-white' : ''}
+            onClick={() => setOwnershipFilter('mine')}
+          >
+            <User className="w-3.5 h-3.5 mr-1.5" />
+            Eigene
+          </Button>
+          <Button
+            size="sm"
+            variant={ownershipFilter === 'others' ? 'default' : 'outline'}
+            className={ownershipFilter === 'others' ? 'bg-teal-500 hover:bg-teal-600 text-white' : ''}
+            onClick={() => setOwnershipFilter('others')}
+          >
+            <Users className="w-3.5 h-3.5 mr-1.5" />
+            Fremde
+          </Button>
         </div>
       </div>
 
@@ -197,84 +301,100 @@ export function AppStore({ onDeploy }: AppStoreProps) {
             const style = getTemplateStyle(template.name);
             const Icon = style.icon;
             const activeVersions = template.versions?.filter(v => v.is_active) || [];
-            
-            // Truncate description to max 120 characters
-            const maxDescLength = 120;
-            const description = template.description || 'Keine Beschreibung verfügbar';
-            const truncatedDesc = description.length > maxDescLength 
-              ? description.substring(0, maxDescLength) + '...' 
-              : description;
-            const showReadMore = description.length > maxDescLength;
-            
-            return (
-              <Card key={template.id} className="border-slate-200 shadow-sm hover:shadow-md transition-all hover:border-teal-200 flex flex-col h-full">
-                <CardHeader className="flex-shrink-0">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${style.color} flex items-center justify-center text-white shadow-lg`}>
-                      <Icon className="w-6 h-6" />
-                    </div>
-                    <div className="flex gap-2">
-                      {template.approval_status === 'approved' && (
-                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                          Genehmigt
-                        </Badge>
-                      )}
-                      {template.visibility === 'public' && (
-                        <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
-                          Öffentlich
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  <CardTitle className="text-slate-900 line-clamp-2 min-h-[3.5rem]">{template.name}</CardTitle>
-                  <CardDescription className="text-slate-600 min-h-[4.5rem]">
-                    {truncatedDesc}
-                    {showReadMore && (
-                      <button 
-                        className="text-teal-600 hover:text-teal-700 text-xs ml-1 font-medium"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedTemplate(template);
-                          setDetailsModalOpen(true);
-                        }}
-                      >
-                        weiter lesen
-                      </button>
-                    )}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="flex-grow flex flex-col justify-end space-y-4">
-                  <div className="min-h-[4rem]">
-                    {activeVersions.length > 0 && (
-                      <div className="space-y-2">
-                        <span className="text-xs text-slate-500">Verfügbare Versionen:</span>
-                        <div className="flex flex-wrap gap-2">
-                          {activeVersions.map((version) => (
-                            <Badge key={version.id} variant="secondary" className="text-xs bg-slate-100 text-slate-700">
-                              {version.version}
+
+            function TemplateCard({ template }: { template: TemplateDto }) {
+              return (
+                <Card key={template.id} className="border-slate-200 shadow-sm hover:shadow-md transition-all hover:border-teal-200 flex flex-col h-full">
+                  <CardHeader className="flex-shrink-0">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${style.color} flex items-center justify-center text-white shadow-lg`}>
+                        <Icon className="w-6 h-6" />
+                      </div>
+                      <div className="flex gap-2">
+                        <ApprovalBadge
+                          status={deriveTemplateOverallStatus(template)}
+                          variant="overall"
+                          showIcon={false}
+                        />
+                        {template.visibility === 'public' && (
+                          <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
+                            Öffentlich
+                          </Badge>
+                        )}
+                        {/* Erst-Veröffentlichung-Hinweis: das Template ist
+                            noch PRIVATE in der DB, aber der Owner hat es
+                            für die Marketplace beantragt. Wir zeigen es
+                            visuell wie ein angefragtes „öffentlich" —
+                            blau-amber-Mix wäre verwirrend, deshalb
+                            durchgängig amber wie der overall-badge. */}
+                        {template.visibility === 'private'
+                          && template.publish_requested === true && (
+                            <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">
+                              Öffentlich (offen)
                             </Badge>
-                          ))}
+                        )}
+                      </div>
+                    </div>
+                    <CardTitle className="text-slate-900 line-clamp-2 min-h-[3.5rem]">{template.name}</CardTitle>
+                    <CardDescription className="text-slate-600 min-h-[4.5rem]">
+                      <p className="line-clamp-3 text-sm leading-relaxed">
+                        {template.description || 'Keine Beschreibung verfügbar'}
+                      </p>
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex-grow flex flex-col justify-end space-y-4">
+                    <div className="min-h-[4rem]">
+                      {activeVersions.length > 0 && (
+                        <div className="space-y-2">
+                          <span className="text-xs text-slate-500">Verfügbare Versionen:</span>
+                          <div className="flex flex-wrap gap-2">
+                            {activeVersions.map((version) => (
+                              <Badge key={version.id} variant="secondary" className="text-xs bg-slate-100 text-slate-700">
+                                {version.version}
+                              </Badge>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {activeVersions.length === 0 && (
-                      <div className="text-xs text-slate-500 italic">
-                        Keine aktiven Versionen verfügbar
-                      </div>
-                    )}
-                  </div>
+                      {activeVersions.length === 0 && (
+                        <div className="text-xs text-slate-500 italic">
+                          Keine aktiven Versionen verfügbar
+                        </div>
+                      )}
+                    </div>
 
-                  <Button 
-                    onClick={() => onDeploy(template.id)}
-                    className="w-full bg-teal-500 hover:bg-teal-600 text-white"
-                    disabled={activeVersions.length === 0}
-                  >
-                    Deploy
-                  </Button>
-                </CardContent>
-              </Card>
-            );
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedTemplate(template);
+                          // Owner → eigene Detailseite mit Versionsverwaltung;
+                          // alle anderen → bestehender generischer Modal.
+                          if (myInternalUserId && template.owner_id === myInternalUserId) {
+                            setOwnerDetailsOpen(true);
+                          } else {
+                            setDetailsModalOpen(true);
+                          }
+                        }}
+                        className="w-full"
+                      >
+                        Details
+                      </Button>
+                      <Button
+                        onClick={() => onDeploy(template.id)}
+                        className="w-full bg-teal-500 hover:bg-teal-600 text-white"
+                        disabled={activeVersions.length === 0}
+                      >
+                        Deploy
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            }
+
+            return <TemplateCard key={template.id} template={template} />;
           })}
         </div>
       )}
@@ -291,7 +411,30 @@ export function AppStore({ onDeploy }: AppStoreProps) {
       <AddTemplateDialog
         open={addTemplateOpen}
         onOpenChange={setAddTemplateOpen}
+        onImported={fetchTemplates}
       />
+
+      {/* Owner-Detailansicht — wird nur für eigene Templates geöffnet.
+          Bringt Versions-Aktualisierung und Approval-Buttons mit. */}
+      {selectedTemplate && (
+        <TemplateOwnerDetailDialog
+          template={selectedTemplate}
+          open={ownerDetailsOpen}
+          onOpenChange={setOwnerDetailsOpen}
+          isAdmin={isAdmin}
+          onChanged={() => {
+            // Liste neu laden, damit das aktualisierte Active-Flag / der
+            // neue Approval-Status auch in den Cards sichtbar wird. Den
+            // Dialog lassen wir offen, falls der Admin gleich noch eine
+            // weitere Version approven möchte — dann muss selectedTemplate
+            // aber das frische Objekt aus dem Re-Fetch zeigen.
+            fetchTemplates().then((fresh) => {
+              const updated = fresh.find((t) => t.id === selectedTemplate.id);
+              if (updated) setSelectedTemplate(updated);
+            });
+          }}
+        />
+      )}
 
       {/* Template Details Modal */}
       {selectedTemplate && (
@@ -312,11 +455,18 @@ export function AppStore({ onDeploy }: AppStoreProps) {
             <div className="space-y-6 mt-4">
               {/* Badges */}
               <div className="flex gap-2 flex-wrap">
-                {selectedTemplate.approval_status === 'approved' && (
-                  <Badge className="bg-green-100 text-green-700">Genehmigt</Badge>
-                )}
+                <ApprovalBadge
+                  status={deriveTemplateOverallStatus(selectedTemplate)}
+                  variant="overall"
+                />
                 {selectedTemplate.visibility === 'public' && (
                   <Badge className="bg-blue-100 text-blue-700">Öffentlich</Badge>
+                )}
+                {selectedTemplate.visibility === 'private'
+                  && selectedTemplate.publish_requested === true && (
+                    <Badge className="bg-amber-100 text-amber-700">
+                      Öffentlich (offen)
+                    </Badge>
                 )}
               </div>
 

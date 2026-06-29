@@ -3518,3 +3518,30 @@ html {
     transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0) scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1)) rotate(var(--tw-exit-rotate, 0));
   }
 }
+
+/* Settings page scroll container (Issue #127):
+   - sichtbare, aber dezente Scrollbar mit klar definierter Breite
+   - Hover-Effekt verdunkelt den Daumen, damit klar ist, dass scrollbar */
+.settings-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(203 213 225) transparent; /* slate-300 */
+}
+.settings-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+.settings-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.settings-scroll::-webkit-scrollbar-thumb {
+  background-color: rgb(203 213 225); /* slate-300 */
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 150ms ease;
+}
+.settings-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(148 163 184); /* slate-400 */
+}
+.settings-scroll:hover {
+  scrollbar-color: rgb(148 163 184) transparent;
+}

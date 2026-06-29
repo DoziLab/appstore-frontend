@@ -68,6 +68,16 @@ export default defineConfig({
         target: "https://141.72.13.2",
         changeOrigin: true,
         secure: false,
+        // Required for Server-Sent Events: disable response buffering and
+        // strip Accept-Encoding so the upstream returns an unchunked,
+        // unzipped stream. Without this, the SSE endpoint /api/v1/deployments/
+        // .../logs/stream only flushes to the browser when the connection
+        // closes (terminal status), not in real time.
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.removeHeader("Accept-Encoding");
+          });
+        },
       },
     },
     port: 3000,

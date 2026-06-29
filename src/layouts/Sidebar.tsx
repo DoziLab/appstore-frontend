@@ -5,11 +5,12 @@ import {
   Settings,
   ChevronRight,
   LogOut,
-  Shield
+  Shield,
+  Server,
 } from "lucide-react";
 import { useMemo } from "react";
 import { useKeycloak } from "@react-keycloak/web";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 
 interface SidebarProps {
   logo: string;
@@ -27,16 +28,31 @@ export function Sidebar({ logo }: SidebarProps) {
   const { keycloak, initialized } = useKeycloak();
   const location = useLocation();
 
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-    { id: 'courses', label: 'Kurse', icon: BookOpen, path: '/courses' },
-    { id: 'appstore', label: 'App Store', icon: Store, path: '/appstore' },
-    { id: 'config', label: 'Einstellungen', icon: Settings, path: '/config' },
-    { id: 'admin', label: 'Admin Monitoring', icon: Shield, path: '/admin' },
-  ];
-
   // tokenParsed ist typisiert als unknown | KeycloakTokenParsed, daher casten wir vorsichtig
   const token = (keycloak?.tokenParsed ?? {}) as Record<string, any>;
+  const roles: string[] = token?.realm_access?.roles ?? [];
+  const isAdmin = roles.includes("admin");
+  const isLecturer = roles.includes("lecturer") || roles.includes("teacher");
+  const isStudent = roles.includes("student") && !isLecturer && !isAdmin;
+
+  // Studenten haben einen reduzierten Navigations-Stack — alles Lecturer-
+  // spezifische würde im Backend 403 produzieren und sollte deshalb gar
+  // nicht erst klickbar sein.
+  const navItems = isStudent
+    ? [
+        {
+          id: "student-dashboard",
+          label: "Meine Deployments",
+          icon: Server,
+          path: "/student/dashboard",
+        },
+      ]
+    : [
+        { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
+        { id: "courses", label: "Kurse", icon: BookOpen, path: "/courses" },
+        { id: "appstore", label: "App Store", icon: Store, path: "/appstore" },
+        { id: "admin", label: "Admin Monitoring", icon: Shield, path: "/admin" },
+      ];
 
   const displayName = useMemo(() => {
     // Typische Claims: name, preferred_username, email
@@ -49,12 +65,11 @@ export function Sidebar({ logo }: SidebarProps) {
   }, [token.name, token.preferred_username, token.email]);
 
   const roleLabel = useMemo(() => {
-    const roles: string[] = token?.realm_access?.roles ?? [];
-    if (roles.includes("admin")) return "Admin";
-    if (roles.includes("lecturer") || roles.includes("teacher")) return "Dozent";
-    if (roles.includes("student")) return "Student";
+    if (isAdmin) return "Admin";
+    if (isLecturer) return "Dozent";
+    if (isStudent) return "Student";
     return "Benutzer";
-  }, [token]);
+  }, [isAdmin, isLecturer, isStudent]);
 
   const initials = initialsFromName(displayName);
 
@@ -64,15 +79,25 @@ export function Sidebar({ logo }: SidebarProps) {
     await keycloak.logout({ redirectUri });
   };
 
+  const navigate = useNavigate();
+
   // Check if we're in a deployment wizard to disable navigation
   const deploymentActive = location.pathname.startsWith('/deploy/');
 
+  // Studenten haben keinen Lecturer-Wizard und auch keine /dashboard-Route —
+  // das Logo soll sie zu ihrer eigenen Übersicht führen.
+  const homePath = isStudent ? "/student/dashboard" : "/dashboard";
+
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
+    <aside className="relative w-64 bg-white border-r border-slate-200 flex flex-col">
       {/* Logo */}
-      <div className="p-6 border-b border-slate-200">
+      <NavLink
+        to={homePath}
+        className="p-6 border-b border-slate-200 block transition-opacity hover:opacity-80"
+        aria-label="Zur Startseite"
+      >
         <img src={logo} alt="DoziLab" className="h-40 w-auto" />
-      </div>
+      </NavLink>
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1">
@@ -80,6 +105,8 @@ export function Sidebar({ logo }: SidebarProps) {
           const Icon = item.icon;
           const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
 
+          // Skip admin here; it is rendered separately at the bottom edge
+          if (item.id === 'admin') return null;
           return (
             <NavLink
               key={item.id}
@@ -107,18 +134,46 @@ export function Sidebar({ logo }: SidebarProps) {
 
           <div className="flex-1 min-w-0">
             <p className="text-sm text-slate-900 truncate">{displayName}</p>
-            <p className="text-xs text-slate-500 truncate">{roleLabel}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-slate-500 truncate">{roleLabel}</p>
+              {isAdmin && (
+                <NavLink
+                  to="/admin"
+                  title="Admin Monitoring"
+                  aria-disabled={deploymentActive}
+                  className={`inline-flex items-center justify-center rounded-full p-1 transition-all ${
+                    deploymentActive ? "opacity-50 pointer-events-none" : "hover:bg-teal-50"
+                  }`}
+                >
+                  <Shield className="w-4 h-4 text-teal-500" />
+                  <span className="sr-only">Admin Monitoring</span>
+                </NavLink>
+              )}
+            </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            disabled={!initialized || !keycloak.authenticated}
-            className="text-slate-400 hover:text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Logout"
-          >
-            <LogOut className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/config')}
+              disabled={!initialized || !keycloak.authenticated}
+              className="text-slate-400 hover:text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Einstellungen"
+              aria-label="Einstellungen"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={!initialized || !keycloak.authenticated}
+              className="text-slate-400 hover:text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Logout"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </div>
     </aside>

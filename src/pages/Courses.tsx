@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { BookOpen, ChevronRight, Server } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { getMyCourses, CourseDto } from "../api/courses";
@@ -23,6 +24,7 @@ export function Courses() {
   const [keycloakGroups, setKeycloakGroups] = useState<KeycloakGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [prefixQuery, setPrefixQuery] = useState<string>("");
 
   useEffect(() => {
     let alive = true;
@@ -37,8 +39,12 @@ export function Courses() {
         // to (project = activeProjectId) AND (teacher.id = caller). Without
         // this param the backend rejects non-admins with 400 — matches the
         // contract introduced in PR #137 for /api/v1/deployments.
+        //
+        // Backend caps page_size at 100 (src/core/dependencies.py); request the
+        // max so the client-side prefix filter operates over the full course
+        // set rather than only the first page.
         const [coursesRes, groupsRes] = await Promise.all([
-          getMyCourses({ page: 1, page_size: 10, openstack_project_id: activeProjectId }),
+          getMyCourses({ page: 1, page_size: 100, openstack_project_id: activeProjectId }),
           getKeycloakGroups(),
         ]);
 
@@ -79,6 +85,21 @@ export function Courses() {
       };
     });
   }, [items, keycloakGroups]);
+
+  // Derive available prefix suggestions — restrict to canonical prefixes
+  const prefixSuggestions = useMemo(() => {
+    // Only show these canonical prefixes (order matters)
+    return ["WWI", "WI", "INF", "WIN"];
+  }, [items, keycloakGroups]);
+
+  const filteredCourses = useMemo(() => {
+    // Filter out courses without deployments
+    const coursesWithDeployments = courses.filter((c) => c.applications.length > 0);
+    
+    if (!prefixQuery) return coursesWithDeployments;
+    const q = prefixQuery.toUpperCase();
+    return coursesWithDeployments.filter((c) => (c.keycloakGroupName || c.name || "").toUpperCase().startsWith(q));
+  }, [courses, prefixQuery]);
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "running":
@@ -99,7 +120,40 @@ export function Courses() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-slate-900 mb-2">Kurse</h1>
-          <p className="text-slate-600">Verwalten Sie Anwendungen für Ihre Kurse</p>
+          <p className="text-slate-600">Übersicht über Ihre Anwendungen nach Kursen geordnet</p>
+        </div>
+      </div>
+
+      {/* Prefix filter input + suggestions */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <Input
+            type="text"
+            placeholder="Präfix suchen (z.B. WWI, INF, WIN)"
+            className="flex-1 min-w-0 pl-3"
+            value={prefixQuery}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setPrefixQuery(e.target.value.toUpperCase())}
+          />
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setPrefixQuery("")}>Alle</Button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-slate-500">Schnellfilter:</div>
+          <div className="flex gap-2 flex-wrap">
+            {prefixSuggestions.map((p) => (
+              <button
+                key={p}
+                type="button"
+                aria-pressed={prefixQuery === p}
+                onClick={() => setPrefixQuery(p)}
+                className={`text-xs px-2 py-1 rounded ${prefixQuery === p ? 'bg-teal-500 text-white' : 'bg-white border border-slate-200'}`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -121,9 +175,18 @@ export function Courses() {
         </Card>
       )}
 
-      {!loading && !error && (
+      {!loading && !error && filteredCourses.length === 0 && (
+        <Card className="border-slate-200">
+          <CardHeader className="pb-6">
+            <CardTitle>Keine Deployments vorhanden</CardTitle>
+            <CardDescription>Es wurden keine Kurse mit Deployments gefunden.</CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
+      {!loading && !error && filteredCourses.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {courses.map((course) => (
+          {filteredCourses.map((course) => (
             <Card key={course.id} className="border-slate-200 shadow-sm hover:shadow-md transition-shadow">
               <CardHeader>
                 <div className="flex items-start justify-between">
@@ -145,10 +208,20 @@ export function Courses() {
 
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm mb-3">
+                  <div className="flex items-center justify-between text-sm mb-1">
                     <span className="text-slate-600">Bereitgestellte Anwendungen</span>
                     <span className="text-slate-900">{course.applications.length}</span>
                   </div>
+                  {/*
+                    The backend silently filters out deployments whose teacher.id
+                    no longer resolves to a local user (see appstore-backend
+                    src/api/courses.py:_filter_deployments_by_owner). Make that
+                    behaviour visible so a lecturer who expects more apps knows
+                    the count is scoped, not authoritative.
+                  */}
+                  <p className="text-xs text-slate-400 mb-3">
+                    Es werden nur Deployments angezeigt, deren Owner Sie sind.
+                  </p>
 
                   <div className="space-y-2">
                     {course.applications.map((app, idx) => (

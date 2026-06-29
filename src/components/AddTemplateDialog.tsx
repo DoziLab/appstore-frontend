@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -6,243 +7,202 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Alert, AlertDescription } from './ui/alert';
-import { AlertCircle, CheckCircle2, Github, FileText } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Github, FileText, Loader2, Plug, Lock, Globe } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import {
+  getGithubInstallationStatus,
+  importTemplateFromGithub,
+  startGithubInstall,
+  type GithubInstallationStatus,
+} from '../api/github';
 
 interface AddTemplateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Called after a successful import — caller can reload the template list. */
+  onImported?: () => void;
 }
 
-interface ValidationError {
-  field: string;
-  message: string;
-}
+/**
+ * Erlaubt Dozenten, ein Template aus einem GitHub-Repo zu importieren. Der
+ * Backend-Endpoint `POST /api/v1/templates/import-from-github` legt das
+ * Template plus seine erste Version an. Mit `visibility` steuert der Nutzer,
+ * ob das Template als „private" (kein Approval-Flow, sofort nutzbar) oder
+ * „public" (Marktplatz, Lecturer-Import → pending → Admin-Freigabe) anlegt.
+ *
+ * Voraussetzung: der Dozent hat seinen GitHub-Account bereits über die
+ * Einstellungen verbunden — sonst kann das Backend das Repo nicht lesen und
+ * antwortet mit 404. Wir prüfen den Verbindungsstatus beim Öffnen und
+ * blockieren den Submit-Button frühzeitig, statt den Nutzer in einen
+ * Backend-Fehler laufen zu lassen.
+ *
+ * Der zweite Tab ("Copy & Paste") existiert vorerst nur als Platzhalter —
+ * das Backend unterstützt aktuell ausschließlich GitHub-Import.
+ */
+export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplateDialogProps) {
+  const navigate = useNavigate();
 
-export function AddTemplateDialog({ open, onOpenChange }: AddTemplateDialogProps) {
-  // Option 1: GitHub URL
+  // GitHub-Tab
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [iconUrl, setIconUrl] = useState('');
   const [githubUrl, setGithubUrl] = useState('');
+  const [appYamlPath, setAppYamlPath] = useState('');
+  // Visibility: Private = direkt nutzbar, kein Approval. Public = Marktplatz,
+  // braucht Admin-Freigabe (für Lecturer). Default ist bewusst Private —
+  // entspricht auch dem Backend-Default und ist der weniger destruktive Pfad.
+  const [visibility, setVisibility] = useState<'private' | 'public'>('private');
 
-  // Option 2: Copy & Paste
+  // Manual-Tab (UI-only, kein Backend-Support)
   const [heatTemplate, setHeatTemplate] = useState('');
   const [cloudInit, setCloudInit] = useState('');
   const [appYaml, setAppYaml] = useState('');
 
-  // Validation state
-  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
-  const [validationSuccess, setValidationSuccess] = useState(false);
-  const [isValidating, setIsValidating] = useState(false);
   const [activeTab, setActiveTab] = useState('github');
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Connection-Status: wird beim Öffnen geladen, damit wir frühzeitig
+  // signalisieren können, falls noch kein GitHub-Account verbunden ist.
+  const [ghStatus, setGhStatus] = useState<GithubInstallationStatus | null>(null);
+  const [ghStatusLoading, setGhStatusLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setGhStatusLoading(true);
+    getGithubInstallationStatus()
+      .then(setGhStatus)
+      .catch(() => setGhStatus({ connected: false, installation_id: null, repos: [] }))
+      .finally(() => setGhStatusLoading(false));
+  }, [open]);
 
   const resetForm = () => {
+    setName('');
+    setDescription('');
+    setIconUrl('');
     setGithubUrl('');
+    setAppYamlPath('');
+    setVisibility('private');
     setHeatTemplate('');
     setCloudInit('');
     setAppYaml('');
-    setValidationErrors([]);
-    setValidationSuccess(false);
+    setErrorMessage(null);
     setActiveTab('github');
   };
 
-  const validateYAML = (content: string, fieldName: string): boolean => {
-    if (!content.trim()) {
-      return false;
-    }
-
+  const handleConnectGithub = async () => {
     try {
-      // Einfache YAML-Validierung (Überprüfung auf grundlegende Struktur)
-      const lines = content.split('\n');
-      let hasValidStructure = false;
-      
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed && !trimmed.startsWith('#')) {
-          // Prüfe auf YAML-Schlüssel-Wert-Paare
-          if (trimmed.includes(':') || trimmed.startsWith('-')) {
-            hasValidStructure = true;
-            break;
-          }
-        }
-      }
-
-      if (!hasValidStructure) {
-        setValidationErrors(prev => [...prev, {
-          field: fieldName,
-          message: `${fieldName} hat keine gültige YAML-Struktur`
-        }]);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      setValidationErrors(prev => [...prev, {
-        field: fieldName,
-        message: `Fehler beim Parsen von ${fieldName}`
-      }]);
-      return false;
+      // Beim Rückweg landen wir wieder auf der aktuellen Seite (vermutlich
+      // /appstore). Der GithubConnected-Page-Handler liest diesen Wert.
+      sessionStorage.setItem('github.returnTo', window.location.pathname);
+      const { install_url } = await startGithubInstall();
+      window.location.href = install_url;
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'GitHub-Verbindung konnte nicht gestartet werden.',
+      );
     }
   };
 
-  const validateHeatTemplate = (content: string): boolean => {
-    if (!validateYAML(content, 'Heat-Template')) {
-      return false;
+  const validateForm = (): string | null => {
+    if (!name.trim()) return 'Bitte einen Namen angeben.';
+    if (!githubUrl.trim()) return 'Bitte eine GitHub-URL angeben.';
+    // Sehr lockere URL-Prüfung — das Backend parst die Form selbst
+    // (Branch/Tag/Pfad) und meldet alles spezifischere zurück.
+    if (!/^https?:\/\/github\.com\//i.test(githubUrl.trim())) {
+      return 'GitHub-URL muss mit https://github.com/ beginnen.';
     }
-
-    // Prüfe auf Heat-spezifische Struktur
-    const requiredSections = ['heat_template_version', 'description', 'resources'];
-    const contentLower = content.toLowerCase();
-    
-    for (const section of requiredSections) {
-      if (!contentLower.includes(section)) {
-        setValidationErrors(prev => [...prev, {
-          field: 'Heat-Template',
-          message: `Pflichtsektion fehlt: ${section}`
-        }]);
-        return false;
-      }
-    }
-
-    return true;
+    return null;
   };
 
-  const validateAppYaml = (content: string): boolean => {
-    if (!content.trim()) {
-      return true; // Optional field
-    }
-
-    if (!validateYAML(content, 'app.yaml')) {
-      return false;
-    }
-
-    // Prüfe auf app.yaml spezifische Struktur
-    const contentLower = content.toLowerCase();
-    if (!contentLower.includes('metadata') && !contentLower.includes('parameters')) {
-      setValidationErrors(prev => [...prev, {
-        field: 'app.yaml',
-        message: 'app.yaml sollte mindestens "metadata" oder "parameters" Sektion enthalten'
-      }]);
-      return false;
-    }
-
-    return true;
-  };
-
-  const validateGithubUrl = (url: string): boolean => {
-    if (!url.trim()) {
-      setValidationErrors([{
-        field: 'GitHub URL',
-        message: 'Bitte geben Sie eine GitHub-URL ein'
-      }]);
-      return false;
-    }
-
-    // Prüfe ob es eine gültige GitHub URL ist
-    const githubPattern = /^https:\/\/github\.com\/[\w-]+\/[\w.-]+\/tree\/.+$/;
-    if (!githubPattern.test(url)) {
-      setValidationErrors([{
-        field: 'GitHub URL',
-        message: 'Ungültige GitHub-URL. Erwartetes Format: https://github.com/orga/repo/tree/branch/path'
-      }]);
-      return false;
-    }
-
-    return true;
-  };
-
-  const handleValidate = () => {
-    setIsValidating(true);
-    setValidationErrors([]);
-    setValidationSuccess(false);
-
-    setTimeout(() => {
-      let isValid = false;
-
-      if (activeTab === 'github') {
-        isValid = validateGithubUrl(githubUrl);
-      } else {
-        // Validiere Heat-Template (Pflichtfeld)
-        if (!heatTemplate.trim()) {
-          setValidationErrors([{
-            field: 'Heat-Template',
-            message: 'Heat-Template ist ein Pflichtfeld'
-          }]);
-          isValid = false;
-        } else {
-          const heatValid = validateHeatTemplate(heatTemplate);
-          const appYamlValid = validateAppYaml(appYaml);
-          const cloudInitValid = cloudInit.trim() ? validateYAML(cloudInit, 'cloud-init') : true;
-          
-          isValid = heatValid && appYamlValid && cloudInitValid;
-        }
-      }
-
-      if (isValid) {
-        setValidationSuccess(true);
-        toast.success('Validierung erfolgreich!', {
-          description: 'Das Template ist syntaktisch korrekt und kann gespeichert werden.'
-        });
-      } else {
-        toast.error('Validierung fehlgeschlagen', {
-          description: 'Bitte beheben Sie die Fehler und versuchen Sie es erneut.'
-        });
-      }
-
-      setIsValidating(false);
-    }, 1000);
-  };
-
-  const handleSave = () => {
-    if (!validationSuccess) {
-      toast.error('Bitte validieren Sie das Template zuerst');
+  const handleImport = async () => {
+    const validationError = validateForm();
+    if (validationError) {
+      setErrorMessage(validationError);
       return;
     }
-
-    // Speichere Template (noch nicht öffentlich)
-    const templateData = activeTab === 'github' 
-      ? { source: 'github', url: githubUrl }
-      : { source: 'manual', heatTemplate, cloudInit, appYaml };
-
-    console.log('Speichere Template:', templateData);
-    
-    toast.success('Template gespeichert!', {
-      description: 'Das Template wurde erfolgreich gespeichert und ist privat.'
-    });
-
-    resetForm();
-    onOpenChange(false);
-  };
-
-  const handleSubmitForApproval = () => {
-    if (!validationSuccess) {
-      toast.error('Bitte validieren Sie das Template zuerst');
-      return;
+    setErrorMessage(null);
+    setSubmitting(true);
+    try {
+      const created = await importTemplateFromGithub({
+        name: name.trim(),
+        description: description.trim() || null,
+        icon_url: iconUrl.trim() || null,
+        github_url: githubUrl.trim(),
+        app_yaml_path: appYamlPath.trim() || null,
+        visibility,
+      });
+      toast.success('Template aus GitHub importiert', {
+        description:
+          visibility === 'private'
+            ? 'Privates Template — sofort für dich verwendbar.'
+            : 'Öffentliches Template — Version wartet auf Admin-Freigabe.',
+      });
+      onImported?.();
+      resetForm();
+      onOpenChange(false);
+      // Direkt zum AppStore navigieren, damit der Dozent das neue Template
+      // sieht (bzw. später dessen Detail-Seite, sobald wir eine haben).
+      if (created?.id) {
+        navigate('/appstore');
+      }
+    } catch (err) {
+      // Die Backend-Fehlertexte sind aussagekräftig (z.B. „Folder contains 62
+      // files which exceeds the limit of 50.") — wir zeigen sie unverändert.
+      const msg = err instanceof Error ? err.message : 'Import fehlgeschlagen.';
+      setErrorMessage(msg);
+      toast.error('Import fehlgeschlagen', { description: msg });
+    } finally {
+      setSubmitting(false);
     }
-
-    // Sende Template zur Genehmigung
-    const templateData = activeTab === 'github' 
-      ? { source: 'github', url: githubUrl }
-      : { source: 'manual', heatTemplate, cloudInit, appYaml };
-
-    console.log('Sende Template zur Genehmigung:', templateData);
-    
-    toast.success('Zur Genehmigung freigegeben!', {
-      description: 'Das Template wurde zur Prüfung an den Administrator gesendet.'
-    });
-
-    resetForm();
-    onOpenChange(false);
   };
+
+  const connected = ghStatus?.connected === true;
+
+  // Hinweis-Heuristik: Eine `tree/<ref>/<ordner>`-URL ist im Backend kein
+  // gültiger app.yaml-Pfad (der Backend-Parser füllt `path_from_url` mit dem
+  // Ordnernamen und prüft hart auf `.yaml`/`.yml`-Endung — schlägt fehl).
+  // Wenn der Nutzer also eine tree-URL eingibt und das Pfad-Feld leer lässt,
+  // warnen wir inline, statt ihn in den Backend-Roundtrip laufen zu lassen.
+  // Eine `blob/.../app.yaml`-URL ist davon nicht betroffen.
+  const treeUrlNeedsPath = (() => {
+    const url = githubUrl.trim();
+    if (!url || appYamlPath.trim()) return false;
+    return /^https?:\/\/github\.com\/[^/]+\/[^/]+\/tree\/[^/]+\/.+/i.test(url);
+  })();
+
+  // Live-Grund, warum der Import-Button (noch) nicht klickbar ist. Reihenfolge
+  // entspricht der natürlichen Bearbeitungsreihenfolge: erst Tab/Verbindung,
+  // dann Pflichtfelder, dann URL-Format. `null` = ready to import.
+  const disabledReason: string | null = (() => {
+    if (ghStatusLoading) return 'GitHub-Verbindungsstatus wird geprüft…';
+    if (activeTab !== 'github') {
+      return 'Manueller Upload ist nicht angebunden — bitte den GitHub-Tab nutzen.';
+    }
+    if (!connected) {
+      return 'GitHub-Account verbinden, um zu importieren.';
+    }
+    if (!name.trim()) return 'Bitte einen Namen angeben.';
+    if (!githubUrl.trim()) return 'Bitte eine GitHub-URL angeben.';
+    if (!/^https?:\/\/github\.com\//i.test(githubUrl.trim())) {
+      return 'GitHub-URL muss mit https://github.com/ beginnen.';
+    }
+    return null;
+  })();
 
   return (
-    <Dialog open={open} onOpenChange={(open) => {
-      if (!open) resetForm();
-      onOpenChange(open);
-    }}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) resetForm();
+        onOpenChange(o);
+      }}
+    >
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-slate-900">Template hinzufügen</DialogTitle>
           <DialogDescription className="text-slate-600">
-            Fügen Sie ein neues Template über GitHub oder per Copy & Paste hinzu
+            Importiere ein Template direkt aus einem GitHub-Repository.
           </DialogDescription>
         </DialogHeader>
 
@@ -258,146 +218,297 @@ export function AddTemplateDialog({ open, onOpenChange }: AddTemplateDialogProps
             </TabsTrigger>
           </TabsList>
 
-          {/* Option 1: GitHub URL */}
+          {/* Tab 1: GitHub-Import */}
           <TabsContent value="github" className="space-y-4 mt-4">
+            {/* Connection-Status */}
+            {ghStatusLoading && (
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                GitHub-Verbindung wird geprüft…
+              </div>
+            )}
+
+            {!ghStatusLoading && !connected && (
+              <Alert className="border-amber-200 bg-amber-50">
+                <Plug className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-800">
+                  {/* w-full auf den inneren Wrapper: AlertDescription ist ein
+                      CSS-Grid-Item mit justify-items:start, das Kinder sonst
+                      auf ihre intrinsische Breite schrumpft — dann hat das
+                      flex justify-between nichts zum Auseinanderschieben und
+                      der „GitHub verbinden"-Button rutscht aus dem
+                      DialogContent (siehe #149). */}
+                  <div className="flex items-center justify-between gap-3 w-full">
+                    <span>
+                      Dein GitHub-Account ist noch nicht verbunden. Ohne Verbindung
+                      kann das Backend keine privaten oder organisationsinternen
+                      Repos lesen.
+                    </span>
+                    <Button
+                      size="sm"
+                      onClick={handleConnectGithub}
+                      className="shrink-0"
+                      // bg-slate-900 wird in der vor-gebackenen index.css
+                      // nicht generiert, sodass text-white auf transparentem
+                      // Hintergrund stehen würde — der Button wäre unsichtbar
+                      // (#149).
+                      style={{ backgroundColor: '#0f172a', color: '#ffffff' }}
+                    >
+                      <Github className="w-4 h-4 mr-2" />
+                      GitHub verbinden
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {!ghStatusLoading && connected && (
+              <Alert className="border-green-200 bg-green-50">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-800 text-sm">
+                  GitHub verbunden
+                  {ghStatus && ghStatus.repos.length > 0 && (
+                    <> · {ghStatus.repos.length} Repo{ghStatus.repos.length === 1 ? '' : 's'} sichtbar</>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="tpl-name" className="text-slate-700">
+                  Name <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="tpl-name"
+                  placeholder="z. B. Postgres für Kurs X"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  maxLength={255}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="tpl-icon" className="text-slate-700">
+                  Icon (optional)
+                </Label>
+                <Input
+                  id="tpl-icon"
+                  placeholder="mdi:database"
+                  value={iconUrl}
+                  onChange={(e) => setIconUrl(e.target.value)}
+                  maxLength={500}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="tpl-description" className="text-slate-700">
+                Beschreibung (optional)
+              </Label>
+              <Textarea
+                id="tpl-description"
+                placeholder="Kurze Beschreibung des Templates…"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="github-url" className="text-slate-700">
-                GitHub-URL mit Pfad zum Template-Ordner
+                GitHub-URL <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="github-url"
                 type="url"
-                placeholder="https://github.com/orga/repo/tree/main/heat-template"
+                placeholder="https://github.com/owner/repo/blob/main/postgres/app.yaml"
                 value={githubUrl}
-                onChange={(e) => {
-                  setGithubUrl(e.target.value);
-                  setValidationSuccess(false);
-                  setValidationErrors([]);
-                }}
+                onChange={(e) => setGithubUrl(e.target.value)}
                 className="font-mono text-sm"
+                maxLength={1000}
+              />
+              <div className="text-xs text-slate-500 space-y-1">
+                <p>Erlaubte URL-Formen:</p>
+                <ul className="list-disc pl-5 space-y-0.5">
+                  <li>
+                    <code>https://github.com/&lt;owner&gt;/&lt;repo&gt;</code> — dann{' '}
+                    <strong>Pfad zur <code>app.yaml</code> angeben</strong>
+                    {' '}(z. B. <code>unterordner/app.yaml</code>).
+                  </li>
+                  <li>
+                    <code>.../tree/&lt;branch&gt;/&lt;ordner&gt;</code> — dann ebenfalls{' '}
+                    <strong>Pfad zur <code>app.yaml</code> angeben</strong>
+                    {' '}(z. B. <code>&lt;ordner&gt;/app.yaml</code>).
+                  </li>
+                  <li>
+                    <code>.../blob/&lt;ref&gt;/&lt;pfad&gt;/app.yaml</code> — Pfad-Feld kann leer bleiben.
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="app-yaml-path" className="text-slate-700">
+                Pfad zur <code>app.yaml</code> {treeUrlNeedsPath ? <span className="text-red-500">*</span> : '(optional)'}
+              </Label>
+              <Input
+                id="app-yaml-path"
+                placeholder="unterordner/app.yaml"
+                value={appYamlPath}
+                onChange={(e) => setAppYamlPath(e.target.value)}
+                className="font-mono text-sm"
+                maxLength={500}
               />
               <p className="text-xs text-slate-500">
-                Das System erwartet mindestens eine Heat-Template-Datei (.yaml/.yml) im angegebenen Ordner
+                Relativ zur Repo-Wurzel; muss auf <code>.yaml</code> oder <code>.yml</code> enden.
+                Maximal 50 Dateien pro Ordner, max. 1 MB pro Datei.
               </p>
+              {treeUrlNeedsPath && (
+                <Alert className="border-amber-200 bg-amber-50">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-amber-800 text-xs">
+                    Die URL zeigt auf einen Ordner (<code>tree/…</code>). Bitte den{' '}
+                    Pfad zur <code>app.yaml</code> ergänzen — sonst lehnt der Import ab.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+
+            {/* Sichtbarkeit: bestimmt, ob das Template gleich im Marktplatz
+                landet (Public → Admin-Freigabe nötig) oder erst privat bleibt
+                (Private → kein Approval-Flow, direkt nutzbar). Default Private
+                entspricht dem Backend-Default und ist konservativ. */}
+            <div className="space-y-2">
+              <Label className="text-slate-700">Sichtbarkeit</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setVisibility('private')}
+                  className={`flex items-start gap-3 p-3 rounded-lg border text-left transition ${
+                    visibility === 'private'
+                      ? 'border-teal-500 bg-teal-50 ring-1 ring-teal-500'
+                      : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                  aria-pressed={visibility === 'private'}
+                >
+                  <Lock className="w-4 h-4 mt-0.5 text-slate-600 shrink-0" />
+                  <div className="space-y-0.5">
+                    <p className="text-sm text-slate-900">Privat (nur ich)</p>
+                    <p className="text-xs text-slate-500">
+                      Sofort verwendbar, keine Admin-Freigabe nötig.
+                    </p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisibility('public')}
+                  className={`flex items-start gap-3 p-3 rounded-lg border text-left transition ${
+                    visibility === 'public'
+                      ? 'border-teal-500 bg-teal-50 ring-1 ring-teal-500'
+                      : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                  aria-pressed={visibility === 'public'}
+                >
+                  <Globe className="w-4 h-4 mt-0.5 text-slate-600 shrink-0" />
+                  <div className="space-y-0.5">
+                    <p className="text-sm text-slate-900">Öffentlich (Marktplatz)</p>
+                    <p className="text-xs text-slate-500">
+                      Im App Store sichtbar, sobald ein Admin die erste Version freigibt.
+                    </p>
+                  </div>
+                </button>
+              </div>
             </div>
           </TabsContent>
 
-          {/* Option 2: Copy & Paste */}
+          {/* Tab 2: Manual (Platzhalter — nicht im Backend-Support) */}
           <TabsContent value="manual" className="space-y-4 mt-4">
-            {/* Heat Template - Pflichtfeld */}
-            <div className="space-y-2">
-              <Label htmlFor="heat-template" className="text-slate-700">
-                Heat-Template (YAML) <span className="text-red-500">*</span>
-              </Label>
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-800 text-sm">
+                Der manuelle Upload ist aktuell nicht angebunden. Bitte nutze
+                den GitHub-Tab — auch private Repos funktionieren, sobald der
+                Account verbunden ist.
+              </AlertDescription>
+            </Alert>
+
+            <div className="space-y-2 opacity-50 pointer-events-none">
+              <Label className="text-slate-700">Heat-Template (YAML)</Label>
               <Textarea
-                id="heat-template"
-                placeholder="heat_template_version: 2021-04-16&#10;description: Mein Template&#10;resources:&#10;  ..."
                 value={heatTemplate}
-                onChange={(e) => {
-                  setHeatTemplate(e.target.value);
-                  setValidationSuccess(false);
-                  setValidationErrors([]);
-                }}
-                className="font-mono text-sm min-h-[200px] resize-y"
+                onChange={(e) => setHeatTemplate(e.target.value)}
+                className="font-mono text-sm min-h-[120px]"
+                placeholder="heat_template_version: 2021-04-16…"
+                disabled
               />
-            </div>
-
-            {/* cloud-init - Optional */}
-            <div className="space-y-2">
-              <Label htmlFor="cloud-init" className="text-slate-700">
-                cloud-init Datei (optional)
-              </Label>
+              <Label className="text-slate-700">cloud-init (optional)</Label>
               <Textarea
-                id="cloud-init"
-                placeholder="#cloud-config&#10;packages:&#10;  - docker&#10;  - git"
                 value={cloudInit}
-                onChange={(e) => {
-                  setCloudInit(e.target.value);
-                  setValidationSuccess(false);
-                  setValidationErrors([]);
-                }}
-                className="font-mono text-sm min-h-[120px] resize-y"
+                onChange={(e) => setCloudInit(e.target.value)}
+                className="font-mono text-sm min-h-[80px]"
+                disabled
               />
-            </div>
-
-            {/* app.yaml - Optional */}
-            <div className="space-y-2">
-              <Label htmlFor="app-yaml" className="text-slate-700">
-                app.yaml (optional)
-              </Label>
+              <Label className="text-slate-700">app.yaml (optional)</Label>
               <Textarea
-                id="app-yaml"
-                placeholder="metadata:&#10;  name: Meine App&#10;  version: 1.0&#10;parameters:&#10;  ..."
                 value={appYaml}
-                onChange={(e) => {
-                  setAppYaml(e.target.value);
-                  setValidationSuccess(false);
-                  setValidationErrors([]);
-                }}
-                className="font-mono text-sm min-h-[120px] resize-y"
+                onChange={(e) => setAppYaml(e.target.value)}
+                className="font-mono text-sm min-h-[80px]"
+                disabled
               />
-              <p className="text-xs text-slate-500">
-                Die app.yaml wird für UI-Parameter und Metadaten verwendet
-              </p>
             </div>
           </TabsContent>
         </Tabs>
 
-        {/* Validation Messages */}
-        <div className="space-y-2 min-h-[60px]">
-          {validationSuccess && (
-            <Alert className="border-green-200 bg-green-50">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <AlertDescription className="text-green-800">
-                Validierung erfolgreich! Das Template ist syntaktisch korrekt.
-              </AlertDescription>
-            </Alert>
-          )}
+        {errorMessage && (
+          <Alert className="border-red-200 bg-red-50">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+            <AlertDescription className="text-red-800 text-sm">
+              {errorMessage}
+            </AlertDescription>
+          </Alert>
+        )}
 
-          {validationErrors.length > 0 && (
-            <Alert className="border-red-200 bg-red-50">
-              <AlertCircle className="h-4 w-4 text-red-600" />
-              <AlertDescription className="text-red-800">
-                <div className="font-medium mb-2">Folgende Fehler wurden gefunden:</div>
-                <ul className="list-disc list-inside space-y-1">
-                  {validationErrors.map((error, index) => (
-                    <li key={index} className="text-sm">
-                      <strong>{error.field}:</strong> {error.message}
-                    </li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
+        <div className="flex flex-col gap-2 pt-4 border-t">
+          {/* Lokaler Hinweis direkt am Button: wenn disabled, sagen wir warum.
+              Die globalen Banner (GitHub nicht verbunden, Manual-Tab) bleiben
+              — der Helper hier ist die zusätzliche Erklärung am Aktionsort. */}
+          {disabledReason && !submitting && (
+            <p className="text-xs text-slate-500 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              {disabledReason}
+            </p>
           )}
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
+          <div className="flex flex-col sm:flex-row gap-3">
           <Button
             variant="outline"
-            onClick={handleValidate}
-            disabled={isValidating}
+            onClick={() => {
+              resetForm();
+              onOpenChange(false);
+            }}
             className="flex-1"
+            disabled={submitting}
           >
-            {isValidating ? 'Validiere...' : 'Validieren'}
+            Abbrechen
           </Button>
-          
           <Button
-            variant="outline"
-            onClick={handleSave}
-            disabled={!validationSuccess}
-            className="flex-1"
-          >
-            Speichern
-          </Button>
-          
-          <Button
-            onClick={handleSubmitForApproval}
-            disabled={!validationSuccess}
+            onClick={handleImport}
+            disabled={submitting || disabledReason !== null}
+            title={disabledReason ?? undefined}
             className="flex-1 bg-teal-500 hover:bg-teal-600 text-white"
           >
-            Zur Genehmigung freigeben
+            {submitting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Importiere…
+              </>
+            ) : (
+              <>
+                <Github className="w-4 h-4 mr-2" />
+                Aus GitHub importieren
+              </>
+            )}
           </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

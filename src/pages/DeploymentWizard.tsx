@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Check,
   ChevronRight,
@@ -49,6 +49,11 @@ import {
   createDeployment,
   type DeploymentCreateRequest,
 } from "../api/deployments";
+import {
+  getMyCourses,
+  getCourseGroups,
+  createCourseGroup,
+} from "../api/courses";
 import { GroupManager, type StudentGroup } from "../components/GroupManager";
 import keycloak from "../auth/keycloak";
 import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
@@ -60,21 +65,49 @@ export interface GroupStackAssignment {
   assignedGroups: StudentGroup[];
 }
 
+// Pre-fill payload used by the "retry failed deployment" flow: we drop the
+// user onto the overview step with everything already wired up so they can
+// confirm without re-entering anything. Reconstructed from the failed
+// deployment's stored `deployment_parameters` JSON by DeploymentDetailsPage.
+export interface DeploymentWizardInitialState {
+  deploymentName: string;
+  templateVersionId: string;
+  keycloakGroupId: string;
+  runtimeMonths?: number;
+  parameters: Record<string, any>;
+  studentGroups: StudentGroup[];
+  groupStackAssignments: GroupStackAssignment[];
+}
+
 interface DeploymentWizardProps {
   templateId: string;
   onCancel: () => void;
   onComplete: (deploymentId: string) => void;
+  /**
+   * If provided, the wizard hydrates state from this payload and jumps the
+   * user directly to the overview step. Used by the "Erneut versuchen" flow
+   * on the deployment details page so a failed deployment can be re-submitted
+   * without re-entering any data.
+   */
+  initialState?: DeploymentWizardInitialState;
 }
 
 export function DeploymentWizard({
   templateId,
   onCancel,
   onComplete,
+  initialState,
 }: DeploymentWizardProps) {
   const { activeProjectId } = useActiveOpenstackProject();
-  const [currentStep, setCurrentStep] = useState(0);
   const [isDeploying, setIsDeploying] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  // Initial-state hydration (retry-failed-deployment flow). When provided we
+  // seed every relevant state slot with the failed deployment's values and
+  // jump straight to the overview step, bypassing the wizard's auto-derive
+  // effects on first render via `hasInitialStateRef`.
+  const hasInitialStateRef = useRef(!!initialState);
+  const [currentStep, setCurrentStep] = useState(0);
 
   // Data loading states
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDto | null>(
@@ -82,19 +115,29 @@ export function DeploymentWizard({
   );
   const [keycloakGroups, setKeycloakGroups] = useState<KeycloakGroup[]>([]);
   const [keycloakMembers, setKeycloakMembers] = useState<KeycloakUser[]>([]);
-  const [studentGroups, setStudentGroups] = useState<StudentGroup[]>([]);
+  const [studentGroups, setStudentGroups] = useState<StudentGroup[]>(
+    () => initialState?.studentGroups ?? [],
+  );
   const [groupStackAssignments, setGroupStackAssignments] = useState<
     GroupStackAssignment[]
-  >([]);
-  const [numberOfStacks, setNumberOfStacks] = useState<number>(1);
-  const [numberOfGroups, setNumberOfGroups] = useState<number>(1);
+  >(() => initialState?.groupStackAssignments ?? []);
+  const [numberOfStacks, setNumberOfStacks] = useState<number>(
+    () => initialState?.groupStackAssignments?.length || 1,
+  );
+  const [numberOfGroups, setNumberOfGroups] = useState<number>(
+    () => initialState?.studentGroups?.length || 1,
+  );
   // Raw string inputs for the number fields. We keep these separate from the
   // numeric state so the user can transiently clear the field (e.g. backspace
   // the existing "1" before typing "2") without us ever pushing a 0 into the
   // DOM. A 0 would otherwise trip the browser's native min="1" validation and
   // show a "Wert muss größer als oder gleich 1 sein" tooltip mid-edit.
-  const [numberOfStacksInput, setNumberOfStacksInput] = useState<string>("1");
-  const [numberOfGroupsInput, setNumberOfGroupsInput] = useState<string>("1");
+  const [numberOfStacksInput, setNumberOfStacksInput] = useState<string>(
+    () => String(initialState?.groupStackAssignments?.length || 1),
+  );
+  const [numberOfGroupsInput, setNumberOfGroupsInput] = useState<string>(
+    () => String(initialState?.studentGroups?.length || 1),
+  );
   const [templateVersions, setTemplateVersions] = useState<
     TemplateVersionDto[]
   >([]);
@@ -110,17 +153,32 @@ export function DeploymentWizard({
   
 
   // Selection states
-  const [selectedVersionId, setSelectedVersionId] = useState<string>("");
+  const [selectedVersionId, setSelectedVersionId] = useState<string>(
+    () => initialState?.templateVersionId ?? "",
+  );
   const [selectedKeycloakGroupId, setSelectedKeycloakGroupId] =
-    useState<string>("");
-  const [deploymentName, setDeploymentName] = useState<string>("");
-  const [runtime, setRuntime] = useState<string>("4");
-  const [deploymentMode, setDeploymentMode] = useState<
+    useState<string>(() => initialState?.keycloakGroupId ?? "");
+  // Interne course_id (UUID aus `courses.id` im appstore-backend), die zur
+  // ausgewählten Keycloak-Group passt. Brauchen wir, um beim Submit pro
+  // Wizard-Gruppe eine `course_groups`-Row zu erzeugen/finden und deren
+  // `id` als `course_group_id` ins Deployment-Payload zu legen — ohne
+  // diese ID können Studenten ihre Credentials nicht über /api/v1/student/
+  // sehen. Null, solange noch nicht aufgelöst oder kein Match existiert.
+  const [internalCourseId, setInternalCourseId] = useState<string | null>(null);
+  const [deploymentName, setDeploymentName] = useState<string>(
+    () => initialState?.deploymentName ?? "",
+  );
+  const [runtime, setRuntime] = useState<string>(
+    () => (initialState?.runtimeMonths ? String(initialState.runtimeMonths) : "4"),
+  );
+  const [deploymentMode] = useState<
     "per_group" | "per_student" | "per_course"
   >("per_group");
 
   // Form values - stores all parameter values
-  const [formValues, setFormValues] = useState<Record<string, any>>({});
+  const [formValues, setFormValues] = useState<Record<string, any>>(
+    () => initialState?.parameters ?? {},
+  );
 
   // Uploaded files - stores File objects keyed by user_file name
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, File>>({});
@@ -177,12 +235,14 @@ export function DeploymentWizard({
         const res = await getTemplateVersions(templateId, false);
         setTemplateVersions(res.data);
 
-        // Auto-select the active version (or latest if no active)
+        // Auto-select the active version (or latest if no active). In the
+        // retry flow `initialState.templateVersionId` already seeded the
+        // selection — leave it alone so we re-deploy with the same version.
         const activeVersion = res.data.find((v) => v.is_active);
         const latestVersion = res.data.length > 0 ? res.data[0] : null;
         const versionToSelect = activeVersion || latestVersion;
 
-        if (versionToSelect) {
+        if (versionToSelect && !initialState?.templateVersionId) {
           setSelectedVersionId(versionToSelect.id);
         }
 
@@ -230,8 +290,46 @@ export function DeploymentWizard({
     loadKeycloakGroupMembers();
   }, [selectedKeycloakGroupId, loadKeycloakGroupMembers]);
 
-  // Auto-create groups and stacks when deployment mode or members change
+  // Resolve the internal `courses.id` for the chosen Keycloak group. We need
+  // this to create/find `course_groups` rows on submit. Falls fehlschlägt,
+  // bleibt internalCourseId null — der Wizard deployt dann ohne
+  // course_group_id (Backwards-Compat: Backend macht ein Best-Effort-Backfill
+  // über Name, aber Studenten könnten ihre Credentials verlieren).
   useEffect(() => {
+    if (!selectedKeycloakGroupId) {
+      setInternalCourseId(null);
+      return;
+    }
+    let cancelled = false;
+    getMyCourses({
+      page: 1,
+      page_size: 200,
+      openstack_project_id: activeProjectId,
+    })
+      .then((resp) => {
+        if (cancelled) return;
+        const match = (resp.data || []).find(
+          (c) => c.keycloak_course_id === selectedKeycloakGroupId,
+        );
+        setInternalCourseId(match?.id ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setInternalCourseId(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedKeycloakGroupId, activeProjectId]);
+
+  // Auto-create groups and stacks when deployment mode or members change.
+  // Skipped on the very first run when `initialState` was supplied (retry
+  // flow) so the pre-filled student groups / stack assignments survive the
+  // initial members load — the user re-confirms exactly what failed.
+  useEffect(() => {
+    if (hasInitialStateRef.current) {
+      hasInitialStateRef.current = false;
+      return;
+    }
     if (deploymentMode === "per_student" && keycloakMembers.length > 0) {
       // One group per student, one stack per group
       const groups = keycloakMembers.map((student) => ({
@@ -346,13 +444,57 @@ export function DeploymentWizard({
     setGroupStackAssignments(stacks);
   }, [numberOfStacksInput]);
 
+  // Helper function to sanitize deployment name. We mirror the backend's stack
+  // naming rules (deploy_tasks.py: lowercases the value and appends a
+  // ``-s{idx}-{deploymentId[:4]}`` suffix before truncating to 64 chars), so we
+  // lowercase here and replace umlauts / underscores / whitespace inline. Names
+  // typed by lecturers are converted to ASCII-only kebab-case as they type,
+  // making the eventual Heat stack name predictable.
+  const sanitizeDeploymentName = (name: string): string => {
+    return name
+      .replace(/ä/g, "ae")
+      .replace(/ö/g, "oe")
+      .replace(/ü/g, "ue")
+      .replace(/Ä/g, "ae")
+      .replace(/Ö/g, "oe")
+      .replace(/Ü/g, "ue")
+      .replace(/ß/g, "ss")
+      .toLowerCase()
+      .replace(/[\s_]+/g, "-");
+  };
+
+  // Backend appends ``-s{idx}-{deploymentId[:4]}`` (8 chars) then truncates the
+  // resulting Heat stack name to 64. Cap user input well below that so multiple
+  // stacks remain distinguishable.
+  const DEPLOYMENT_NAME_MAX = 55;
+
+  // Helper function to validate deployment name pattern. Aligned with the
+  // DNS-1123 shape Heat ultimately accepts after backend lowercasing.
+  const validateDeploymentNamePattern = (name: string): { valid: boolean; message?: string } => {
+    const pattern = new RegExp(`^[a-z][a-z0-9-]{0,${DEPLOYMENT_NAME_MAX - 1}}$`);
+
+    if (!name || name.trim() === "") {
+      return { valid: false, message: "Ein Deployment-Name ist erforderlich" };
+    }
+
+    if (!pattern.test(name)) {
+      return {
+        valid: false,
+        message: `Deployment-Name muss mit einem Kleinbuchstaben beginnen und darf nur Kleinbuchstaben, Zahlen und Bindestriche enthalten (max. ${DEPLOYMENT_NAME_MAX} Zeichen)`,
+      };
+    }
+
+    return { valid: true };
+  };
+
   // Validation function for step 0
   const validateStep0 = useCallback((): boolean => {
     const errors: string[] = [];
 
     // Check deployment name
-    if (!deploymentName || deploymentName.trim() === "") {
-      errors.push("Ein Deployment-Name ist erforderlich");
+    const nameValidation = validateDeploymentNamePattern(deploymentName);
+    if (!nameValidation.valid) {
+      errors.push(nameValidation.message || "Ein Deployment-Name ist erforderlich");
     }
 
     // Check if template and group are selected
@@ -363,25 +505,31 @@ export function DeploymentWizard({
       errors.push("Ein Kurs muss ausgewählt werden");
     }
 
-    // Check if we need to validate groups (only in per_group mode)
-    if (deploymentMode === "per_group" && selectedKeycloakGroupId && keycloakMembers.length > 0) {
-      // Check if there are any empty groups
-      const emptyGroups = studentGroups.filter((g) => g.students.length === 0);
-      if (emptyGroups.length > 0) {
-        errors.push("Es darf keine leeren Gruppen geben");
-      }
-
-      // Check if all students are assigned
-      const assignedStudentIds = new Set(studentGroups.flatMap((g) => g.students.map((s) => s.id)));
-      const unassignedStudents = keycloakMembers.filter((s) => !assignedStudentIds.has(s.id));
-      if (unassignedStudents.length > 0) {
-        errors.push(`${unassignedStudents.length} Student(en) müssen einer Gruppe zugeordnet werden`);
-      }
-    }
+    // Leere Gruppen sind erlaubt (z. B. Dozent legt Platzhalter an, oder eine
+    // Gruppe bekommt erst später Studenten). Ebenso müssen nicht zwingend alle
+    // Keycloak-Mitglieder einer Wizard-Gruppe zugeordnet sein — ein Student
+    // ohne Gruppe sieht im Student-Dashboard schlicht kein Deployment.
+    // → Keine per-Gruppe-Validierung hier.
 
     setValidationErrors(errors);
     return errors.length === 0;
-  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups]);
+  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId]);
+
+  // Pure check for whether step 0 is sufficiently filled to allow navigation
+  const isStep0ValidPure = useCallback((): boolean => {
+    // basic required fields
+    if (!deploymentName || deploymentName.trim() === "") return false;
+    if (!selectedVersionId) return false;
+    if (!selectedKeycloakGroupId) return false;
+
+    // validate name pattern
+    if (!validateDeploymentNamePattern(deploymentName).valid) return false;
+
+    // Pendant zur Validierung oben: leere Gruppen und nicht-zugeordnete
+    // Studenten sind kein Blocker mehr.
+
+    return true;
+  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId]);
 
   // Update validation errors whenever relevant data changes (on current step)
   useEffect(() => {
@@ -390,10 +538,13 @@ export function DeploymentWizard({
     }
   }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups, currentStep, validateStep0]);
 
-  // Update numberOfGroups when studentGroups changes (for UI consistency)
+  // Update numberOfGroups when studentGroups changes (for UI consistency).
+  // Keep a sensible default of 1 while no groups have been created yet,
+  // so the input shows "1" instead of "0" on first open.
   useEffect(() => {
-    setNumberOfGroups(studentGroups.length);
-    setNumberOfGroupsInput(String(studentGroups.length));
+    const next = studentGroups.length > 0 ? studentGroups.length : 1;
+    setNumberOfGroups(next);
+    setNumberOfGroupsInput(String(next));
   }, [studentGroups.length]);
 
   // Auto-update group names when only one student is in a group
@@ -456,6 +607,11 @@ export function DeploymentWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentGroups, deploymentMode]);
 
+  // One-shot guard: keep the failed deployment's parameters when the template
+  // version data first loads in the retry flow, otherwise the default-init
+  // loop below would wipe them with the template defaults.
+  const preserveInitialFormValuesRef = useRef(!!initialState);
+
   // Load template version data when version is selected
   useEffect(() => {
     if (!selectedVersionId) {
@@ -470,14 +626,20 @@ export function DeploymentWizard({
         const res = await getTemplateVersion(selectedVersionId);
         setTemplateVersionData(res.data);
 
-        // Initialize form values with defaults
-        const initialValues: Record<string, any> = {};
-        res.data.parameters?.forEach((param: TemplateParameter) => {
-          if (param.default !== undefined && param.default !== null) {
-            initialValues[param.name] = param.default;
-          }
-        });
-        setFormValues(initialValues);
+        if (preserveInitialFormValuesRef.current) {
+          // Retry flow: parameters are already seeded from the failed
+          // deployment; don't overwrite with template defaults.
+          preserveInitialFormValuesRef.current = false;
+        } else {
+          // Initialize form values with defaults
+          const initialValues: Record<string, any> = {};
+          res.data.parameters?.forEach((param: TemplateParameter) => {
+            if (param.default !== undefined && param.default !== null) {
+              initialValues[param.name] = param.default;
+            }
+          });
+          setFormValues(initialValues);
+        }
 
         setLoading((prev) => ({ ...prev, version: false }));
       } catch (err) {
@@ -570,6 +732,25 @@ export function DeploymentWizard({
     return baseSteps;
   }, [parametersByStep]);
 
+  // Retry flow: jump to the overview (last step) as soon as the wizard knows
+  // *all* its steps. We wait for `templateVersionData` because the
+  // configuration/network steps depend on it — if we jumped earlier we'd
+  // land on whatever step index the overview *had* before those got
+  // inserted, which on most templates means the user ends up on
+  // "Konfiguration" instead of "Übersicht".
+  const didJumpToOverviewRef = useRef(false);
+  useEffect(() => {
+    if (
+      initialState &&
+      !didJumpToOverviewRef.current &&
+      templateVersionData &&
+      steps.length > 1
+    ) {
+      setCurrentStep(steps.length - 1);
+      didJumpToOverviewRef.current = true;
+    }
+  }, [initialState, templateVersionData, steps.length]);
+
   const handleNext = () => {
     // Validate step 0 before proceeding
     if (currentStep === 0) {
@@ -615,10 +796,8 @@ export function DeploymentWizard({
         setError("Bitte erstellen Sie mindestens eine Gruppe");
         return;
       }
-      if (studentGroups.every((g) => g.students.length === 0)) {
-        setError("Bitte weisen Sie mindestens einer Gruppe Studenten zu");
-        return;
-      }
+      // Leere Gruppen sind bewusst erlaubt — Dozent kann später Studenten
+      // nachziehen, oder das Deployment dient als Platzhalter/Testlauf.
       if (groupStackAssignments.length === 0) {
         setError("Bitte erstellen Sie mindestens einen Stack");
         return;
@@ -728,6 +907,58 @@ export function DeploymentWizard({
         userFilesPayload[name] = base64;
       }
 
+      // Pro Wizard-Group eine course_groups-Row sicherstellen. Backend stempelt
+      // die FK dann auf alle generierten Credential-Rows, was Studenten den
+      // Zugriff via /api/v1/student/* freigibt. Ohne diesen Schritt bleibt
+      // group_id NULL und Studenten sehen nichts.
+      //
+      // Strategie: existierende course_groups holen, per Name matchen,
+      // unbekannte Namen via POST anlegen. Ein Toast/Error blockt das Deploy
+      // bewusst — wenn der Course-Group-Mechanismus kaputt ist, will der
+      // Lecturer das sofort wissen, statt erst nach dem Deploy bei Student-
+      // Reports zu merken, dass Credentials unsichtbar sind.
+      const wizardGroupToCourseGroupId = new Map<string, string>();
+      if (internalCourseId) {
+        try {
+          const existingResp = await getCourseGroups(internalCourseId);
+          const byName = new Map<string, string>();
+          for (const g of existingResp.data || []) {
+            byName.set(g.name, g.id);
+          }
+          // Sammeln aller distinct Wizard-Group-Namen (nach Group-ID, da der
+          // gleiche Name nicht mehrfach in einem Stack vorkommen sollte, aber
+          // wir bleiben defensiv).
+          const distinctWizardGroups = new Map<string, { id: string; name: string }>();
+          for (const stack of groupStackAssignments) {
+            for (const g of stack.assignedGroups) {
+              distinctWizardGroups.set(g.groupId, {
+                id: g.groupId,
+                name: g.groupName,
+              });
+            }
+          }
+          for (const wg of distinctWizardGroups.values()) {
+            const existingId = byName.get(wg.name);
+            if (existingId) {
+              wizardGroupToCourseGroupId.set(wg.id, existingId);
+              continue;
+            }
+            const created = await createCourseGroup(internalCourseId, wg.name);
+            wizardGroupToCourseGroupId.set(wg.id, created.data.id);
+            // Cache für den Fall, dass mehrere Wizard-Groups denselben Namen
+            // tragen — sollte nicht passieren, aber wir reusen die ID.
+            byName.set(wg.name, created.data.id);
+          }
+        } catch (err) {
+          console.error("Course-group resolution failed:", err);
+          setError(
+            "Die Kursgruppen konnten nicht angelegt werden. Studenten würden ihre Credentials nicht sehen — Deployment wurde abgebrochen.",
+          );
+          setIsDeploying(false);
+          return;
+        }
+      }
+
       // Build deployment request with stack assignments
       const deploymentData: DeploymentCreateRequest = {
         name: deploymentName.trim(),
@@ -744,6 +975,11 @@ export function DeploymentWizard({
           groups: stack.assignedGroups.map((group) => ({
             group_name: group.groupName,
             group_index: group.groupId ? parseInt(group.groupId.replace(/\D/g, '')) || stackIndex + 1 : stackIndex + 1,
+            // Auflösung aus dem Map oben. Null, wenn kein internalCourseId
+            // ermittelt werden konnte (kein Course für die Keycloak-Group):
+            // Backend hat dafür einen Backfill-Versuch, aber Studenten sehen
+            // ggf. nichts. Lecturer-Flow funktioniert unverändert.
+            course_group_id: wizardGroupToCourseGroupId.get(group.groupId) ?? null,
             students: group.students.map((student) => ({
               id: student.id,
               username: student.username || "",
@@ -812,7 +1048,7 @@ export function DeploymentWizard({
             </SelectTrigger>
             <SelectContent>
               {param.enum.map((option) => (
-                <SelectItem key={option} value={option}>
+                <SelectItem key={String(option)} value={String(option)}>
                   {option}
                 </SelectItem>
               ))}
@@ -1023,13 +1259,35 @@ export function DeploymentWizard({
 
           <div>
             <Label htmlFor="deployment-name">Deployment-Name</Label>
-            <Input
-              id="deployment-name"
-              placeholder="z.B. CS101-Jupyter-Herbst2024"
-              className="mt-2"
-              value={deploymentName}
-              onChange={(e) => setDeploymentName(e.target.value)}
-            />
+            {(() => {
+              const nameValidation = validateDeploymentNamePattern(deploymentName);
+              const showError = !!deploymentName && !nameValidation.valid;
+              return (
+                <>
+                  <Input
+                    id="deployment-name"
+                    placeholder="z.B. cs101-jupyter-herbst2024"
+                    maxLength={DEPLOYMENT_NAME_MAX}
+                    className={`mt-2 ${
+                      showError
+                        ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                        : ""
+                    }`}
+                    value={deploymentName}
+                    onChange={(e) => {
+                      // Sanitize as the user types (umlauts, casing, spaces).
+                      setDeploymentName(sanitizeDeploymentName(e.target.value));
+                    }}
+                  />
+                  {showError && (
+                    <p className="text-xs text-red-600 mt-1 flex items-start gap-2">
+                      <span className="text-red-500 mt-0.5">•</span>
+                      <span>{nameValidation.message}</span>
+                    </p>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
               <div>
@@ -1041,6 +1299,7 @@ export function DeploymentWizard({
                   <SelectContent>
                     <SelectItem value="1">1 Monat</SelectItem>
                     <SelectItem value="3">3 Monate</SelectItem>
+                    <SelectItem value="4">4 Monate</SelectItem>
                     <SelectItem value="6">6 Monate</SelectItem>
                     <SelectItem value="12">1 Jahr</SelectItem>
                     <SelectItem value="24">2 Jahre</SelectItem>
@@ -1057,9 +1316,32 @@ export function DeploymentWizard({
           {/* Section 2: Groups */}
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-black">Gruppen & Kurszuordnung</CardTitle>
+              <CardTitle className="text-slate-900">Gruppen & Kurszuordnung</CardTitle>
             </CardHeader>
-            <CardContent className="bg-white rounded-lg p-4 space-y-6">
+            <CardContent className="pt-2 space-y-6">
+              <div>
+                <Label>Kurs auswählen</Label>
+                <Select
+                  value={selectedKeycloakGroupId}
+                  onValueChange={setSelectedKeycloakGroupId}
+                  disabled={loading.groups}
+                >
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="z.B. WWI23SEB" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {keycloakGroups.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500 mt-2">
+                  Wählen Sie eine Keycloak-Gruppe (Kurs) aus
+                </p>
+              </div>
+
               <div>
                 <Label>Anzahl der Gruppen</Label>
                 <Input
@@ -1086,31 +1368,7 @@ export function DeploymentWizard({
                   }}
                 />
                 <p className="text-xs text-slate-500 mt-2">
-                  Legen Sie fest, in wie viele Gruppen die Studenten aufgeteilt
-                  werden
-                </p>
-              </div>
-
-              <div>
-                <Label>Kurs auswählen</Label>
-                <Select
-                  value={selectedKeycloakGroupId}
-                  onValueChange={setSelectedKeycloakGroupId}
-                  disabled={loading.groups}
-                >
-                  <SelectTrigger className="mt-2">
-                    <SelectValue placeholder="z.B. WWI23SEB" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {keycloakGroups.map((group) => (
-                      <SelectItem key={group.id} value={group.id}>
-                        {group.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-slate-500 mt-2">
-                  Wählen Sie eine Keycloak-Gruppe (Kurs) aus
+                  In wie viele Gruppen sollen die Studierenden aufgeteilt werden? Geben Sie eine Zahl von 1–50 an.
                 </p>
               </div>
 
@@ -1219,7 +1477,7 @@ export function DeploymentWizard({
                   }}
                 />
                 <p className="text-xs text-slate-500 mt-2">
-                  Geben Sie an, wie viele Stack-Instanzen Sie benötigen
+                  Wie viele separate Arbeitsumgebungen sollen erstellt werden? (1 = alle teilen sich eine Umgebung; mehrere = getrennte Umgebungen für Gruppen/Studierende)
                 </p>
               </div>
             </CardContent>
@@ -1513,53 +1771,75 @@ export function DeploymentWizard({
     );
   }
 
+  const nextButtonLabel = (() => {
+    if (currentStep === 0) return "Detaillierte Konfiguration";
+    if (currentStep === steps.length - 2) return "Zur Übersicht";
+    return "Weiter";
+  })();
+
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-8">
       {/* Progress Steps */}
-      <div className="flex items-center justify-between">
-        {steps.map((step, index) => {
-          const StepIcon = step.icon;
-          const isActive = index === currentStep;
-          const isCompleted = index < currentStep;
+      <div className="flex items-start">
+        <div className="flex items-center flex-1">
+          {steps.map((step, index) => {
+            const StepIcon = step.icon;
+            const isActive = index === currentStep;
+            const isCompleted = index < currentStep;
+            const canNavigate = index <= currentStep || isStep0ValidPure();
 
-          return (
-            <div key={step.stepKey} className="flex items-center flex-1">
-              <div className="flex flex-col items-center">
-                <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                    isCompleted
-                      ? "bg-teal-500 text-white"
-                      : isActive
-                        ? "bg-teal-100 text-teal-600 border-2 border-teal-500"
-                        : "bg-slate-100 text-slate-400"
-                  }`}
-                >
-                  {isCompleted ? (
-                    <Check className="w-6 h-6" />
-                  ) : (
-                    <StepIcon className="w-6 h-6" />
-                  )}
+            return (
+              <div
+                key={step.stepKey}
+                className={`flex items-center flex-1 ${canNavigate ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  if (canNavigate) setCurrentStep(index);
+                }}
+                onKeyDown={(e) => {
+                  if ((e.key === 'Enter' || e.key === ' ') && canNavigate) {
+                    setCurrentStep(index);
+                  }
+                }}
+              >
+                <div className="flex flex-col items-center">
+                  <div
+                    className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                      isCompleted
+                        ? "bg-teal-500 text-white"
+                        : isActive
+                          ? "bg-teal-100 text-teal-600 border-2 border-teal-500"
+                          : "bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    {isCompleted ? (
+                      <Check className="w-6 h-6" />
+                    ) : (
+                      <StepIcon className="w-6 h-6" />
+                    )}
+                  </div>
+                  <p
+                    className={`text-xs mt-2 text-center ${
+                      isActive
+                        ? "text-teal-600 font-medium"
+                        : isCompleted
+                          ? "text-slate-600"
+                          : "text-slate-400"
+                    }`}
+                  >
+                    {step.name}
+                  </p>
                 </div>
-                <p
-                  className={`text-xs mt-2 text-center ${
-                    isActive
-                      ? "text-teal-600 font-medium"
-                      : isCompleted
-                        ? "text-slate-600"
-                        : "text-slate-400"
-                  }`}
-                >
-                  {step.name}
-                </p>
+                {index < steps.length - 1 && (
+                  <div
+                    className={`h-0.5 flex-1 -mt-6 ${isCompleted ? "bg-teal-500" : "bg-slate-200"}`}
+                  />
+                )}
               </div>
-              {index < steps.length - 1 && (
-                <div
-                  className={`h-0.5 flex-1 -mt-6 ${isCompleted ? "bg-teal-500" : "bg-slate-200"}`}
-                />
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {/* Content */}
@@ -1598,10 +1878,22 @@ export function DeploymentWizard({
         </Button>
 
         <div className="flex gap-2">
-          {/* Skip to Overview button (only on first step) */}
+          {/* Detaillierte Konfiguration (only on first step) — outline styling */}
           {currentStep === 0 && steps.length > 1 && (
             <Button
               variant="outline"
+              onClick={handleNext}
+              disabled={isDeploying || validationErrors.length > 0}
+              className="border-teal-500 text-teal-600 hover:bg-teal-50"
+            >
+              Detaillierte Konfiguration
+              <ChevronRight className="w-4 h-4 ml-2" />
+            </Button>
+          )}
+
+          {/* Direkt zur Übersicht (only on first step) — primary styling */}
+          {currentStep === 0 && steps.length > 1 && (
+            <Button
               onClick={handleSkipToOverview}
               disabled={
                 !selectedVersionId ||
@@ -1609,20 +1901,20 @@ export function DeploymentWizard({
                 !deploymentName ||
                 isDeploying
               }
-              className="border-teal-500 text-teal-600 hover:bg-teal-50"
+              className="bg-teal-500 hover:bg-teal-600 text-white"
             >
               Direkt zur Übersicht
               <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           )}
 
-          {currentStep < steps.length - 1 && (
+          {currentStep > 0 && currentStep < steps.length - 1 && (
             <Button
               onClick={handleNext}
               className="bg-teal-500 hover:bg-teal-600 text-white"
               disabled={isDeploying || validationErrors.length > 0}
             >
-              Weiter
+              {nextButtonLabel}
               <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           )}
@@ -1641,7 +1933,7 @@ export function DeploymentWizard({
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Application deployen
+                  Anwendung deployen
                 </>
               )}
             </Button>

@@ -6,7 +6,6 @@ import {
   Database,
   AlertTriangle,
   CheckCircle2,
-  Eye,
   FileCheck,
   X,
   Check,
@@ -721,7 +720,7 @@ export function AdminMonitoring() {
                 schon in der CardDescription, doppelte „keine offenen
                 Versionen"-Zeile wäre redundant. */}
             {!approvalQueueEmpty && (
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 pt-2">
                 {queueLoadError && (
                   <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
                     {queueLoadError}
@@ -886,10 +885,11 @@ export function AdminMonitoring() {
                               <Button
                                 variant="outline"
                                 size="sm"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
                                 onClick={() => setSelectedVersionId(version.id)}
                               >
-                                <Eye className="w-4 h-4 mr-2" />
-                                Details prüfen
+                                <X className="w-4 h-4 mr-2" />
+                                Ablehnen
                               </Button>
                               <Button
                                 size="sm"

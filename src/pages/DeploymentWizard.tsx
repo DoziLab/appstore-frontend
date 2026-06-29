@@ -495,25 +495,15 @@ export function DeploymentWizard({
       errors.push("Ein Kurs muss ausgewählt werden");
     }
 
-    // Check if we need to validate groups (only in per_group mode)
-    if (deploymentMode === "per_group" && selectedKeycloakGroupId && keycloakMembers.length > 0) {
-      // Check if there are any empty groups
-      const emptyGroups = studentGroups.filter((g) => g.students.length === 0);
-      if (emptyGroups.length > 0) {
-        errors.push("Es darf keine leeren Gruppen geben");
-      }
-
-      // Check if all students are assigned
-      const assignedStudentIds = new Set(studentGroups.flatMap((g) => g.students.map((s) => s.id)));
-      const unassignedStudents = keycloakMembers.filter((s) => !assignedStudentIds.has(s.id));
-      if (unassignedStudents.length > 0) {
-        errors.push(`${unassignedStudents.length} Student(en) müssen einer Gruppe zugeordnet werden`);
-      }
-    }
+    // Leere Gruppen sind erlaubt (z. B. Dozent legt Platzhalter an, oder eine
+    // Gruppe bekommt erst später Studenten). Ebenso müssen nicht zwingend alle
+    // Keycloak-Mitglieder einer Wizard-Gruppe zugeordnet sein — ein Student
+    // ohne Gruppe sieht im Student-Dashboard schlicht kein Deployment.
+    // → Keine per-Gruppe-Validierung hier.
 
     setValidationErrors(errors);
     return errors.length === 0;
-  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups]);
+  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId]);
 
   // Pure check for whether step 0 is sufficiently filled to allow navigation
   const isStep0ValidPure = useCallback((): boolean => {
@@ -525,18 +515,11 @@ export function DeploymentWizard({
     // validate name pattern
     if (!validateDeploymentNamePattern(deploymentName).valid) return false;
 
-    // additional checks for per_group mode
-    if (deploymentMode === "per_group" && selectedKeycloakGroupId && keycloakMembers.length > 0) {
-      const emptyGroups = studentGroups.filter((g) => g.students.length === 0);
-      if (emptyGroups.length > 0) return false;
-
-      const assignedStudentIds = new Set(studentGroups.flatMap((g) => g.students.map((s) => s.id)));
-      const unassignedStudents = keycloakMembers.filter((s) => !assignedStudentIds.has(s.id));
-      if (unassignedStudents.length > 0) return false;
-    }
+    // Pendant zur Validierung oben: leere Gruppen und nicht-zugeordnete
+    // Studenten sind kein Blocker mehr.
 
     return true;
-  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups]);
+  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId]);
 
   // Update validation errors whenever relevant data changes (on current step)
   useEffect(() => {
@@ -801,10 +784,8 @@ export function DeploymentWizard({
         setError("Bitte erstellen Sie mindestens eine Gruppe");
         return;
       }
-      if (studentGroups.every((g) => g.students.length === 0)) {
-        setError("Bitte weisen Sie mindestens einer Gruppe Studenten zu");
-        return;
-      }
+      // Leere Gruppen sind bewusst erlaubt — Dozent kann später Studenten
+      // nachziehen, oder das Deployment dient als Platzhalter/Testlauf.
       if (groupStackAssignments.length === 0) {
         setError("Bitte erstellen Sie mindestens einen Stack");
         return;

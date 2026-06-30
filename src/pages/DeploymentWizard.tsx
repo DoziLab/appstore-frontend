@@ -436,6 +436,22 @@ export function DeploymentWizard({
     return { valid: true };
   };
 
+  // Helper function to check if a field has an error
+  const hasFieldError = useCallback((fieldName: 'version' | 'deploymentName' | 'group'): boolean => {
+    if (validationErrors.length === 0) return false;
+    
+    switch (fieldName) {
+      case 'version':
+        return !selectedVersionId;
+      case 'deploymentName':
+        return !validateDeploymentNamePattern(deploymentName).valid;
+      case 'group':
+        return !selectedKeycloakGroupId;
+      default:
+        return false;
+    }
+  }, [validationErrors, selectedVersionId, deploymentName, selectedKeycloakGroupId]);
+
   // Validation function for step 0
   const validateStep0 = useCallback((): boolean => {
     const errors: string[] = [];
@@ -1133,7 +1149,11 @@ export function DeploymentWizard({
               onValueChange={setSelectedVersionId}
               disabled={loading.version || templateVersions.length === 0}
             >
-              <SelectTrigger className="mt-2">
+              <SelectTrigger className={`mt-2 ${
+                hasFieldError('version')
+                  ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                  : ""
+              }`}>
                 <SelectValue
                   placeholder={
                     loading.version
@@ -1169,7 +1189,7 @@ export function DeploymentWizard({
             <Label htmlFor="deployment-name">Deployment-Name</Label>
             {(() => {
               const nameValidation = validateDeploymentNamePattern(deploymentName);
-              const showError = !!deploymentName && !nameValidation.valid;
+              const showError = hasFieldError('deploymentName');
               return (
                 <>
                   <Input
@@ -1234,7 +1254,11 @@ export function DeploymentWizard({
                   onValueChange={setSelectedKeycloakGroupId}
                   disabled={loading.groups}
                 >
-                  <SelectTrigger className="mt-2">
+                  <SelectTrigger className={`mt-2 ${
+                    validationErrors.length > 0 && !selectedKeycloakGroupId
+                      ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                      : ""
+                  }`}>
                     <SelectValue placeholder="z.B. WWI23SEB" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1245,9 +1269,16 @@ export function DeploymentWizard({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-slate-500 mt-2">
-                  Wählen Sie eine Keycloak-Gruppe (Kurs) aus
-                </p>
+                {validationErrors.length > 0 && !selectedKeycloakGroupId ? (
+                  <p className="text-xs text-red-600 mt-1 flex items-start gap-2">
+                    <span className="text-red-500 mt-0.5">•</span>
+                    <span>Ein Kurs muss ausgewählt werden</span>
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500 mt-2">
+                    Wählen Sie eine Keycloak-Gruppe (Kurs) aus
+                  </p>
+                )}
               </div>
 
               <div>

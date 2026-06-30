@@ -44,6 +44,7 @@ const accessTypeLabels: Record<string, string> = {
   rdp: "RDP",
   vnc: "VNC",
   database: "Database",
+  pgadmin: "pgAdmin",
   // Einmaliger Setup-Link, den das Playbook auf der VM erzeugt (z.B.
   // Overleaf-CLI). Keine Passwort-Zeile, klickbarer Link im Verbindungs-
   // Feld — siehe AccessRow weiter unten.
@@ -291,6 +292,13 @@ function AccessRow({
   ) => void | Promise<void>;
   currentUsername?: string | null;
 }) {
+  // pgAdmin-Erkennung: Wenn access_type="database" ist und die URL pgadmin enthält
+  const isPgAdmin = access.access_type === "database" && 
+    access.connection_url?.toLowerCase().includes("pgadmin");
+  
+  const displayType = isPgAdmin ? "pgadmin" : access.access_type;
+  const displayLabel = accessTypeLabels[displayType] || displayType;
+
   const urlLabel =
     access.access_type === "ssh"
       ? "SSH-Befehl"
@@ -348,7 +356,7 @@ function AccessRow({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <h4 className="text-sm font-medium text-slate-900">
-            {accessTypeLabels[access.access_type] || access.access_type}
+            {displayLabel}
           </h4>
           {isAdminAccess && (
             <Badge
@@ -361,7 +369,7 @@ function AccessRow({
             </Badge>
           )}
         </div>
-        <Badge variant="outline">{access.access_type}</Badge>
+        <Badge variant="outline">{displayType}</Badge>
       </div>
 
       <div className="grid gap-3">

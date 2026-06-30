@@ -314,8 +314,8 @@ export function TemplateOwnerDetailDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <span>{template.name}</span>
+            <DialogTitle className="flex items-center gap-2 min-w-0">
+              <span className="break-words min-w-0">{template.name}</span>
               <Badge variant="outline" className="text-xs">
                 eigenes Template
               </Badge>

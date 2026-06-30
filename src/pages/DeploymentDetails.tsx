@@ -508,8 +508,8 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
 
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-slate-900 mb-2">{deployment.name}</h1>
-            <p className="text-slate-600">{deployment.course}</p>
+            <h1 className="text-slate-900 mb-2 break-words">{deployment.name}</h1>
+            <p className="text-slate-600 break-words">{deployment.course}</p>
             {deployment.templateName && (
               <p className="text-sm text-slate-500 mt-1">
                 Template: {deployment.templateName}{deployment.templateVersion ? ` (${deployment.templateVersion})` : ''}

@@ -306,11 +306,15 @@ export function AppStore({ onDeploy }: AppStoreProps) {
               return (
                 <Card key={template.id} className="border-slate-200 shadow-sm hover:shadow-md transition-all hover:border-teal-200 flex flex-col h-full">
                   <CardHeader className="flex-shrink-0">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${style.color} flex items-center justify-center text-white shadow-lg`}>
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className={`flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br ${style.color} flex items-center justify-center text-white shadow-lg`}>
                         <Icon className="w-6 h-6" />
                       </div>
-                      <div className="flex gap-2">
+                      {/* flex-wrap: in der schmalen Karten-Spalte (3-col-Grid)
+                          passen „einsatzbereit" + „Öffentlich (offen)" oft
+                          nicht nebeneinander — ohne wrap überlaufen die
+                          shrink-0/whitespace-nowrap-Badges die Karte. */}
+                      <div className="flex flex-wrap justify-end gap-2 min-w-0">
                         <ApprovalBadge
                           status={deriveTemplateOverallStatus(template)}
                           variant="overall"

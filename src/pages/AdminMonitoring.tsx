@@ -507,7 +507,7 @@ export function AdminMonitoring() {
                           className="cursor-pointer hover:bg-slate-50"
                           onClick={() => setSelectedTeacher(project.teacher)}
                         >
-                          <TableCell className="text-slate-900">
+                          <TableCell className="text-slate-900 whitespace-normal break-words">
                             {project.teacher.name}
                           </TableCell>
                           <TableCell>
@@ -535,8 +535,8 @@ export function AdminMonitoring() {
                     ← Zurück
                   </Button>
                   <div className="mb-4">
-                    <h3 className="text-lg font-semibold text-slate-900">Deployments von {selectedTeacher.name}</h3>
-                    <p className="text-sm text-slate-500">{selectedTeacher.email}</p>
+                    <h3 className="text-lg font-semibold text-slate-900 break-words">Deployments von {selectedTeacher.name}</h3>
+                    <p className="text-sm text-slate-500 break-all">{selectedTeacher.email}</p>
                   </div>
                   <Table>
                     <TableHeader>
@@ -556,9 +556,9 @@ export function AdminMonitoring() {
                             className="cursor-pointer hover:bg-slate-50"
                             onClick={() => navigate(`/deployment/${d.id}`)}
                           >
-                            <TableCell className="text-slate-900 text-blue-600 hover:underline">{d.name}</TableCell>
-                            <TableCell>{extractCourse(d)}</TableCell>
-                            <TableCell>{d.template_version?.template_name || '—'}</TableCell>
+                            <TableCell className="text-slate-900 text-blue-600 hover:underline whitespace-normal break-words">{d.name}</TableCell>
+                            <TableCell className="whitespace-normal break-words">{extractCourse(d)}</TableCell>
+                            <TableCell className="whitespace-normal break-words">{d.template_version?.template_name || '—'}</TableCell>
                             <TableCell className="text-sm text-slate-600">
                               {new Date(d.created_at).toLocaleString()}
                             </TableCell>
@@ -617,7 +617,7 @@ export function AdminMonitoring() {
                     ← Zurück
                   </Button>
                   <div className="mb-4">
-                    <h3 className="text-lg font-semibold text-slate-900">Deployments im Kurs {selectedCourse}</h3>
+                    <h3 className="text-lg font-semibold text-slate-900 break-words">Deployments im Kurs {selectedCourse}</h3>
                   </div>
                   <Table>
                     <TableHeader>
@@ -637,9 +637,9 @@ export function AdminMonitoring() {
                             className="cursor-pointer hover:bg-slate-50"
                             onClick={() => navigate(`/deployment/${d.id}`)}
                           >
-                            <TableCell className="text-slate-900 text-blue-600 hover:underline">{d.name}</TableCell>
-                            <TableCell>{extractTeacher(d).name}</TableCell>
-                            <TableCell>{d.template_version?.template_name || '—'}</TableCell>
+                            <TableCell className="text-slate-900 text-blue-600 hover:underline whitespace-normal break-words">{d.name}</TableCell>
+                            <TableCell className="whitespace-normal break-words">{extractTeacher(d).name}</TableCell>
+                            <TableCell className="whitespace-normal break-words">{d.template_version?.template_name || '—'}</TableCell>
                             <TableCell className="text-sm text-slate-600">
                               {new Date(d.created_at).toLocaleString()}
                             </TableCell>
@@ -668,9 +668,9 @@ export function AdminMonitoring() {
                         className="cursor-pointer hover:bg-slate-50"
                         onClick={() => navigate(`/deployment/${d.id}`)}
                       >
-                        <TableCell className="text-blue-600 hover:underline">{d.name}</TableCell>
-                        <TableCell>{extractCourse(d)}</TableCell>
-                        <TableCell>{extractTeacher(d).name}</TableCell>
+                        <TableCell className="text-blue-600 hover:underline whitespace-normal break-words">{d.name}</TableCell>
+                        <TableCell className="whitespace-normal break-words">{extractCourse(d)}</TableCell>
+                        <TableCell className="whitespace-normal break-words">{extractTeacher(d).name}</TableCell>
                         <TableCell className="text-sm text-slate-600">{new Date(d.created_at).toLocaleString()}</TableCell>
                         <TableCell><Badge variant="outline">{d.status}</Badge></TableCell>
                       </TableRow>

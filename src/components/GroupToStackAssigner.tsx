@@ -159,13 +159,13 @@ export function GroupToStackAssigner({
               <Card key={stack.stackId} className="border-slate-200">
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 flex-1">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => toggleStackExpanded(stack.stackId)}
-                        className="p-1 h-auto"
+                        className="p-1 h-auto flex-shrink-0"
                       >
                         {isExpanded ? (
                           <ChevronUp className="w-4 h-4" />
@@ -173,8 +173,8 @@ export function GroupToStackAssigner({
                           <ChevronDown className="w-4 h-4" />
                         )}
                       </Button>
-                      <Server className="w-4 h-4 text-slate-600" />
-                      <span className="text-sm font-medium">{stack.stackName}</span>
+                      <Server className="w-4 h-4 text-slate-600 flex-shrink-0" />
+                      <span className="text-sm font-medium truncate min-w-0">{stack.stackName}</span>
                       <Badge variant="secondary" className="text-xs">
                         {stack.assignedGroups.length} Gruppe
                         {stack.assignedGroups.length !== 1 ? 'n' : ''}

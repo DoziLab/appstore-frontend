@@ -32,6 +32,7 @@ import {
   MessageSquare,
   Pencil,
   Trash2,
+  User,
   X,
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
@@ -401,6 +402,15 @@ export function TemplateOwnerDetailDialog({
                     Quelle &amp; Metadaten
                   </h3>
                   <dl className="text-sm space-y-2">
+                    <div className="flex items-start gap-2">
+                      <User className="w-4 h-4 mt-0.5 text-slate-500" />
+                      <div>
+                        <dt className="text-xs text-slate-500">Hochgeladen von</dt>
+                        <dd className="text-slate-700">
+                          {template.owner_name || template.owner_username || template.owner_id}
+                        </dd>
+                      </div>
+                    </div>
                     {template.repo_url && (
                       <div className="flex items-start gap-2">
                         <Github className="w-4 h-4 mt-0.5 text-slate-500" />

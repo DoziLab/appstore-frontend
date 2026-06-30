@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Server, Database, GitBranch, Container, Shield, Code, Laptop, Boxes, Search, Plus, AlertCircle, Eye, Lock, User, Users } from 'lucide-react';
+import { Server, Database, GitBranch, Container, Shield, Code, Laptop, Boxes, Search, Plus, AlertCircle, Eye, Lock, User, Users, Trash2, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from '../components/ui/alert-dialog';
 import { AddTemplateDialog } from '../components/AddTemplateDialog';
 import { TemplateOwnerDetailDialog } from '../components/TemplateOwnerDetailDialog';
 import { ApprovalBadge } from '../components/ApprovalBadge';
-import { getTemplates, type TemplateDto } from '../api/templates';
+import { getTemplates, deleteTemplate, type TemplateDto } from '../api/templates';
 import { deriveTemplateOverallStatus } from '../lib/template-status';
 import { useCurrentUser } from '../auth/useCurrentUser';
 import type { LucideIcon } from 'lucide-react';
@@ -91,6 +92,8 @@ export function AppStore({ onDeploy }: AppStoreProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDto | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [ownerDetailsOpen, setOwnerDetailsOpen] = useState(false);
+  const [deletingTemplate, setDeletingTemplate] = useState(false);
+  const [confirmDeleteTemplate, setConfirmDeleteTemplate] = useState(false);
 
   // Filter-Flags: visibility = öffentlich/privat, ownership = eigene/fremde.
   // 'all' bedeutet jeweils „kein Filter". Wir filtern client-seitig, weil das
@@ -144,6 +147,23 @@ export function AppStore({ onDeploy }: AppStoreProps) {
   useEffect(() => {
     fetchTemplates();
   }, []);
+
+  const handleDeleteTemplate = async () => {
+    if (!selectedTemplate) return;
+    try {
+      setDeletingTemplate(true);
+      await deleteTemplate(selectedTemplate.id);
+      setConfirmDeleteTemplate(false);
+      setDetailsModalOpen(false);
+      setSelectedTemplate(null);
+      await fetchTemplates();
+    } catch (err) {
+      console.error('Failed to delete template:', err);
+      alert(err instanceof Error ? err.message : 'Fehler beim Löschen');
+    } finally {
+      setDeletingTemplate(false);
+    }
+  };
 
   // Filter templates by search query + flags
   const filteredTemplates = templates.filter((template) => {
@@ -515,6 +535,24 @@ export function AppStore({ onDeploy }: AppStoreProps) {
               {/* Meta Information */}
               <div className="space-y-2">
                 <h3 className="text-sm font-semibold text-slate-900 mb-2">Informationen</h3>
+                <div className="text-sm">
+                  <span className="text-slate-600">Hochgeladen von: </span>
+                  <span className="text-slate-700">
+                    {selectedTemplate.owner_name || selectedTemplate.owner_username || selectedTemplate.owner_id}
+                  </span>
+                </div>
+                <div className="text-sm">
+                  <span className="text-slate-600">Erstellt am: </span>
+                  <span className="text-slate-700">
+                    {new Date(selectedTemplate.created_at).toLocaleString('de-DE', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                </div>
                 {selectedTemplate.repo_url && (
                   <div className="text-sm">
                     <span className="text-slate-600">Repository: </span>
@@ -536,7 +574,7 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                 )}
               </div>
 
-              {/* Action Button */}
+              {/* Action Buttons */}
               <div className="flex gap-3 pt-4">
                 <Button
                   onClick={() => {
@@ -548,6 +586,16 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                 >
                   Jetzt deployen
                 </Button>
+                {isAdmin && (
+                  <Button
+                    onClick={() => setConfirmDeleteTemplate(true)}
+                    variant="outline"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Löschen
+                  </Button>
+                )}
                 <Button
                   onClick={() => setDetailsModalOpen(false)}
                   variant="outline"
@@ -558,6 +606,44 @@ export function AppStore({ onDeploy }: AppStoreProps) {
             </div>
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {selectedTemplate && (
+        <AlertDialog open={confirmDeleteTemplate} onOpenChange={(o: boolean) => !deletingTemplate && setConfirmDeleteTemplate(o)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+                Template löschen?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Möchten Sie das Template <strong>{selectedTemplate.name}</strong> wirklich löschen?
+                Diese Aktion kann nicht rückgängig gemacht werden. Alle Versionen und zugehörigen Dateien werden ebenfalls gelöscht.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deletingTemplate}>Abbrechen</AlertDialogCancel>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteTemplate}
+                disabled={deletingTemplate}
+              >
+                {deletingTemplate ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Wird gelöscht...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Löschen
+                  </>
+                )}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   );

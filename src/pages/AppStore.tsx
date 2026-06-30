@@ -397,9 +397,9 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                         variant="outline"
                         onClick={() => {
                           setSelectedTemplate(template);
-                          // Owner → eigene Detailseite mit Versionsverwaltung;
+                          // Owner oder Admin → erweiterte Detailseite mit Versionsverwaltung;
                           // alle anderen → bestehender generischer Modal.
-                          if (myInternalUserId && template.owner_id === myInternalUserId) {
+                          if ((myInternalUserId && template.owner_id === myInternalUserId) || isAdmin) {
                             setOwnerDetailsOpen(true);
                           } else {
                             setDetailsModalOpen(true);

@@ -56,7 +56,8 @@ export function Sidebar({ logo }: SidebarProps) {
         { id: "appstore", label: "App Store", icon: Store, path: "/appstore" },
         ...(isAdmin
           ? [
-              { id: "admin", label: "Admin Monitoring", icon: Shield, path: "/admin" },
+              { id: "admin-projects", label: "Projektübersicht", icon: Shield, path: "/admin/projects" },
+              { id: "admin-templates", label: "Template-Freigaben", icon: Shield, path: "/admin/templates" },
               {
                 id: "admin-lecturers",
                 label: "Lecturer-Verwaltung",
@@ -116,6 +117,7 @@ export function Sidebar({ logo }: SidebarProps) {
       <nav className="flex-1 p-4 space-y-1">
         {navItems.map((item) => {
           const Icon = item.icon;
+          const isAdminItem = item.id.startsWith('admin-');
           // Aktiv-Match strikt: sonst würde /admin auch bei /admin/lecturers
           // matchen und beide Items grün hervorheben. NavLink's built-in
           // isActive nutzt bei `end` einen exakten Path-Match — wir brauchen
@@ -127,7 +129,7 @@ export function Sidebar({ logo }: SidebarProps) {
               end
               className={({ isActive }) => `
                 w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all
-                ${isActive ? "bg-teal-50 text-teal-600" : "text-slate-600 hover:bg-slate-50"}
+                ${isActive && isAdminItem ? "bg-red-50 text-red-600" : isActive ? "bg-teal-50 text-teal-600" : isAdminItem ? "text-red-600 hover:bg-red-50" : "text-slate-600 hover:bg-slate-50"}
                 ${deploymentActive ? "opacity-50 pointer-events-none" : ""}
               `}
             >

@@ -73,6 +73,7 @@ import {
 import { deriveTemplateOverallStatus } from "../lib/template-status";
 import { ChangeActiveVersionDialog } from "./UpgradeVersionDialog";
 import { CheckRemoteVersionsDialog } from "./CheckRemoteVersionsDialog";
+import { TemplateIconUpload } from "./TemplateIconUpload";
 
 interface Props {
   template: TemplateDto;
@@ -107,13 +108,13 @@ export function TemplateOwnerDetailDialog({
   // erst confirmen, dann patchen.
   const [confirmVisibilityChange, setConfirmVisibilityChange] = useState(false);
 
-  // Edit-Modus für Metadaten (name/description/repo_url/icon_url). Visibility
+  // Edit-Modus für Metadaten (name/description/repo_url). Visibility
   // hat seinen eigenen Toggle weiter oben, daher hier nicht enthalten.
+  // Icon-Management läuft über separate Upload/Delete-Endpoints.
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(template.name);
   const [editDescription, setEditDescription] = useState(template.description ?? "");
   const [editRepoUrl, setEditRepoUrl] = useState(template.repo_url);
-  const [editIconUrl, setEditIconUrl] = useState(template.icon_url ?? "");
   const [editBusy, setEditBusy] = useState(false);
 
   // Bestätigungsdialoge für destruktive Aktionen.
@@ -142,8 +143,7 @@ export function TemplateOwnerDetailDialog({
     setEditName(template.name);
     setEditDescription(template.description ?? "");
     setEditRepoUrl(template.repo_url);
-    setEditIconUrl(template.icon_url ?? "");
-  }, [template.id, template.name, template.description, template.repo_url, template.icon_url]);
+  }, [template.id, template.name, template.description, template.repo_url]);
 
   const versions: TemplateVersionDto[] = (template.versions ?? [])
     .slice()
@@ -237,8 +237,6 @@ export function TemplateOwnerDetailDialog({
     const nextDesc = editDescription.trim() === "" ? null : editDescription;
     if ((template.description ?? null) !== nextDesc) patch.description = nextDesc;
     if (editRepoUrl.trim() && editRepoUrl !== template.repo_url) patch.repo_url = editRepoUrl.trim();
-    const nextIcon = editIconUrl.trim() === "" ? null : editIconUrl.trim();
-    if ((template.icon_url ?? null) !== nextIcon) patch.icon_url = nextIcon;
 
     if (Object.keys(patch).length === 0) {
       setEditing(false);
@@ -487,18 +485,6 @@ export function TemplateOwnerDetailDialog({
                     disabled={editBusy}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="tpl-edit-icon" className="text-xs">
-                    Icon (mdi:flask, fa:server, 🚀, /icons/template.svg)
-                  </Label>
-                  <Input
-                    id="tpl-edit-icon"
-                    value={editIconUrl}
-                    onChange={(e) => setEditIconUrl(e.target.value)}
-                    maxLength={500}
-                    disabled={editBusy}
-                  />
-                </div>
                 <div className="flex justify-end gap-2 pt-1">
                   <Button
                     size="sm"
@@ -510,7 +496,6 @@ export function TemplateOwnerDetailDialog({
                       setEditName(template.name);
                       setEditDescription(template.description ?? "");
                       setEditRepoUrl(template.repo_url);
-                      setEditIconUrl(template.icon_url ?? "");
                     }}
                     disabled={editBusy}
                   >
@@ -527,6 +512,18 @@ export function TemplateOwnerDetailDialog({
                 </div>
               </section>
             )}
+
+            {/* Icon-Upload — immer sichtbar, außerhalb des Edit-Modus,
+                da Upload/Delete separate Endpoints sind und keinen Abbruch
+                oder Speichern-Button brauchen. */}
+            <section>
+              <TemplateIconUpload
+                templateId={template.id}
+                iconPath={template.icon_path}
+                onChanged={onChanged}
+                uploadTrigger={Date.parse(template.updated_at)}
+              />
+            </section>
 
             {/* Aktive Version + Update-Button */}
             <section>

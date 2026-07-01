@@ -134,12 +134,7 @@ export function Sidebar({ logo }: SidebarProps) {
               {({ isActive }) => (
                 <>
                   <Icon className="w-5 h-5 shrink-0" />
-                  {/* `whitespace-nowrap` verhindert den Umbruch am
-                      Bindestrich („Lecturer-Verwaltung") — Hyphens sind
-                      CSS-default-Break-Points. `truncate` (mit ellipsis)
-                      wäre zu aggressiv, weil das Label auf w-64 knapp aber
-                      vollständig passt. */}
-                  <span className="flex-1 whitespace-nowrap">{item.label}</span>
+                  <span className="flex-1 min-w-0">{item.label}</span>
                   {/* Chevron-Platz IMMER reservieren (nur Sichtbarkeit
                       togglen). Sonst würde das aktive Item den Chevron
                       nachträglich einblenden, den Label-Bereich um 16px

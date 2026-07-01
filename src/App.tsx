@@ -14,7 +14,9 @@ import { StudentDashboardPage } from "./pages/StudentDashboardPage";
 import { StudentDeploymentDetailsPage } from "./pages/StudentDeploymentDetailsPage";
 import { OpenStackSetup } from "./pages/OpenStackSetup";
 import { GithubConnected } from "./pages/GithubConnected";
+import { NoRolePage } from "./pages/NoRolePage";
 import { Toaster } from "./components/ui/sonner";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 import { listOpenstackProjects, type OpenstackProjectResponse } from "./api/openstackProjects";
 import { OpenstackProjectProvider } from "./contexts/OpenstackProjectContext";
 import logo from "figma:asset/5c87f57a05de8f8018669c9004318908d006dcd5.png";
@@ -60,7 +62,7 @@ export default function App() {
     const lecturer = roles.includes("lecturer") || roles.includes("teacher");
     const admin = roles.includes("admin");
     const student = roles.includes("student");
-    setIsLecturer(lecturer);
+    setIsLecturer(lecturer || admin);
     // Reiner Student (kein Lecturer/Admin) → eigene Routen, kein
     // OpenStack-Setup-Gate. Wenn ein User beides hat (z. B. testweise
     // Lecturer+Student), gewinnt Lecturer/Admin, weil die Lecturer-Flow
@@ -68,7 +70,9 @@ export default function App() {
     // (kommt in der Realität nicht vor, aber wir halten den Cut sauber).
     const pureStudent = student && !lecturer && !admin;
     setIsStudent(pureStudent);
-    if (!lecturer) {
+    // User ohne Rolle braucht kein OpenStack-Projekt
+    const hasNoRole = !lecturer && !admin && !student;
+    if (hasNoRole || !lecturer) {
       // Admins und reine Studenten brauchen kein OpenStack-Projekt; in beiden
       // Fällen lassen wir activeProject auf null und springen das Setup-Gate.
       setActiveProject(null);
@@ -163,37 +167,112 @@ export default function App() {
       <div className="flex h-screen bg-slate-50">
         <Sidebar logo={logo} />
         <main className="flex-1 overflow-auto">
-          {isStudent ? (
-            // Studenten haben keinen Zugriff auf Lecturer-Endpoints (Backend
-            // gibt 403). Wir registrieren bewusst NUR /student/*, /config
-            // (Settings) und einen Catch-All-Redirect; alles andere
-            // (Dashboard, Courses, AppStore, Deploy, Admin) landet damit
-            // automatisch wieder auf /student/dashboard.
-            <Routes>
-              <Route path="/" element={<Navigate to="/student/dashboard" replace />} />
-              <Route path="/student/dashboard" element={<StudentDashboardPage />} />
-              <Route
-                path="/student/deployment/:deploymentId"
-                element={<StudentDeploymentDetailsPage />}
-              />
-              <Route path="/config" element={<OpenStackConfig />} />
-              <Route path="*" element={<Navigate to="/student/dashboard" replace />} />
-            </Routes>
-          ) : (
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/setup" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/courses" element={<Courses />} />
-              <Route path="/appstore" element={<AppStorePage />} />
-              <Route path="/deploy/:templateId" element={<DeploymentWizardPage />} />
-              <Route path="/deployment/:deploymentId" element={<DeploymentDetailsPage />} />
-              <Route path="/config" element={<OpenStackConfig />} />
-              <Route path="/admin" element={<AdminMonitoring />} />
-              {/* Lecturer/Admin auf /student/* → zurück aufs Dashboard. */}
-              <Route path="/student/*" element={<Navigate to="/dashboard" replace />} />
-            </Routes>
-          )}
+          <Routes>
+            {/* Route für Benutzer ohne Rolle */}
+            <Route path="/no-role" element={<NoRolePage />} />
+            
+            {/* Student-Routen (nur für reine Studenten) */}
+            <Route
+              path="/student/dashboard"
+              element={
+                <ProtectedRoute requireStudent>
+                  <StudentDashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/student/deployment/:deploymentId"
+              element={
+                <ProtectedRoute requireStudent>
+                  <StudentDeploymentDetailsPage />
+                </ProtectedRoute>
+              }
+            />
+            
+            {/* Lecturer/Admin-Routen */}
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <Navigate to={isStudent ? "/student/dashboard" : "/dashboard"} replace />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/setup"
+              element={
+                <ProtectedRoute>
+                  <Navigate to="/dashboard" replace />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute requireLecturer>
+                  <DashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/courses"
+              element={
+                <ProtectedRoute requireLecturer>
+                  <Courses />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/appstore"
+              element={
+                <ProtectedRoute requireLecturer>
+                  <AppStorePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/deploy/:templateId"
+              element={
+                <ProtectedRoute requireLecturer>
+                  <DeploymentWizardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/deployment/:deploymentId"
+              element={
+                <ProtectedRoute requireLecturer>
+                  <DeploymentDetailsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <AdminMonitoring />
+                </ProtectedRoute>
+              }
+            />
+            
+            {/* Config ist für alle verfügbar */}
+            <Route
+              path="/config"
+              element={
+                <ProtectedRoute>
+                  <OpenStackConfig />
+                </ProtectedRoute>
+              }
+            />
+            
+            {/* Catch-All: Leitet basierend auf Rolle um */}
+            <Route
+              path="*"
+              element={
+                <Navigate to={isStudent ? "/student/dashboard" : "/dashboard"} replace />
+              }
+            />
+          </Routes>
         </main>
       </div>
       <Toaster richColors />

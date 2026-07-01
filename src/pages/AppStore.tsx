@@ -9,7 +9,7 @@ import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, A
 import { AddTemplateDialog } from '../components/AddTemplateDialog';
 import { TemplateOwnerDetailDialog } from '../components/TemplateOwnerDetailDialog';
 import { ApprovalBadge } from '../components/ApprovalBadge';
-import { getTemplates, deleteTemplate, type TemplateDto } from '../api/templates';
+import { getTemplates, deleteTemplate, fetchTemplateIcon, type TemplateDto } from '../api/templates';
 import { deriveTemplateOverallStatus } from '../lib/template-status';
 import { useCurrentUser } from '../auth/useCurrentUser';
 import type { LucideIcon } from 'lucide-react';
@@ -94,6 +94,8 @@ export function AppStore({ onDeploy }: AppStoreProps) {
   const [ownerDetailsOpen, setOwnerDetailsOpen] = useState(false);
   const [deletingTemplate, setDeletingTemplate] = useState(false);
   const [confirmDeleteTemplate, setConfirmDeleteTemplate] = useState(false);
+  // Cache für geladene Template-Icons (templateId -> blob URL)
+  const [iconBlobUrls, setIconBlobUrls] = useState<Record<string, string>>({});
 
   // Filter-Flags: visibility = öffentlich/privat, ownership = eigene/fremde.
   // 'all' bedeutet jeweils „kein Filter". Wir filtern client-seitig, weil das
@@ -117,6 +119,32 @@ export function AppStore({ onDeploy }: AppStoreProps) {
     return templates.find((t) => t.owner_username === username)?.owner_id ?? null;
   }, [templates, username]);
 
+  // Lädt Icons für alle Templates mit icon_path
+  const loadTemplateIcons = async (templates: TemplateDto[]) => {
+    // Alte Blob-URLs freigeben
+    Object.values(iconBlobUrls).forEach((url) => URL.revokeObjectURL(url));
+    setIconBlobUrls({});
+
+    const newIconUrls: Record<string, string> = {};
+    
+    await Promise.all(
+      templates.map(async (template) => {
+        if (template.icon_path) {
+          try {
+            // Cache-Buster mit Date.now() für sofortiges Neu-Laden nach Upload
+            const blob = await fetchTemplateIcon(`${template.icon_path}?v=${Date.now()}`);
+            const blobUrl = URL.createObjectURL(blob);
+            newIconUrls[template.id] = blobUrl;
+          } catch (err) {
+            console.error(`Failed to load icon for template ${template.id}:`, err);
+          }
+        }
+      })
+    );
+    
+    setIconBlobUrls(newIconUrls);
+  };
+
   // Fetch templates from backend
   const fetchTemplates = async (): Promise<TemplateDto[]> => {
     try {
@@ -134,6 +162,10 @@ export function AppStore({ onDeploy }: AppStoreProps) {
         page_size: 100,
       });
       setTemplates(response.data);
+      
+      // Lade Icons für Templates die eins haben
+      await loadTemplateIcons(response.data);
+      
       return response.data;
     } catch (err) {
       console.error('Failed to fetch templates:', err);
@@ -146,6 +178,11 @@ export function AppStore({ onDeploy }: AppStoreProps) {
 
   useEffect(() => {
     fetchTemplates();
+    
+    // Cleanup: Blob-URLs freigeben
+    return () => {
+      Object.values(iconBlobUrls).forEach((url) => URL.revokeObjectURL(url));
+    };
   }, []);
 
   const handleDeleteTemplate = async () => {
@@ -327,9 +364,20 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                 <Card key={template.id} className="border-slate-200 shadow-sm hover:shadow-md transition-all hover:border-teal-200 flex flex-col h-full">
                   <CardHeader className="flex-shrink-0">
                     <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className={`flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br ${style.color} flex items-center justify-center text-white shadow-lg`}>
-                        <Icon className="w-6 h-6" />
-                      </div>
+                      {/* Template-Icon: hochgeladenes Bild oder Fallback auf Lucide-Icon */}
+                      {iconBlobUrls[template.id] ? (
+                        <div className="flex-shrink-0 w-12 h-12 rounded-xl border-2 border-slate-200 flex items-center justify-center bg-white shadow-sm overflow-hidden">
+                          <img
+                            src={iconBlobUrls[template.id]}
+                            alt={`${template.name} Icon`}
+                            className="max-w-full max-h-full object-contain p-1.5"
+                          />
+                        </div>
+                      ) : (
+                        <div className={`flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br ${style.color} flex items-center justify-center text-white shadow-lg`}>
+                          <Icon className="w-6 h-6" />
+                        </div>
+                      )}
                       {/* flex-wrap: in der schmalen Karten-Spalte (3-col-Grid)
                           passen „einsatzbereit" + „Öffentlich (offen)" oft
                           nicht nebeneinander — ohne wrap überlaufen die
@@ -470,9 +518,20 @@ export function AppStore({ onDeploy }: AppStoreProps) {
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${getTemplateStyle(selectedTemplate.name).color} flex items-center justify-center text-white`}>
-                  {React.createElement(getTemplateStyle(selectedTemplate.name).icon, { className: "w-5 h-5" })}
-                </div>
+                {/* Template-Icon: hochgeladenes Bild oder Fallback */}
+                {iconBlobUrls[selectedTemplate.id] ? (
+                  <div className="w-10 h-10 rounded-lg border-2 border-slate-200 flex items-center justify-center bg-white overflow-hidden">
+                    <img
+                      src={iconBlobUrls[selectedTemplate.id]}
+                      alt={`${selectedTemplate.name} Icon`}
+                      className="max-w-full max-h-full object-contain p-1"
+                    />
+                  </div>
+                ) : (
+                  <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${getTemplateStyle(selectedTemplate.name).color} flex items-center justify-center text-white`}>
+                    {React.createElement(getTemplateStyle(selectedTemplate.name).icon, { className: "w-5 h-5" })}
+                  </div>
+                )}
                 <span className="break-words">{selectedTemplate.name}</span>
               </DialogTitle>
               <DialogDescription>
@@ -564,12 +623,6 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                     >
                       {selectedTemplate.repo_url}
                     </a>
-                  </div>
-                )}
-                {selectedTemplate.icon_url && (
-                  <div className="text-sm">
-                    <span className="text-slate-600">Icon: </span>
-                    <span className="text-slate-700">{selectedTemplate.icon_url}</span>
                   </div>
                 )}
               </div>

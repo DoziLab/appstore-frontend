@@ -80,7 +80,6 @@ export async function disconnectGithubInstallation(): Promise<void> {
 export type ImportNewTemplateBody = {
   name: string;
   description?: string | null;
-  icon_url?: string | null;
   github_url: string;
   app_yaml_path?: string | null;
   /**

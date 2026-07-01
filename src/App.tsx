@@ -4,6 +4,7 @@ import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Courses } from "./pages/Courses";
 import { OpenStackConfig } from "./pages/OpenStackConfig";
 import { AdminMonitoring } from "./pages/AdminMonitoring";
+import { LecturerManagement } from "./pages/LecturerManagement";
 import { Sidebar } from "./layouts/Sidebar";
 import { Login } from "./pages/Login";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -251,6 +252,14 @@ export default function App() {
               element={
                 <ProtectedRoute requireAdmin>
                   <AdminMonitoring />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/lecturers"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <LecturerManagement />
                 </ProtectedRoute>
               }
             />

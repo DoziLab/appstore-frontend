@@ -116,21 +116,37 @@ export function Sidebar({ logo }: SidebarProps) {
       <nav className="flex-1 p-4 space-y-1">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
-
+          // Aktiv-Match strikt: sonst würde /admin auch bei /admin/lecturers
+          // matchen und beide Items grün hervorheben. NavLink's built-in
+          // isActive nutzt bei `end` einen exakten Path-Match — wir brauchen
+          // keinen eigenen `startsWith`-Fallback mehr.
           return (
             <NavLink
               key={item.id}
               to={item.path}
-              className={({ isActive: navIsActive }) => `
+              end
+              className={({ isActive }) => `
                 w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all
-                ${navIsActive || isActive ? "bg-teal-50 text-teal-600" : "text-slate-600 hover:bg-slate-50"}
+                ${isActive ? "bg-teal-50 text-teal-600" : "text-slate-600 hover:bg-slate-50"}
                 ${deploymentActive ? "opacity-50 pointer-events-none" : ""}
               `}
             >
-              <Icon className="w-5 h-5" />
-              <span>{item.label}</span>
-              {isActive && <ChevronRight className="w-4 h-4 ml-auto" />}
+              {({ isActive }) => (
+                <>
+                  <Icon className="w-5 h-5 shrink-0" />
+                  <span className="flex-1 min-w-0">{item.label}</span>
+                  {/* Chevron-Platz IMMER reservieren (nur Sichtbarkeit
+                      togglen). Sonst würde das aktive Item den Chevron
+                      nachträglich einblenden, den Label-Bereich um 16px
+                      schmaler machen und „Lecturer-Verwaltung" bricht in
+                      zwei Zeilen um. `shrink-0` verhindert dass der Chevron
+                      selbst weichen muss. */}
+                  <ChevronRight
+                    className={`w-4 h-4 shrink-0 ${isActive ? "" : "invisible"}`}
+                    aria-hidden="true"
+                  />
+                </>
+              )}
             </NavLink>
           );
         })}

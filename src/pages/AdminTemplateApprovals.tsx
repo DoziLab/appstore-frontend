@@ -131,7 +131,7 @@ export function AdminTemplateApprovals() {
       {/* Header */}
       <div>
         <h1 className="text-slate-900 mb-2 flex items-center gap-2">
-          <FileCheck className="w-6 h-6 text-teal-600" />
+          <FileCheck className="w-6 h-6 text-red-600" />
           Template-Freigaben
         </h1>
         <p className="text-slate-600">

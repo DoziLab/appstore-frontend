@@ -129,7 +129,7 @@ export function Sidebar({ logo }: SidebarProps) {
               end
               className={({ isActive }) => `
                 w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all
-                ${isActive ? "bg-teal-50 text-teal-600" : isAdminItem ? "text-teal-600 hover:bg-teal-50" : "text-slate-600 hover:bg-slate-50"}
+                ${isActive && isAdminItem ? "bg-red-50 text-red-600" : isActive ? "bg-teal-50 text-teal-600" : isAdminItem ? "text-red-600 hover:bg-red-50" : "text-slate-600 hover:bg-slate-50"}
                 ${deploymentActive ? "opacity-50 pointer-events-none" : ""}
               `}
             >

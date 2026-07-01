@@ -108,8 +108,8 @@ export function LecturerManagement() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-2 flex items-center gap-2">
-            <Users className="w-6 h-6 text-teal-600" />
-            Lecturer-Verwaltung
+            <Users className="w-6 h-6 text-red-600" />
+            Dozenten-Verwaltung
           </h1>
           <p className="text-slate-600 max-w-3xl">
             Alle User mit Templates oder OpenStack-Projekten. Löschen entfernt

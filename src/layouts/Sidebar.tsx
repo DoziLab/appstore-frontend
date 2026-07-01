@@ -7,6 +7,7 @@ import {
   LogOut,
   Shield,
   Server,
+  Users,
 } from "lucide-react";
 import { useMemo } from "react";
 import { useKeycloak } from "@react-keycloak/web";
@@ -52,6 +53,20 @@ export function Sidebar({ logo }: SidebarProps) {
         { id: "courses", label: "Kurse", icon: BookOpen, path: "/courses" },
         { id: "appstore", label: "App Store", icon: Store, path: "/appstore" },
         { id: "admin", label: "Admin Monitoring", icon: Shield, path: "/admin" },
+        // Lecturer-Verwaltung ist Admin-only — der Link wird unten beim
+        // Rendern anhand von `isAdmin` gefiltert. Wir listen ihn hier statt
+        // in einem separaten Array, damit das Rendering unten einheitlich
+        // bleibt.
+        ...(isAdmin
+          ? [
+              {
+                id: "admin-lecturers",
+                label: "Lecturer-Verwaltung",
+                icon: Users,
+                path: "/admin/lecturers",
+              },
+            ]
+          : []),
       ];
 
   const displayName = useMemo(() => {

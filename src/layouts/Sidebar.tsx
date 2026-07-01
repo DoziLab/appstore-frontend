@@ -7,7 +7,6 @@ import {
   LogOut,
   Shield,
   Server,
-  Users,
 } from "lucide-react";
 import { useMemo } from "react";
 import { useKeycloak } from "@react-keycloak/web";
@@ -39,6 +38,9 @@ export function Sidebar({ logo }: SidebarProps) {
   // Studenten haben einen reduzierten Navigations-Stack — alles Lecturer-
   // spezifische würde im Backend 403 produzieren und sollte deshalb gar
   // nicht erst klickbar sein.
+  //
+  // Admin-only-Einträge tragen alle das Shield-Icon (visuelle Klammer für
+  // „nur Admins sehen das"). Sie werden nur angehängt, wenn `isAdmin` ist.
   const navItems = isStudent
     ? [
         {
@@ -52,17 +54,13 @@ export function Sidebar({ logo }: SidebarProps) {
         { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
         { id: "courses", label: "Kurse", icon: BookOpen, path: "/courses" },
         { id: "appstore", label: "App Store", icon: Store, path: "/appstore" },
-        { id: "admin", label: "Admin Monitoring", icon: Shield, path: "/admin" },
-        // Lecturer-Verwaltung ist Admin-only — der Link wird unten beim
-        // Rendern anhand von `isAdmin` gefiltert. Wir listen ihn hier statt
-        // in einem separaten Array, damit das Rendering unten einheitlich
-        // bleibt.
         ...(isAdmin
           ? [
+              { id: "admin", label: "Admin Monitoring", icon: Shield, path: "/admin" },
               {
                 id: "admin-lecturers",
                 label: "Lecturer-Verwaltung",
-                icon: Users,
+                icon: Shield,
                 path: "/admin/lecturers",
               },
             ]
@@ -118,23 +116,37 @@ export function Sidebar({ logo }: SidebarProps) {
       <nav className="flex-1 p-4 space-y-1">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
-
-          // Skip admin here; it is rendered separately at the bottom edge
-          if (item.id === 'admin') return null;
+          // Aktiv-Match strikt: sonst würde /admin auch bei /admin/lecturers
+          // matchen und beide Items grün hervorheben. NavLink's built-in
+          // isActive nutzt bei `end` einen exakten Path-Match — wir brauchen
+          // keinen eigenen `startsWith`-Fallback mehr.
           return (
             <NavLink
               key={item.id}
               to={item.path}
-              className={({ isActive: navIsActive }) => `
+              end
+              className={({ isActive }) => `
                 w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all
-                ${navIsActive || isActive ? "bg-teal-50 text-teal-600" : "text-slate-600 hover:bg-slate-50"}
+                ${isActive ? "bg-teal-50 text-teal-600" : "text-slate-600 hover:bg-slate-50"}
                 ${deploymentActive ? "opacity-50 pointer-events-none" : ""}
               `}
             >
-              <Icon className="w-5 h-5" />
-              <span>{item.label}</span>
-              {isActive && <ChevronRight className="w-4 h-4 ml-auto" />}
+              {({ isActive }) => (
+                <>
+                  <Icon className="w-5 h-5 shrink-0" />
+                  <span className="flex-1 min-w-0">{item.label}</span>
+                  {/* Chevron-Platz IMMER reservieren (nur Sichtbarkeit
+                      togglen). Sonst würde das aktive Item den Chevron
+                      nachträglich einblenden, den Label-Bereich um 16px
+                      schmaler machen und „Lecturer-Verwaltung" bricht in
+                      zwei Zeilen um. `shrink-0` verhindert dass der Chevron
+                      selbst weichen muss. */}
+                  <ChevronRight
+                    className={`w-4 h-4 shrink-0 ${isActive ? "" : "invisible"}`}
+                    aria-hidden="true"
+                  />
+                </>
+              )}
             </NavLink>
           );
         })}
@@ -149,22 +161,7 @@ export function Sidebar({ logo }: SidebarProps) {
 
           <div className="flex-1 min-w-0">
             <p className="text-sm text-slate-900 truncate">{displayName}</p>
-            <div className="flex items-center gap-2">
-              <p className="text-xs text-slate-500 truncate">{roleLabel}</p>
-              {isAdmin && (
-                <NavLink
-                  to="/admin"
-                  title="Admin Monitoring"
-                  aria-disabled={deploymentActive}
-                  className={`inline-flex items-center justify-center rounded-full p-1 transition-all ${
-                    deploymentActive ? "opacity-50 pointer-events-none" : "hover:bg-teal-50"
-                  }`}
-                >
-                  <Shield className="w-4 h-4 text-teal-500" />
-                  <span className="sr-only">Admin Monitoring</span>
-                </NavLink>
-              )}
-            </div>
+            <p className="text-xs text-slate-500 truncate">{roleLabel}</p>
           </div>
 
           <div className="flex items-center gap-3">

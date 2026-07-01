@@ -7,7 +7,6 @@ import {
   LogOut,
   Shield,
   Server,
-  Users,
 } from "lucide-react";
 import { useMemo } from "react";
 import { useKeycloak } from "@react-keycloak/web";
@@ -39,6 +38,9 @@ export function Sidebar({ logo }: SidebarProps) {
   // Studenten haben einen reduzierten Navigations-Stack — alles Lecturer-
   // spezifische würde im Backend 403 produzieren und sollte deshalb gar
   // nicht erst klickbar sein.
+  //
+  // Admin-only-Einträge tragen alle das Shield-Icon (visuelle Klammer für
+  // „nur Admins sehen das"). Sie werden nur angehängt, wenn `isAdmin` ist.
   const navItems = isStudent
     ? [
         {
@@ -52,17 +54,13 @@ export function Sidebar({ logo }: SidebarProps) {
         { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
         { id: "courses", label: "Kurse", icon: BookOpen, path: "/courses" },
         { id: "appstore", label: "App Store", icon: Store, path: "/appstore" },
-        { id: "admin", label: "Admin Monitoring", icon: Shield, path: "/admin" },
-        // Lecturer-Verwaltung ist Admin-only — der Link wird unten beim
-        // Rendern anhand von `isAdmin` gefiltert. Wir listen ihn hier statt
-        // in einem separaten Array, damit das Rendering unten einheitlich
-        // bleibt.
         ...(isAdmin
           ? [
+              { id: "admin", label: "Admin Monitoring", icon: Shield, path: "/admin" },
               {
                 id: "admin-lecturers",
                 label: "Lecturer-Verwaltung",
-                icon: Users,
+                icon: Shield,
                 path: "/admin/lecturers",
               },
             ]
@@ -120,8 +118,6 @@ export function Sidebar({ logo }: SidebarProps) {
           const Icon = item.icon;
           const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
 
-          // Skip admin here; it is rendered separately at the bottom edge
-          if (item.id === 'admin') return null;
           return (
             <NavLink
               key={item.id}
@@ -149,22 +145,7 @@ export function Sidebar({ logo }: SidebarProps) {
 
           <div className="flex-1 min-w-0">
             <p className="text-sm text-slate-900 truncate">{displayName}</p>
-            <div className="flex items-center gap-2">
-              <p className="text-xs text-slate-500 truncate">{roleLabel}</p>
-              {isAdmin && (
-                <NavLink
-                  to="/admin"
-                  title="Admin Monitoring"
-                  aria-disabled={deploymentActive}
-                  className={`inline-flex items-center justify-center rounded-full p-1 transition-all ${
-                    deploymentActive ? "opacity-50 pointer-events-none" : "hover:bg-teal-50"
-                  }`}
-                >
-                  <Shield className="w-4 h-4 text-teal-500" />
-                  <span className="sr-only">Admin Monitoring</span>
-                </NavLink>
-              )}
-            </div>
+            <p className="text-xs text-slate-500 truncate">{roleLabel}</p>
           </div>
 
           <div className="flex items-center gap-3">

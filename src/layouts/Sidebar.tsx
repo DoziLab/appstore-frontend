@@ -134,7 +134,12 @@ export function Sidebar({ logo }: SidebarProps) {
               {({ isActive }) => (
                 <>
                   <Icon className="w-5 h-5 shrink-0" />
-                  <span className="flex-1 min-w-0">{item.label}</span>
+                  {/* `truncate` = `overflow-hidden text-ellipsis
+                      whitespace-nowrap`. Ohne den nowrap-Teil hätte der
+                      Browser bei „Lecturer-Verwaltung" am Bindestrich
+                      umgebrochen — Hyphens sind CSS-default-Break-Points,
+                      egal wieviel Platz eigentlich vorhanden ist. */}
+                  <span className="flex-1 min-w-0 truncate">{item.label}</span>
                   {/* Chevron-Platz IMMER reservieren (nur Sichtbarkeit
                       togglen). Sonst würde das aktive Item den Chevron
                       nachträglich einblenden, den Label-Bereich um 16px

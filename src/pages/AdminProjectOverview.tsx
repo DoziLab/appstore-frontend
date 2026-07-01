@@ -223,7 +223,7 @@ export function AdminProjectOverview() {
   };
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 md:p-8 space-y-8">
       {/* Header */}
       <div>
         <h1 className="text-slate-900 mb-2 flex items-center gap-2">
@@ -236,7 +236,7 @@ export function AdminProjectOverview() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
 
         {/* Gesamte Deployments */}
         <Card className="border-slate-200 shadow-sm">

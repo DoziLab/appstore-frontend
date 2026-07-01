@@ -277,14 +277,18 @@ export function OpenStackConfig() {
   const [activeTab, setActiveTab] = useState<TabKey>('connection');
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <div className="mb-6">
         <h1 className="text-slate-900 mb-2">Einstellungen</h1>
         <p className="text-slate-600">Verwalten Sie Ihre OpenStack-Konfiguration und Systemeinstellungen</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="w-full">
-        <TabsList className="mb-6">
+        {/* TabsList: darf umbrechen wenn der Viewport zu schmal ist. Der
+            Basis-Style aus components/ui/tabs.tsx setzt h-9 + w-fit + no-wrap;
+            wir kippen das nur unter `md:` (< 768px). Ab `md:` verhält sich der
+            Header identisch zu vorher (h-9, w-fit, eine Zeile). */}
+        <TabsList className="mb-6 flex-wrap h-auto w-full md:w-fit md:h-9 gap-1">
           {TAB_ITEMS.map(({ key, label, icon: Icon }) => (
             <TabsTrigger key={key} value={key} className="gap-2">
               <Icon className="w-4 h-4" />

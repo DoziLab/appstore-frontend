@@ -116,8 +116,8 @@ export function Courses() {
   };
 
   return (
-    <div className="p-8 space-y-8">
-      <div className="flex items-start justify-between">
+    <div className="p-4 md:p-8 space-y-8">
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-2">Kurse</h1>
           <p className="text-slate-600">Übersicht über Ihre Anwendungen nach Kursen geordnet</p>

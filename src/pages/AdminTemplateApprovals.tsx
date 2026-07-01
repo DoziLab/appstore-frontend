@@ -127,7 +127,7 @@ export function AdminTemplateApprovals() {
   const approvalQueueEmpty = !versionsLoading && pendingVersions.length === 0;
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 md:p-8 space-y-8">
       {/* Header */}
       <div>
         <h1 className="text-slate-900 mb-2 flex items-center gap-2">

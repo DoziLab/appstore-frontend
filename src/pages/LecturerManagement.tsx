@@ -103,9 +103,9 @@ export function LecturerManagement() {
   const canNext = page < totalPages;
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 md:p-8 space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-2 flex items-center gap-2">
             <Users className="w-6 h-6 text-red-600" />

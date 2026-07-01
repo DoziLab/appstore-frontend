@@ -1536,7 +1536,7 @@ export function DeploymentWizard({
           <div className="p-6 bg-gradient-to-br from-teal-50 to-blue-50 border border-teal-200 rounded-lg">
             <h3 className="text-slate-900 mb-4">Deployment-Zusammenfassung</h3>
             <div className="space-y-3">
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Template:</span>
                 <span className="text-sm text-slate-900">
                   {selectedTemplate?.name || "-"}{" "}
@@ -1545,19 +1545,19 @@ export function DeploymentWizard({
                     : ""}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Deployment-Name:</span>
                 <span className="text-sm text-slate-900">
                   {deploymentName || "-"}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Gruppe:</span>
                 <span className="text-sm text-slate-900">
                   {selectedGroup?.name || "-"}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">
                   Deployment-Modus:
                 </span>
@@ -1569,25 +1569,25 @@ export function DeploymentWizard({
                       : "Pro Kurs"}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Anzahl Stacks:</span>
                 <span className="text-sm text-slate-900">
                   {groupStackAssignments.length}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Anzahl Gruppen:</span>
                 <span className="text-sm text-slate-900">
                   {studentGroups.length}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Studenten:</span>
                 <span className="text-sm text-slate-900">
                   {keycloakMembers.length}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Credentials:</span>
                 <span className="text-sm text-slate-900">
                   {deploymentMode === "per_student"
@@ -1597,7 +1597,7 @@ export function DeploymentWizard({
                       : `${studentGroups.filter((g) => g.students.length > 0).length} Gruppen-Sets`}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Laufzeit:</span>
                 <span className="text-sm text-slate-900">
                   {runtimeLabels[runtime] || runtime}
@@ -1654,7 +1654,7 @@ export function DeploymentWizard({
                     (p: TemplateParameter) => p.name === key,
                   );
                   return (
-                    <div key={key} className="flex justify-between py-1">
+                    <div key={key} className="flex flex-wrap justify-between gap-x-4 py-1">
                       <span className="text-sm text-slate-600">
                         {param?.label || key}:
                       </span>

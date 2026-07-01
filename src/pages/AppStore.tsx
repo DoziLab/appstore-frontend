@@ -235,9 +235,9 @@ export function AppStore({ onDeploy }: AppStoreProps) {
   const displayTemplates = filteredTemplates;
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 md:p-8 space-y-8">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-2">App Store</h1>
           <p className="text-slate-600">Durchsuche und deploye Application-Templates</p>

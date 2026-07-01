@@ -107,18 +107,6 @@ export function LecturerManagement() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
-            <button
-              type="button"
-              onClick={() => navigate("/admin")}
-              className="hover:text-slate-700 inline-flex items-center gap-1"
-            >
-              <ArrowLeft className="w-3 h-3" />
-              Administration
-            </button>
-            <span>/</span>
-            <span>Lecturer-Verwaltung</span>
-          </div>
           <h1 className="text-slate-900 mb-2 flex items-center gap-2">
             <Users className="w-6 h-6 text-teal-600" />
             Lecturer-Verwaltung

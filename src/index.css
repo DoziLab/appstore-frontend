@@ -3599,6 +3599,22 @@ html {
     width: 75%;
   }
 
+  /* Preexisting bugs surfaced during the visual verification: das JSX
+     nutzt diese Klassen (in LecturerManagement für das Search-Icon-
+     Overlay, in TemplateOwnerDetailDialog für den Footer-Abstand über
+     der border-t Trennlinie), aber die prebuilt CSS enthält sie nicht.
+     Ohne diese Rules fällt die Lupe an den linken Rand und die Footer-
+     Buttons kleben an der Trennlinie. */
+  .left-2\.5 {
+    left: calc(var(--spacing) * 2.5);
+  }
+  .pl-8 {
+    padding-left: calc(var(--spacing) * 8);
+  }
+  .pt-2 {
+    padding-top: calc(var(--spacing) * 2);
+  }
+
   /* md: Breakpoint = 48rem (768px) */
   @media (width >= 48rem) {
     .md\:hidden {

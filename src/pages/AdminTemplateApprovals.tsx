@@ -142,7 +142,7 @@ export function AdminTemplateApprovals() {
       {/* Template Approvals Card */}
       <Card className="border-slate-200 shadow-sm">
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 md:gap-0">
             <div>
               <CardTitle>Template-Freigaben</CardTitle>
               <CardDescription className="mt-1">
@@ -151,7 +151,7 @@ export function AdminTemplateApprovals() {
                   : 'Pro Version genehmigen oder ablehnen. Eine Ablehnung kann mit einem Hinweis versehen werden, den der Dozent sieht.'}
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap md:flex-nowrap">
               <Button variant="outline" size="sm" onClick={loadQueue} disabled={versionsLoading}>
                 Aktualisieren
               </Button>

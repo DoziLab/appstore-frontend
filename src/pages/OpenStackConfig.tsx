@@ -288,7 +288,7 @@ export function OpenStackConfig() {
             Basis-Style aus components/ui/tabs.tsx setzt h-9 + w-fit + no-wrap;
             wir kippen das nur unter `md:` (< 768px). Ab `md:` verhält sich der
             Header identisch zu vorher (h-9, w-fit, eine Zeile). */}
-        <TabsList className="mb-6 flex-wrap h-auto w-full md:w-fit md:h-9 gap-1">
+        <TabsList className="mb-6 flex-wrap h-auto w-full md:w-fit md:h-9 gap-1 md:gap-0">
           {TAB_ITEMS.map(({ key, label, icon: Icon }) => (
             <TabsTrigger key={key} value={key} className="gap-2">
               <Icon className="w-4 h-4" />

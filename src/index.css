@@ -3545,3 +3545,112 @@ html {
 .settings-scroll:hover {
   scrollbar-color: rgb(148 163 184) transparent;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Manuell nachgetragene Tailwind-Utilities für das Mobile-Responsive-
+ * Feature. Dieses Projekt hat KEIN Tailwind-Build-Setup — src/index.css
+ * ist eine einmal statisch generierte CSS mit exakt den Klassen, die zum
+ * Zeitpunkt des Exports im JSX vorkamen. Neue Klassen müssen daher hier
+ * hand-authored werden, sonst werden sie vom Bundler nicht mit Regeln
+ * versehen und wirken wie no-ops (der Grund, warum `md:hidden` und
+ * `hidden md:flex` sich still ignoriert haben und die Desktop-Version
+ * regressed hat).
+ *
+ * Konvention: gleiche Struktur wie oben (Spacing-Rem-Formel mit
+ * calc(var(--spacing) * N), Media-Queries `(width >= 48rem)` für md
+ * und `(width >= 40rem)` für sm — mirrored aus src/index.css:2785 ff).
+ * ─────────────────────────────────────────────────────────────────────── */
+@layer utilities {
+  /* Basis-Klassen die neu verwendet werden */
+  .flex-row {
+    flex-direction: row;
+  }
+  .h-auto {
+    height: auto;
+  }
+  .h-14 {
+    height: calc(var(--spacing) * 14);
+  }
+  .h-24 {
+    height: calc(var(--spacing) * 24);
+  }
+  .gap-x-4 {
+    column-gap: calc(var(--spacing) * 4);
+  }
+  .sticky {
+    position: sticky;
+  }
+  .z-40 {
+    z-index: 40;
+  }
+
+  /* Sheet (SheetContent side="left") — Radix Dialog Portal Positionierung.
+     Diese Klassen sind nirgendwo im Original-JSX verwendet, deshalb fehlten
+     sie in der prebuilt CSS. Sie werden ab jetzt vom MobileTopBar-Drawer
+     gebraucht. */
+  .inset-y-0 {
+    top: calc(var(--spacing) * 0);
+    bottom: calc(var(--spacing) * 0);
+  }
+  .left-0 {
+    left: calc(var(--spacing) * 0);
+  }
+  .w-3\/4 {
+    width: 75%;
+  }
+
+  /* md: Breakpoint = 48rem (768px) */
+  @media (width >= 48rem) {
+    .md\:hidden {
+      display: none;
+    }
+    .md\:flex {
+      display: flex;
+    }
+    .md\:flex-row {
+      flex-direction: row;
+    }
+    .md\:items-start {
+      align-items: flex-start;
+    }
+    .md\:items-center {
+      align-items: center;
+    }
+    .md\:justify-between {
+      justify-content: space-between;
+    }
+    .md\:gap-6 {
+      gap: calc(var(--spacing) * 6);
+    }
+    .md\:h-9 {
+      height: calc(var(--spacing) * 9);
+    }
+    .md\:w-fit {
+      width: fit-content;
+    }
+    .md\:p-6 {
+      padding: calc(var(--spacing) * 6);
+    }
+    .md\:p-8 {
+      padding: calc(var(--spacing) * 8);
+    }
+    .md\:gap-0 {
+      gap: calc(var(--spacing) * 0);
+    }
+    .md\:flex-nowrap {
+      flex-wrap: nowrap;
+    }
+  }
+
+  /* sm: Breakpoint = 40rem (640px) — genutzt in MobileTopBar für den
+     SheetContent, damit der Drawer auf mittleren Screens nicht zu breit
+     wird. */
+  @media (width >= 40rem) {
+    .sm\:max-w-xs {
+      max-width: calc(var(--spacing) * 80);
+    }
+    .sm\:max-w-sm {
+      max-width: calc(var(--spacing) * 96);
+    }
+  }
+}

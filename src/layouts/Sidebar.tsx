@@ -14,6 +14,19 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 
 interface SidebarProps {
   logo: string;
+  /**
+   * "desktop" (default): rendert das äußere <aside> mit fester 256px-Breite
+   * und Border — das ist die klassische Seitenleiste.
+   * "mobile": rendert nur den Inhalt (Logo/Nav/User) ohne <aside>-Wrapper,
+   * gedacht als Content für einen <SheetContent>-Drawer. Das Logo wird
+   * dabei kleiner, damit es nicht die halbe Drawer-Höhe frisst.
+   */
+  variant?: "desktop" | "mobile";
+  /**
+   * Wenn im Mobile-Modus in einem Sheet: schließt den Drawer beim Nav-Klick.
+   * Auf Desktop bleibt undefined und wird ignoriert.
+   */
+  onNavigate?: () => void;
 }
 
 function initialsFromName(name?: string) {
@@ -24,7 +37,7 @@ function initialsFromName(name?: string) {
   return (first + last).toUpperCase();
 }
 
-export function Sidebar({ logo }: SidebarProps) {
+export function Sidebar({ logo, variant = "desktop", onNavigate }: SidebarProps) {
   const { keycloak, initialized } = useKeycloak();
   const location = useLocation();
 
@@ -102,15 +115,26 @@ export function Sidebar({ logo }: SidebarProps) {
   // das Logo soll sie zu ihrer eigenen Übersicht führen.
   const homePath = isStudent ? "/student/dashboard" : "/dashboard";
 
-  return (
-    <aside className="relative w-64 bg-white border-r border-slate-200 flex flex-col">
+  const isMobile = variant === "mobile";
+
+  // Der komplette Inhalt (Logo, Nav, User-Profile) ist zwischen Desktop und
+  // Mobile identisch — er wird auf Desktop in ein <aside> gepackt, auf Mobile
+  // direkt in einen <SheetContent>. Das Logo wird auf Mobile kleiner (h-24
+  // statt h-40), sonst frisst es die halbe Drawer-Höhe.
+  const content = (
+    <>
       {/* Logo */}
       <NavLink
         to={homePath}
         className="p-6 border-b border-slate-200 block transition-opacity hover:opacity-80"
         aria-label="Zur Startseite"
+        onClick={onNavigate}
       >
-        <img src={logo} alt="DoziLab" className="h-40 w-auto" />
+        <img
+          src={logo}
+          alt="DoziLab"
+          className={isMobile ? "h-24 w-auto" : "h-40 w-auto"}
+        />
       </NavLink>
 
       {/* Navigation */}
@@ -127,6 +151,7 @@ export function Sidebar({ logo }: SidebarProps) {
               key={item.id}
               to={item.path}
               end
+              onClick={onNavigate}
               className={({ isActive }) => `
                 w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all
                 ${isActive && isAdminItem ? "bg-red-50 text-red-600" : isActive ? "bg-teal-50 text-teal-600" : isAdminItem ? "text-red-600 hover:bg-red-50" : "text-slate-600 hover:bg-slate-50"}
@@ -169,7 +194,7 @@ export function Sidebar({ logo }: SidebarProps) {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => navigate('/config')}
+              onClick={() => { onNavigate?.(); navigate('/config'); }}
               disabled={!initialized || !keycloak.authenticated}
               className="text-slate-400 hover:text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
               title="Einstellungen"
@@ -190,6 +215,19 @@ export function Sidebar({ logo }: SidebarProps) {
           </div>
         </div>
       </div>
+    </>
+  );
+
+  if (isMobile) {
+    // Kein <aside>-Wrapper: der Sheet-Container gibt schon einen fixen,
+    // scrollbaren Rahmen vor. Wir stellen nur sicher, dass der Inhalt in
+    // voller Höhe stacked ist.
+    return <div className="flex h-full flex-col bg-white">{content}</div>;
+  }
+
+  return (
+    <aside className="relative w-64 bg-white border-r border-slate-200 flex flex-col">
+      {content}
     </aside>
   );
 }

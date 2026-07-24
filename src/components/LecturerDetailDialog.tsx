@@ -180,8 +180,12 @@ export function LecturerDetailDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={closeIfIdle}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
+        {/* Flex-Column mit fixem Header + Footer und nur mittig scrollendem
+            Body. Vorher scrollte der GESAMTE Dialog (inkl. Footer) als eine
+            Einheit — bei vielen Templates rutschte der „Account löschen"-
+            Button unter die Falz und war unauffindbar (Issue #221). */}
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2 break-words">
               <User className="w-5 h-5 text-slate-500" />
               {displayName}
@@ -191,6 +195,9 @@ export function LecturerDetailDialog({
               Vor einem Cascade-Delete bitte prüfen was mitgelöscht wird.
             </DialogDescription>
           </DialogHeader>
+
+          {/* Scrollbarer Body */}
+          <div className="flex-1 overflow-y-auto min-h-0 space-y-4 pr-1">
 
           {/* Metadaten-Panel */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border rounded-lg p-4 bg-slate-50 text-sm">
@@ -377,8 +384,10 @@ export function LecturerDetailDialog({
               </ResourceSection>
             </div>
           )}
+          </div>
+          {/* Ende scrollbarer Body */}
 
-          <DialogFooter className="gap-2 sm:justify-between">
+          <DialogFooter className="shrink-0 gap-2 sm:flex-row sm:justify-between border-t border-slate-100 pt-4">
             <Button
               variant="outline"
               onClick={() => onOpenChange(false)}

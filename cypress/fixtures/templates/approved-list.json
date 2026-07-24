@@ -1,0 +1,99 @@
+{
+  "success": true,
+  "message": "ok",
+  "data": [
+    {
+      "id": "tpl-wp-0001",
+      "name": "wordpress-demo",
+      "description": "Eine WordPress-Demo-Instanz mit MariaDB-Backend für Lehrveranstaltungen.",
+      "owner_id": "user-instructor-1",
+      "owner_name": "Walter Wordpress",
+      "owner_email": "walter@dhbw.de",
+      "owner_username": "walter",
+      "repo_url": "https://github.com/DoziLab/wordpress-demo",
+      "icon_url": null,
+      "visibility": "public",
+      "versions": [
+        {
+          "id": "tv-wp-1",
+          "template_id": "tpl-wp-0001",
+          "version": "1.0.0",
+          "git_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "is_active": true,
+          "approval_status": "approved",
+          "approved_by_id": "user-admin-1",
+          "approved_at": "2026-06-01T10:00:00Z",
+          "rejection_reason": null,
+          "created_at": "2026-05-20T10:00:00Z"
+        }
+      ],
+      "created_at": "2026-05-20T10:00:00Z",
+      "updated_at": "2026-06-01T10:00:00Z"
+    },
+    {
+      "id": "tpl-jup-0002",
+      "name": "jupyter-stack",
+      "description": "JupyterLab mit Standardpaketen für Data-Science-Übungen.",
+      "owner_id": "user-instructor-2",
+      "owner_name": "Julia Jupyter",
+      "owner_email": "julia@dhbw.de",
+      "owner_username": "julia",
+      "repo_url": "https://github.com/DoziLab/jupyter-stack",
+      "icon_url": null,
+      "visibility": "public",
+      "versions": [
+        {
+          "id": "tv-jup-1",
+          "template_id": "tpl-jup-0002",
+          "version": "2.1.0",
+          "git_commit_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "is_active": true,
+          "approval_status": "approved",
+          "approved_by_id": "user-admin-1",
+          "approved_at": "2026-06-02T10:00:00Z",
+          "rejection_reason": null,
+          "created_at": "2026-05-25T10:00:00Z"
+        }
+      ],
+      "created_at": "2026-05-25T10:00:00Z",
+      "updated_at": "2026-06-02T10:00:00Z"
+    },
+    {
+      "id": "tpl-react-0003",
+      "name": "react-starter",
+      "description": "Minimaler React + Vite Starter für Frontend-Praktika.",
+      "owner_id": "user-instructor-3",
+      "owner_name": "Rita React",
+      "owner_email": "rita@dhbw.de",
+      "owner_username": "rita",
+      "repo_url": "https://github.com/DoziLab/react-starter",
+      "icon_url": null,
+      "visibility": "public",
+      "versions": [
+        {
+          "id": "tv-react-1",
+          "template_id": "tpl-react-0003",
+          "version": "0.3.0",
+          "git_commit_sha": "cccccccccccccccccccccccccccccccccccccccc",
+          "is_active": true,
+          "approval_status": "approved",
+          "approved_by_id": "user-admin-1",
+          "approved_at": "2026-06-03T10:00:00Z",
+          "rejection_reason": null,
+          "created_at": "2026-05-28T10:00:00Z"
+        }
+      ],
+      "created_at": "2026-05-28T10:00:00Z",
+      "updated_at": "2026-06-03T10:00:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "page_size": 100,
+    "total_items": 3,
+    "total_pages": 1
+  },
+  "errors": null,
+  "timestamp": "2026-06-27T00:00:00Z",
+  "request_id": "req-templates-approved-list"
+}

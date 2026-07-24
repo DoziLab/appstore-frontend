@@ -2,23 +2,25 @@
 // generischen Details-Modal aus AppStore.tsx. Zeigt alle Felder, listet
 // Versionen mit ihrem Approval-Status, und bietet zwei Aktionen:
 //
-//   • „Aktualisieren" — eine neuere bereits importierte Version aktivieren
-//     (POST /api/v1/template-versions/{id}/activate). Kein Downgrade möglich:
-//     die Auswahl ist auf strikt-neuere Versionen als die aktuell aktive
-//     beschränkt (siehe `lib/version.ts → isStrictlyNewer`).
+//   • „Aktive Version ändern" — eine bereits importierte Version zur aktiven
+//     (= Standard-Vorauswahl im Deployment-Wizard) machen
+//     (POST /api/v1/template-versions/{id}/activate). Downgrades auf ältere
+//     Versionen sind erlaubt — die Auswahl umfasst ALLE nicht-aktiven
+//     Versionen, ohne Strict-Newer-Beschränkung.
 //
 //   • „Approven/Ablehnen" — nur sichtbar für Admins (Backend setzt
 //     `require_roles(ADMIN)` auf den Approve-Endpunkten). Wenn der Owner
 //     selbst Admin ist, kann er das also auf seinem eigenen Template tun;
 //     ansonsten muss ein Admin die Approval-Queue abarbeiten.
 //
-// Der eigentliche Versions-Upgrade-Dialog liegt in einem eigenen Component
-// (UpgradeVersionDialog), damit das hier nicht zu groß wird.
+// Der eigentliche „Aktive Version ändern"-Dialog liegt in einem eigenen
+// Component (ChangeActiveVersionDialog, datei UpgradeVersionDialog.tsx aus
+// Migration-Gründen), damit das hier nicht zu groß wird.
 
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
-  ArrowUpCircle,
+  ArrowLeftRight,
   Calendar,
   Check,
   CheckCircle2,
@@ -30,6 +32,7 @@ import {
   MessageSquare,
   Pencil,
   Trash2,
+  User,
   X,
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
@@ -67,10 +70,10 @@ import {
   type TemplateUpdatePayload,
   type TemplateVersionDto,
 } from "../api/templates";
-import { isStrictlyNewer } from "../lib/version";
 import { deriveTemplateOverallStatus } from "../lib/template-status";
-import { UpgradeVersionDialog } from "./UpgradeVersionDialog";
+import { ChangeActiveVersionDialog } from "./UpgradeVersionDialog";
 import { CheckRemoteVersionsDialog } from "./CheckRemoteVersionsDialog";
+import { TemplateIconUpload } from "./TemplateIconUpload";
 
 interface Props {
   template: TemplateDto;
@@ -105,13 +108,13 @@ export function TemplateOwnerDetailDialog({
   // erst confirmen, dann patchen.
   const [confirmVisibilityChange, setConfirmVisibilityChange] = useState(false);
 
-  // Edit-Modus für Metadaten (name/description/repo_url/icon_url). Visibility
+  // Edit-Modus für Metadaten (name/description/repo_url). Visibility
   // hat seinen eigenen Toggle weiter oben, daher hier nicht enthalten.
+  // Icon-Management läuft über separate Upload/Delete-Endpoints.
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(template.name);
   const [editDescription, setEditDescription] = useState(template.description ?? "");
   const [editRepoUrl, setEditRepoUrl] = useState(template.repo_url);
-  const [editIconUrl, setEditIconUrl] = useState(template.icon_url ?? "");
   const [editBusy, setEditBusy] = useState(false);
 
   // Bestätigungsdialoge für destruktive Aktionen.
@@ -140,8 +143,7 @@ export function TemplateOwnerDetailDialog({
     setEditName(template.name);
     setEditDescription(template.description ?? "");
     setEditRepoUrl(template.repo_url);
-    setEditIconUrl(template.icon_url ?? "");
-  }, [template.id, template.name, template.description, template.repo_url, template.icon_url]);
+  }, [template.id, template.name, template.description, template.repo_url]);
 
   const versions: TemplateVersionDto[] = (template.versions ?? [])
     .slice()
@@ -157,13 +159,12 @@ export function TemplateOwnerDetailDialog({
   // leiten wir hier eine UI-taugliche Aggregations-Bewertung ab.
   const overallStatus = deriveTemplateOverallStatus(template);
 
-  // Versionen, auf die der Owner hochziehen kann: strikt neuer als die
-  // aktuelle aktive Version. Wenn (noch) keine aktive existiert, jede.
-  const upgradeCandidates = versions.filter((v) => {
-    if (v.is_active) return false;
-    if (!activeVersion) return true;
-    return isStrictlyNewer(v, activeVersion);
-  });
+  // Kandidaten für „Aktive Version ändern": alle nicht-aktiven Versionen.
+  // Bewusst KEIN strict-newer-Filter mehr — der Owner darf jederzeit auch
+  // zu einer älteren Version zurück (z.B. wenn die jüngste einen Bug
+  // hat). Backend (`activate_version` + `deactivate_other_versions`)
+  // unterstützt den Switch in beide Richtungen atomar.
+  const activeChangeCandidates = versions.filter((v) => !v.is_active);
 
   const handleApprove = async (versionId: string) => {
     setBusyVersionId(versionId);
@@ -236,8 +237,6 @@ export function TemplateOwnerDetailDialog({
     const nextDesc = editDescription.trim() === "" ? null : editDescription;
     if ((template.description ?? null) !== nextDesc) patch.description = nextDesc;
     if (editRepoUrl.trim() && editRepoUrl !== template.repo_url) patch.repo_url = editRepoUrl.trim();
-    const nextIcon = editIconUrl.trim() === "" ? null : editIconUrl.trim();
-    if ((template.icon_url ?? null) !== nextIcon) patch.icon_url = nextIcon;
 
     if (Object.keys(patch).length === 0) {
       setEditing(false);
@@ -314,8 +313,8 @@ export function TemplateOwnerDetailDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <span>{template.name}</span>
+            <DialogTitle className="flex items-center gap-2 min-w-0">
+              <span className="break-words min-w-0">{template.name}</span>
               <Badge variant="outline" className="text-xs">
                 eigenes Template
               </Badge>
@@ -401,6 +400,15 @@ export function TemplateOwnerDetailDialog({
                     Quelle &amp; Metadaten
                   </h3>
                   <dl className="text-sm space-y-2">
+                    <div className="flex items-start gap-2">
+                      <User className="w-4 h-4 mt-0.5 text-slate-500" />
+                      <div>
+                        <dt className="text-xs text-slate-500">Hochgeladen von</dt>
+                        <dd className="text-slate-700">
+                          {template.owner_name || template.owner_username || template.owner_id}
+                        </dd>
+                      </div>
+                    </div>
                     {template.repo_url && (
                       <div className="flex items-start gap-2">
                         <Github className="w-4 h-4 mt-0.5 text-slate-500" />
@@ -477,18 +485,6 @@ export function TemplateOwnerDetailDialog({
                     disabled={editBusy}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="tpl-edit-icon" className="text-xs">
-                    Icon (mdi:flask, fa:server, 🚀, /icons/template.svg)
-                  </Label>
-                  <Input
-                    id="tpl-edit-icon"
-                    value={editIconUrl}
-                    onChange={(e) => setEditIconUrl(e.target.value)}
-                    maxLength={500}
-                    disabled={editBusy}
-                  />
-                </div>
                 <div className="flex justify-end gap-2 pt-1">
                   <Button
                     size="sm"
@@ -500,7 +496,6 @@ export function TemplateOwnerDetailDialog({
                       setEditName(template.name);
                       setEditDescription(template.description ?? "");
                       setEditRepoUrl(template.repo_url);
-                      setEditIconUrl(template.icon_url ?? "");
                     }}
                     disabled={editBusy}
                   >
@@ -517,6 +512,18 @@ export function TemplateOwnerDetailDialog({
                 </div>
               </section>
             )}
+
+            {/* Icon-Upload — immer sichtbar, außerhalb des Edit-Modus,
+                da Upload/Delete separate Endpoints sind und keinen Abbruch
+                oder Speichern-Button brauchen. */}
+            <section>
+              <TemplateIconUpload
+                templateId={template.id}
+                iconPath={template.icon_path}
+                onChanged={onChanged}
+                uploadTrigger={Date.parse(template.updated_at)}
+              />
+            </section>
 
             {/* Aktive Version + Update-Button */}
             <section>
@@ -537,16 +544,16 @@ export function TemplateOwnerDetailDialog({
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={upgradeCandidates.length === 0}
+                    disabled={activeChangeCandidates.length === 0}
                     onClick={() => setUpgradeOpen(true)}
                     title={
-                      upgradeCandidates.length === 0
-                        ? "Keine neuere Version verfügbar"
-                        : undefined
+                      activeChangeCandidates.length === 0
+                        ? "Es gibt keine weitere Version, die du aktivieren könntest"
+                        : "Aktive Version (Standard-Vorauswahl im Deployment-Wizard) ändern"
                     }
                   >
-                    <ArrowUpCircle className="w-4 h-4 mr-2" />
-                    Aktualisieren
+                    <ArrowLeftRight className="w-4 h-4 mr-2" />
+                    Aktive Version ändern
                   </Button>
                 </div>
               </div>
@@ -782,10 +789,10 @@ export function TemplateOwnerDetailDialog({
         </DialogContent>
       </Dialog>
 
-      <UpgradeVersionDialog
+      <ChangeActiveVersionDialog
         open={upgradeOpen}
         onOpenChange={setUpgradeOpen}
-        candidates={upgradeCandidates}
+        candidates={activeChangeCandidates}
         activeVersion={activeVersion ?? null}
         onActivated={() => {
           setUpgradeOpen(false);
@@ -799,7 +806,7 @@ export function TemplateOwnerDetailDialog({
         onOpenChange={setCheckRemoteOpen}
         onImported={() => {
           // Liste neu laden, damit die frisch importierten Versionen
-          // in der Versionsliste und im Aktualisieren-Dialog auftauchen.
+          // in der Versionsliste und im „Aktive Version ändern"-Dialog auftauchen.
           onChanged();
         }}
       />

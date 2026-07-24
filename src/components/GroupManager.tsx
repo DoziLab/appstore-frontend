@@ -94,14 +94,16 @@ export function GroupManager({
     const numGroups = groups.length;
     if (numGroups === 0 || students.length === 0) return;
 
-    const studentsPerGroup = Math.ceil(students.length / numGroups);
-    const newGroups = groups.map((group, index) => ({
+    // Use round-robin distribution to ensure all groups get students
+    const newGroups = groups.map((group) => ({
       ...group,
-      students: students.slice(
-        index * studentsPerGroup,
-        (index + 1) * studentsPerGroup
-      ),
+      students: [] as KeycloakUser[],
     }));
+
+    students.forEach((student, index) => {
+      const groupIndex = index % numGroups;
+      newGroups[groupIndex].students.push(student);
+    });
 
     onGroupsChange(newGroups);
   };

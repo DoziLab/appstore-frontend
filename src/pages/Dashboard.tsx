@@ -161,7 +161,7 @@
     };
 
     return (
-      <div className="p-8 space-y-8">
+      <div className="p-4 md:p-8 space-y-8">
         {/* Header */}
         <div>
           <h1 className="text-slate-900 mb-2">Dashboard</h1>
@@ -169,7 +169,7 @@
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           {stats.map((stat) => {
             const Icon = stat.icon;
             return (
@@ -257,42 +257,42 @@
                     <Button
                       variant="outline"
                       onClick={() => navigate('/appstore')}
-                      className="group w-full justify-start gap-3 h-auto py-3 px-4 border-slate-200 hover:bg-teal-50 hover:border-teal-200 transition-colors"
+                      className="group w-full justify-start gap-3 h-auto py-3 px-4 border-slate-200 hover:bg-teal-50 hover:border-teal-200 transition-colors whitespace-normal"
                     >
-                      <div className="bg-teal-50 text-teal-600 p-2 rounded-md group-hover:bg-teal-100 transition-colors">
+                      <div className="bg-teal-50 text-teal-600 p-2 rounded-md group-hover:bg-teal-100 transition-colors flex-shrink-0">
                         <Rocket className="w-4 h-4" />
                       </div>
-                      <div className="text-left">
-                        <p className="text-sm font-medium text-slate-900 group-hover:text-teal-700 transition-colors">Neue App deployen</p>
-                        <p className="text-xs text-slate-500">Anwendung bereitstellen</p>
+                      <div className="text-left min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-900 group-hover:text-teal-700 transition-colors break-words">Neue App deployen</p>
+                        <p className="text-xs text-slate-500 break-words">Anwendung bereitstellen</p>
                       </div>
                     </Button>
 
                     <Button
                       variant="outline"
                       onClick={() => navigate('/appstore')}
-                      className="group w-full justify-start gap-3 h-auto py-3 px-4 border-slate-200 hover:bg-teal-50 hover:border-teal-200 transition-colors"
+                      className="group w-full justify-start gap-3 h-auto py-3 px-4 border-slate-200 hover:bg-teal-50 hover:border-teal-200 transition-colors whitespace-normal"
                     >
-                      <div className="bg-blue-50 text-blue-600 p-2 rounded-md group-hover:bg-blue-100 transition-colors">
+                      <div className="bg-blue-50 text-blue-600 p-2 rounded-md group-hover:bg-blue-100 transition-colors flex-shrink-0">
                         <BookTemplate className="w-4 h-4" />
                       </div>
-                      <div className="text-left">
-                        <p className="text-sm font-medium text-slate-900 group-hover:text-blue-700 transition-colors">Neues Template hinzufügen</p>
-                        <p className="text-xs text-slate-500">Template erstellen</p>
+                      <div className="text-left min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-900 group-hover:text-blue-700 transition-colors break-words">Neues Template hinzufügen</p>
+                        <p className="text-xs text-slate-500 break-words">Template erstellen</p>
                       </div>
                     </Button>
 
                     <Button
                       variant="outline"
                       onClick={() => navigate('/courses')}
-                      className="group w-full justify-start gap-3 h-auto py-3 px-4 border-slate-200 hover:bg-teal-50 hover:border-teal-200 transition-colors"
+                      className="group w-full justify-start gap-3 h-auto py-3 px-4 border-slate-200 hover:bg-teal-50 hover:border-teal-200 transition-colors whitespace-normal"
                     >
-                      <div className="bg-purple-50 text-purple-600 p-2 rounded-md group-hover:bg-purple-100 transition-colors">
+                      <div className="bg-purple-50 text-purple-600 p-2 rounded-md group-hover:bg-purple-100 transition-colors flex-shrink-0">
                         <BookOpen className="w-4 h-4" />
                       </div>
-                      <div className="text-left">
-                        <p className="text-sm font-medium text-slate-900 group-hover:text-purple-700 transition-colors">Kurse verwalten</p>
-                        <p className="text-xs text-slate-500">Kurse einsehen</p>
+                      <div className="text-left min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-900 group-hover:text-purple-700 transition-colors break-words">Kurse verwalten</p>
+                        <p className="text-xs text-slate-500 break-words">Kurse einsehen</p>
                       </div>
                     </Button>
               </CardContent>

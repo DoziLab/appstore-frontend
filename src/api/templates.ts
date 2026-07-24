@@ -69,8 +69,19 @@ export type TemplateDto = {
   owner_email: string | null;
   owner_username: string | null;
   repo_url: string;
-  icon_url: string | null;
+  icon_path: string | null;
   visibility: string;
+  /**
+   * True wenn der Owner das Template als „öffentlich" angelegt hat, aber
+   * noch keine Version genehmigt wurde. Das Template ist in dem Zustand
+   * weiterhin `visibility === "private"` — sobald ein Admin die erste
+   * Version approved, flippt Backend `visibility → "public"` und
+   * `publish_requested → false` atomar.
+   *
+   * UI-Konsequenz: für den Owner Badge „wartet auf Erst-Freigabe", auch
+   * wenn `visibility` noch privat ist. Siehe `lib/template-status.ts`.
+   */
+  publish_requested?: boolean;
   // Hinweis: Approval lebt nur noch pro Version. Der Backend-Endpoint
   // `GET /templates` liefert seit der Per-Version-Migration KEINEN
   // `approval_status` mehr auf Template-Ebene. Wenn Code früher
@@ -183,7 +194,6 @@ export type TemplateUpdatePayload = {
   name?: string;
   description?: string | null;
   repo_url?: string;
-  icon_url?: string | null;
   visibility?: "public" | "private";
 };
 
@@ -257,3 +267,92 @@ export async function deleteTemplateVersion(versionId: string): Promise<void> {
 // Approval lebt seit der Per-Version-Migration ausschließlich auf
 // `TemplateVersion`. Die zugehörigen Helfer sind in `api/github.ts`:
 // `approveTemplateVersion` / `rejectTemplateVersion`.
+
+/**
+ * Icon-Upload-Response vom Backend
+ */
+export type TemplateIconDto = {
+  id: string;
+  template_id: string;
+  content_type: string;
+  file_name: string;
+  size_bytes: number;
+  icon_path: string;
+};
+
+/**
+ * Lädt ein Icon-Bild für ein Template hoch. Create-or-Replace — zweiter
+ * Upload überschreibt das bestehende Icon. Erlaubt: PNG, JPEG, WebP.
+ * Max. 5 MB. Owner-or-Admin.
+ */
+export async function uploadTemplateIcon(
+  templateId: string,
+  file: File,
+): Promise<TemplateIconDto> {
+  await keycloak.updateToken(30).catch(() => {});
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`/api/v1/templates/${templateId}/icon`, {
+    method: "POST",
+    headers: keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {},
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    let message = text || res.statusText;
+    try {
+      const json = JSON.parse(text);
+      if (json?.message) message = json.message;
+      else if (json?.detail) message = json.detail;
+    } catch {
+      // not JSON
+    }
+    throw new Error(message);
+  }
+
+  const json = await res.json();
+  return json.data;
+}
+
+/**
+ * Löscht das Icon eines Templates. Idempotent — auch wenn kein Icon
+ * vorhanden ist, kommt 204 zurück. Owner-or-Admin.
+ */
+export async function deleteTemplateIcon(templateId: string): Promise<void> {
+  await keycloak.updateToken(30).catch(() => {});
+  const res = await fetch(`/api/v1/templates/${templateId}/icon`, {
+    method: "DELETE",
+    headers: keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {},
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    let message = text || res.statusText;
+    try {
+      const json = JSON.parse(text);
+      if (json?.message) message = json.message;
+      else if (json?.detail) message = json.detail;
+    } catch {
+      // not JSON
+    }
+    throw new Error(message);
+  }
+}
+
+/**
+ * Lädt das Icon-Bild eines Templates als Blob herunter. Nutzt Auth-Header,
+ * da der Backend-Endpoint Sichtbarkeitsregeln prüft. Cache-Buster via
+ * `updated_at` wird empfohlen, aber hier nicht automatisch angehängt —
+ * Caller muss das bei Bedarf machen.
+ */
+export async function fetchTemplateIcon(iconPath: string): Promise<Blob> {
+  await keycloak.updateToken(30).catch(() => {});
+  const res = await fetch(iconPath, {
+    headers: keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {},
+  });
+  if (!res.ok) {
+    throw new Error(`Icon konnte nicht geladen werden: ${res.statusText}`);
+  }
+  return res.blob();
+}

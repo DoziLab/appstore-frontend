@@ -138,3 +138,35 @@ export async function addGroupMembers(courseId: string, groupId: string, memberI
     body: JSON.stringify({ member_ids: memberIds }),
   });
 }
+
+/**
+ * Move a single group member from its current group to a different group of
+ * the same course.
+ *
+ * NOTE: as of staging the backend does NOT expose this endpoint yet — see
+ * issue #120. We send the call anyway so the wiring is correct the moment
+ * the backend lands, and surface a clear "noch nicht verfügbar" toast on the
+ * 404/405 that comes back today. The endpoint shape mirrors the existing
+ * `POST .../groups/{groupId}/members` route family.
+ */
+export async function moveGroupMember(
+  courseId: string,
+  fromGroupId: string,
+  groupMemberId: string,
+  toGroupId: string,
+) {
+  return apiFetch<{
+    success: boolean;
+    message: string;
+    data: GroupMemberDto;
+    errors: unknown;
+    timestamp: string;
+    request_id: string;
+  }>(
+    `/api/v1/courses/${courseId}/groups/${fromGroupId}/members/${groupMemberId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ new_group_id: toGroupId }),
+    },
+  );
+}

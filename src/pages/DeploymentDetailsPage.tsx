@@ -456,7 +456,8 @@ export function DeploymentDetailsPage() {
       }
 
       let resolvedCourseName = "Unbekannter Kurs";
-      
+      let resolvedKeycloakCourseId: string | undefined;
+
       // Try to resolve course name from course_id first
       if (backendDeployment.course_id) {
         const course = coursesCacheRef.current.find(
@@ -465,6 +466,7 @@ export function DeploymentDetailsPage() {
         if (course) {
           // If course has keycloak_course_id, try to resolve the Keycloak group name
           if ((course as any).keycloak_course_id) {
+            resolvedKeycloakCourseId = (course as any).keycloak_course_id;
             const group = groupsCacheRef.current.find(
               (g) => g.id === (course as any).keycloak_course_id
             );
@@ -536,6 +538,13 @@ export function DeploymentDetailsPage() {
         // to enable/disable the Aktionen card buttons. Null on legacy rows.
         ownerId: backendDeployment.owner_id ?? null,
         course: resolvedCourseName,
+        // Course identifiers needed by the Groups/Members section on the
+        // detail page. `courseId` is the DB UUID (used for `/api/v1/courses/
+        // {id}/groups`); `keycloakCourseId` resolves member display names via
+        // the Keycloak admin API. Both may be undefined for legacy/unowned
+        // deployments — the consuming UI must handle that.
+        courseId: backendDeployment.course_id ?? undefined,
+        keycloakCourseId: resolvedKeycloakCourseId,
         templateName: backendDeployment.template_version?.template_name || undefined,
         templateVersion: backendDeployment.template_version?.version || undefined,
         deploymentMode: backendDeployment.deployment_mode || undefined,

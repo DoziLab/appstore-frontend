@@ -135,6 +135,9 @@
     --spacing: .25rem;
     --container-md: 28rem;
     --container-lg: 32rem;
+    --container-xl: 36rem;
+    --container-2xl: 42rem;
+    --container-3xl: 48rem;
     --container-4xl: 56rem;
     --text-xs: .75rem;
     --text-xs--line-height: calc(1 / .75);
@@ -3613,6 +3616,44 @@ html {
   }
   .pt-2 {
     padding-top: calc(var(--spacing) * 2);
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────
+   * Text-Umbruch & Größen-Caps für Mobile-Overflow-Fixes.
+   *
+   * Diese Klassen werden im JSX flächendeckend verwendet (lange SSH-
+   * Befehle, URLs, PEM-Keys, Git-SHAs, UUIDs, Dialog-Breiten), fehlen aber
+   * in der prebuilt CSS und waren deshalb stille no-ops — der Grund, warum
+   * auf schmalen Viewports alles horizontal überläuft statt umzubrechen.
+   * Werte gemäß Tailwind-Defaults (break-*/whitespace-* sind fixe
+   * Deklarationen; container-Größen: xl=36rem, 2xl=42rem, 3xl=48rem;
+   * max-h-64 = 16rem). ───────────────────────────────────────────────── */
+  .break-all {
+    word-break: break-all;
+  }
+  .break-words {
+    overflow-wrap: break-word;
+  }
+  .whitespace-normal {
+    white-space: normal;
+  }
+  .whitespace-pre-wrap {
+    white-space: pre-wrap;
+  }
+  .max-w-xl {
+    max-width: var(--container-xl, 36rem);
+  }
+  .max-w-2xl {
+    max-width: var(--container-2xl, 42rem);
+  }
+  .max-w-3xl {
+    max-width: var(--container-3xl, 48rem);
+  }
+  .max-h-64 {
+    max-height: calc(var(--spacing) * 64);
+  }
+  .max-h-\[85vh\] {
+    max-height: 85vh;
   }
 
   /* md: Breakpoint = 48rem (768px) */

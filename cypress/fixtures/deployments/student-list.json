@@ -1,0 +1,20 @@
+{
+  "success": true,
+  "message": "ok",
+  "data": [
+    {
+      "id": "dep-stud-1",
+      "name": "test-studenten-rolle-s1",
+      "status": "running",
+      "template": { "name": "Multi-User Ubuntu", "version": "2.1.0" },
+      "instances": [
+        { "id": "inst-1", "vm_name": "test-studenten-rolle-s1", "ip_address": "141.72.176.53" }
+      ],
+      "created_at": "2026-06-25T10:00:00Z",
+      "expires_at": "2026-11-01T00:00:00Z"
+    }
+  ],
+  "errors": null,
+  "timestamp": "2026-07-10T00:00:00Z",
+  "request_id": "req-stud-list"
+}

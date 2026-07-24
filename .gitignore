@@ -58,3 +58,4 @@ pnpm-lock.yaml
 cypress/screenshots/
 cypress/videos/
 cypress/downloads/
+cypress/shots/

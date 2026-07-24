@@ -1,0 +1,10 @@
+{
+  "success": true,
+  "message": "ok",
+  "data": [
+    { "id": "gm-2", "group_id": "grp-2", "course_member_id": "cm-2", "user_id": "u2", "joined_at": "2026-01-02T00:00:00Z" }
+  ],
+  "errors": null,
+  "timestamp": "2026-07-24T00:00:00Z",
+  "request_id": "req-gm2"
+}

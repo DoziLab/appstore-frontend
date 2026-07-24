@@ -1,0 +1,17 @@
+desktop 01-dashboard             ok
+desktop 02-appstore              ok [1 console errs]
+desktop 03-courses               ok [1 console errs]
+desktop 04-config-settings       ok
+desktop 05-admin-projects        ok [2 console errs]
+desktop 06-admin-templates       ok [1 console errs]
+desktop 07-admin-lecturers       ok
+desktop 08-student-dashboard     ok
+mobile  01-dashboard             ok
+mobile  02-appstore              ok [1 console errs]
+mobile  03-courses               ok [1 console errs]
+mobile  04-config-settings       ok
+mobile  05-admin-projects        ok [2 console errs]
+mobile  06-admin-templates       ok [1 console errs]
+mobile  07-admin-lecturers       ok
+mobile  08-student-dashboard     ok
+mobile  09-drawer-open           ok

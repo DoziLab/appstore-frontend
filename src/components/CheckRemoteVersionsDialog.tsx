@@ -25,10 +25,12 @@ import {
   AlertCircle,
   CheckCircle2,
   Download,
+  ExternalLink,
   GitBranch,
   Github,
   Loader2,
   RefreshCcw,
+  Replace,
   Tag,
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
@@ -51,10 +53,13 @@ import {
   type RemoteCandidate,
   type RemoteCheckResult,
 } from "../lib/github-remote";
-import { buildGithubUrl } from "../lib/github-url";
+import { buildGithubEditUrl, buildGithubUrl } from "../lib/github-url";
 import {
   importTemplateVersionFromGithub,
+  VERSION_ERROR_CODES,
+  type VersionErrorCode,
 } from "../api/github";
+import { ApiError } from "../api/http";
 import type { TemplateDto } from "../api/templates";
 
 interface Props {
@@ -76,9 +81,22 @@ export function CheckRemoteVersionsDialog({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<RemoteCheckResult | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Eine Zeile pro Kandidat. ``code`` ist gesetzt, wenn ein strukturierter
+  // Backend-Fehler kam — daraus rendern wir kandidaten-spezifische Action-
+  // Buttons (z.B. „Im Repo bumpen", „Bestehende Version ersetzen").
   const [importLog, setImportLog] = useState<
-    Array<{ label: string; ok: boolean; message?: string }>
+    Array<{
+      label: string;
+      ok: boolean;
+      message?: string;
+      code?: VersionErrorCode | null;
+      details?: Record<string, unknown> | null;
+    }>
   >([]);
+  // Pro Kandidat-SHA gemerkt: „der Owner hat hier schon einen Replace
+  // ausgelöst", damit wir doppelte Auslöser unterbinden und State zwischen
+  // Render-Pässen halten.
+  const [replacing, setReplacing] = useState<Set<string>>(new Set());
 
   // Wenn der Dialog frisch öffnet: alles zurücksetzen und sofort einen
   // Check anstoßen. Das spart dem User einen Klick — der Button heißt
@@ -90,6 +108,7 @@ export function CheckRemoteVersionsDialog({
     setResult(null);
     setSelected(new Set());
     setImportLog([]);
+    setReplacing(new Set());
     void runCheck();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -152,35 +171,60 @@ export function CheckRemoteVersionsDialog({
 
     const log: typeof importLog = [];
     for (const cand of selectedCandidates) {
-      try {
-        // Wir bauen die Import-URL bewusst aus den geparsten Bestandteilen
-        // der ursprünglichen Repo-URL zusammen, NICHT aus repo_url roh —
-        // sonst würde z.B. ein im Original mit `/tree/main` enthaltener
-        // alter Branch den neuen Tag überschreiben. `path` (Subordner zu
-        // app.yaml) übernehmen wir aber, weil das pro Template stabil ist.
-        const url = buildGithubUrl({
-          owner: result.parsed.owner,
-          repo: result.parsed.repo,
-          ref: cand.ref_for_import,
-          path: result.parsed.path,
-        });
-        await importTemplateVersionFromGithub(template.id, {
-          github_url: url,
-          app_yaml_path: null,
-          is_active: false,
-        });
-        log.push({ label: cand.label, ok: true });
-      } catch (err) {
-        log.push({
-          label: cand.label,
-          ok: false,
-          message: err instanceof Error ? err.message : "Import fehlgeschlagen.",
-        });
-      }
-      // Nach jedem Schritt das UI updaten, damit der User Fortschritt sieht.
+      const entry = await importOne(cand, { replace_existing: false });
+      log.push(entry);
       setImportLog([...log]);
     }
 
+    summariseToast(log);
+    setStep("done");
+    onImported();
+  };
+
+  /**
+   * Importiert einen einzelnen Kandidaten und gibt das Log-Entry zurück.
+   * Wird sowohl vom batch-runImport als auch vom Replace-Retry verwendet.
+   */
+  const importOne = async (
+    cand: RemoteCandidate,
+    opts: { replace_existing: boolean },
+  ): Promise<(typeof importLog)[number]> => {
+    if (!result) {
+      return { label: cand.label, ok: false, message: "Kein Repo-Kontext." };
+    }
+    try {
+      const url = buildGithubUrl({
+        owner: result.parsed.owner,
+        repo: result.parsed.repo,
+        ref: cand.ref_for_import,
+        path: result.parsed.path,
+      });
+      await importTemplateVersionFromGithub(template.id, {
+        github_url: url,
+        app_yaml_path: null,
+        is_active: false,
+        replace_existing: opts.replace_existing,
+      });
+      return { label: cand.label, ok: true };
+    } catch (err) {
+      if (err instanceof ApiError) {
+        return {
+          label: cand.label,
+          ok: false,
+          message: err.message,
+          code: err.code as VersionErrorCode | null,
+          details: err.details,
+        };
+      }
+      return {
+        label: cand.label,
+        ok: false,
+        message: err instanceof Error ? err.message : "Import fehlgeschlagen.",
+      };
+    }
+  };
+
+  const summariseToast = (log: typeof importLog) => {
     const successes = log.filter((l) => l.ok).length;
     const failures = log.length - successes;
     if (failures === 0) {
@@ -192,13 +236,45 @@ export function CheckRemoteVersionsDialog({
     } else if (successes === 0) {
       toast.error("Kein Import erfolgreich. Details unten im Dialog.");
     } else {
-      // Sonner v2 hat keine garantierte `warning`-Variante in unserer Alias-
-      // Version — wir bleiben bei `error` und beschreiben das gemischte
-      // Ergebnis im Text. Im Dialog sind die Details ohnehin sichtbar.
       toast.error(`${successes} von ${log.length} Versionen importiert.`);
     }
-    setStep("done");
-    onImported();
+  };
+
+  /**
+   * „Bestehende Version ersetzen" für einen einzelnen Kandidaten.
+   * Frage den Owner explizit, weil dabei die alte Version-Row inkl. Files
+   * gelöscht wird. Backend lehnt zusätzlich ab, wenn aktive Deployments
+   * an der alten Row hängen — wir surface die Meldung dann hier.
+   */
+  const handleReplace = async (cand: RemoteCandidate) => {
+    if (replacing.has(cand.commit_sha)) return;
+    const ok = window.confirm(
+      `Die bestehende Version ${cand.label} im Template wird inkl. ihrer `
+        + `Dateien überschrieben. Diese Aktion lässt sich nicht rückgängig `
+        + `machen. Fortfahren?`,
+    );
+    if (!ok) return;
+    setReplacing((prev) => new Set(prev).add(cand.commit_sha));
+    const next = await importOne(cand, { replace_existing: true });
+    setImportLog((prev) => {
+      const updated = prev.map((e) => (e.label === cand.label ? next : e));
+      // Erstes Replace pro Kandidat: wenn der Owner direkt nach dem Initial-
+      // Import auf Replace klickt, gibt es noch kein Log-Entry → einfügen.
+      return updated.some((e) => e.label === cand.label)
+        ? updated
+        : [...updated, next];
+    });
+    setReplacing((prev) => {
+      const updated = new Set(prev);
+      updated.delete(cand.commit_sha);
+      return updated;
+    });
+    if (next.ok) {
+      toast.success(`Version ${cand.label} ersetzt.`);
+      onImported();
+    } else {
+      toast.error(`Replace fehlgeschlagen: ${next.message ?? ""}`);
+    }
   };
 
   // ---------- Rendering pro Step -----------------------------------------
@@ -306,7 +382,7 @@ export function CheckRemoteVersionsDialog({
       <p className="text-xs text-slate-500">
         Die importierten Versionen landen zunächst inaktiv und warten je nach
         Admin-Regel auf Approval. Aktivieren kannst du sie anschließend über
-        „Aktualisieren".
+        „Aktive Version ändern".
       </p>
     </div>
   );
@@ -316,36 +392,71 @@ export function CheckRemoteVersionsDialog({
       {selectedCandidates.map((cand) => {
         const entry = importLog.find((l) => l.label === cand.label);
         const isPending = !entry;
+        const isReplacing = replacing.has(cand.commit_sha);
         return (
           <li
             key={cand.commit_sha}
-            className="flex items-start gap-3 p-2.5 rounded-lg border border-slate-200"
+            className="flex flex-col gap-2 p-2.5 rounded-lg border border-slate-200"
           >
-            <div className="mt-0.5 shrink-0">
-              {isPending && step === "importing" ? (
-                <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
-              ) : entry?.ok ? (
-                <CheckCircle2 className="w-4 h-4 text-green-600" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-red-600" />
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm text-slate-900 flex items-center gap-2">
-                {cand.kind === "tag" ? (
-                  <Tag className="w-3 h-3 text-blue-600" />
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 shrink-0">
+                {(isPending && step === "importing") || isReplacing ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                ) : entry?.ok ? (
+                  <CheckCircle2 className="w-4 h-4 text-green-600" />
                 ) : (
-                  <GitBranch className="w-3 h-3 text-slate-500" />
+                  <AlertCircle className="w-4 h-4 text-red-600" />
                 )}
-                {cand.label}
-                <span className="text-xs font-mono text-slate-500">
-                  {cand.commit_sha.slice(0, 7)}
-                </span>
-              </p>
-              {entry?.message && (
-                <p className="text-xs text-red-700 mt-1">{entry.message}</p>
-              )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-slate-900 flex items-center gap-2">
+                  {cand.kind === "tag" ? (
+                    <Tag className="w-3 h-3 text-blue-600" />
+                  ) : (
+                    <GitBranch className="w-3 h-3 text-slate-500" />
+                  )}
+                  {cand.label}
+                  <span className="text-xs font-mono text-slate-500">
+                    {cand.commit_sha.slice(0, 7)}
+                  </span>
+                </p>
+                {entry?.message && (
+                  <p className="text-xs text-red-700 mt-1">{entry.message}</p>
+                )}
+              </div>
             </div>
+            {/* Aktion-Buttons bei strukturierten Versions-Fehlern.
+                MISSING / NOT_SEMVER / NOT_STRICTLY_GREATER → „Im Repo
+                bumpen" öffnet die app.yaml im GitHub-Editor.
+                ALREADY_EXISTS → zusätzlich „Bestehende Version ersetzen"
+                (Confirm + Backend-Replace-Pfad). */}
+            {entry && !entry.ok && entry.code && (
+              <CandidateActions
+                cand={cand}
+                code={entry.code}
+                disabled={isReplacing}
+                onReplace={() => void handleReplace(cand)}
+                appYamlPath={
+                  result?.parsed.path
+                    ? endsInYaml(result.parsed.path)
+                      ? result.parsed.path
+                      : `${result.parsed.path.replace(/\/$/, "")}/app.yaml`
+                    : "app.yaml"
+                }
+                editUrl={
+                  result
+                    ? buildGithubEditUrl({
+                        owner: result.parsed.owner,
+                        repo: result.parsed.repo,
+                        ref: cand.ref_for_import,
+                        path: endsInYaml(result.parsed.path ?? "")
+                          ? (result.parsed.path as string)
+                          : `${(result.parsed.path ?? "").replace(/\/$/, "")}/app.yaml`,
+                      })
+                    : null
+                }
+              />
+            )}
           </li>
         );
       })}
@@ -462,5 +573,73 @@ export function CheckRemoteVersionsDialog({
         {renderFooter()}
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function endsInYaml(path: string): boolean {
+  return path.endsWith(".yaml") || path.endsWith(".yml");
+}
+
+/**
+ * Aktion-Buttons unterhalb eines fehlgeschlagenen Kandidaten:
+ * - „Im Repo bumpen" öffnet die app.yaml im GitHub-Web-Editor in einem
+ *   neuen Tab — der Owner kann dort `app.version` setzen und neu importieren.
+ * - „Bestehende Version ersetzen" erscheint nur bei
+ *   ``VERSION_ALREADY_EXISTS`` und triggert den Replace-Pfad mit Confirm.
+ */
+function CandidateActions({
+  cand,
+  code,
+  appYamlPath,
+  editUrl,
+  disabled,
+  onReplace,
+}: {
+  cand: RemoteCandidate;
+  code: VersionErrorCode;
+  appYamlPath: string;
+  editUrl: string | null;
+  disabled: boolean;
+  onReplace: () => void;
+}) {
+  const showReplace = code === VERSION_ERROR_CODES.ALREADY_EXISTS;
+  const showBump =
+    code === VERSION_ERROR_CODES.ALREADY_EXISTS
+    || code === VERSION_ERROR_CODES.NOT_STRICTLY_GREATER
+    || code === VERSION_ERROR_CODES.MISSING_IN_MANIFEST
+    || code === VERSION_ERROR_CODES.NOT_SEMVER;
+  if (!showBump && !showReplace) return null;
+  return (
+    <div className="flex flex-wrap gap-2 pl-7">
+      {showBump && editUrl && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => window.open(editUrl, "_blank", "noopener,noreferrer")}
+          className="h-7 text-xs"
+          title={`${appYamlPath} im GitHub-Editor öffnen`}
+        >
+          <ExternalLink className="w-3 h-3 mr-1.5" />
+          Im Repo bumpen
+        </Button>
+      )}
+      {showReplace && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onReplace}
+          disabled={disabled}
+          className="h-7 text-xs"
+          title={`Bestehende Version ${cand.label} im Template ersetzen`}
+        >
+          <Replace className="w-3 h-3 mr-1.5" />
+          Bestehende Version ersetzen
+        </Button>
+      )}
+    </div>
   );
 }

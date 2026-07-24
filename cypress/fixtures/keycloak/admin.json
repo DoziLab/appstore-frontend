@@ -1,0 +1,14 @@
+{
+  "authenticated": true,
+  "token": "fake.admin.jwt",
+  "tokenParsed": {
+    "sub": "user-adm-1",
+    "preferred_username": "adm1",
+    "email": "adm1@dhbw.de",
+    "realm_access": { "roles": ["admin"] },
+    "given_name": "Anke",
+    "family_name": "Admin"
+  },
+  "realm": "Dozilab",
+  "authServerUrl": "https://keycloak.test/"
+}

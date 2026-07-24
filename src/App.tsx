@@ -3,8 +3,11 @@ import { useKeycloak } from "@react-keycloak/web";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Courses } from "./pages/Courses";
 import { OpenStackConfig } from "./pages/OpenStackConfig";
-import { AdminMonitoring } from "./pages/AdminMonitoring";
+import { AdminProjectOverview } from "./pages/AdminProjectOverview";
+import { AdminTemplateApprovals } from "./pages/AdminTemplateApprovals";
+import { LecturerManagement } from "./pages/LecturerManagement";
 import { Sidebar } from "./layouts/Sidebar";
+import { MobileTopBar } from "./layouts/MobileTopBar";
 import { Login } from "./pages/Login";
 import { DashboardPage } from "./pages/DashboardPage";
 import { AppStorePage } from "./pages/AppStorePage";
@@ -160,8 +163,16 @@ export default function App() {
 
   return (
     <OpenstackProjectProvider project={activeProject}>
-      <div className="flex h-screen bg-slate-50">
-        <Sidebar logo={logo} />
+      {/* Layout: auf Desktop (md:+) Sidebar links + Main rechts (flex-row, wie
+          bisher). Auf Mobile (< md) MobileTopBar oben + Main darunter
+          (flex-col). Die Desktop-Sidebar wird unter md:hidden ausgeblendet,
+          MobileTopBar hat selbst md:hidden — sie tauschen sich also
+          gegenseitig aus, ohne Platz zu doppeln. */}
+      <div className="flex flex-col md:flex-row h-screen bg-slate-50">
+        <div className="hidden md:flex">
+          <Sidebar logo={logo} />
+        </div>
+        <MobileTopBar logo={logo} />
         <main className="flex-1 overflow-auto">
           {isStudent ? (
             // Studenten haben keinen Zugriff auf Lecturer-Endpoints (Backend
@@ -189,7 +200,9 @@ export default function App() {
               <Route path="/deploy/:templateId" element={<DeploymentWizardPage />} />
               <Route path="/deployment/:deploymentId" element={<DeploymentDetailsPage />} />
               <Route path="/config" element={<OpenStackConfig />} />
-              <Route path="/admin" element={<AdminMonitoring />} />
+              <Route path="/admin/projects" element={<AdminProjectOverview />} />
+              <Route path="/admin/templates" element={<AdminTemplateApprovals />} />
+              <Route path="/admin/lecturers" element={<LecturerManagement />} />
               {/* Lecturer/Admin auf /student/* → zurück aufs Dashboard. */}
               <Route path="/student/*" element={<Navigate to="/dashboard" replace />} />
             </Routes>

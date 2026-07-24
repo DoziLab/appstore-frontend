@@ -37,6 +37,10 @@ function pickIcon(status: Props["status"]) {
     case "active":
       return ShieldCheck;
     case "pending":
+    case "awaiting_publish":
+      // Erst-Veröffentlichung-Wartezustand bekommt dasselbe „offen mit
+      // Fragezeichen"-Icon wie reguläres pending — sie sind aus User-Sicht
+      // beide „wartet auf Admin".
       return ShieldQuestion;
     case "rejected":
       return X;

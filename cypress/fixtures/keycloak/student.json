@@ -1,0 +1,14 @@
+{
+  "authenticated": true,
+  "token": "fake.student.jwt",
+  "tokenParsed": {
+    "sub": "user-stu-1",
+    "preferred_username": "stu1",
+    "email": "stu1@dhbw.de",
+    "realm_access": { "roles": ["student"] },
+    "given_name": "Sabine",
+    "family_name": "Student"
+  },
+  "realm": "Dozilab",
+  "authServerUrl": "https://keycloak.test/"
+}

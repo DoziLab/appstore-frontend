@@ -215,10 +215,10 @@ export function StudentDeploymentDetails({
       {!deploymentLoading && !deploymentError && deployment && (
         <>
           <header className="space-y-1">
-            <h1 className="text-2xl font-semibold text-slate-900">
+            <h1 className="text-2xl font-semibold text-slate-900 break-words">
               {deployment.name}
             </h1>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-500 break-words">
               {deployment.template.name || "Template"}
               {deployment.template.version
                 ? ` · v${deployment.template.version}`

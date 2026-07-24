@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Server, Database, GitBranch, Container, Shield, Code, Laptop, Boxes, Search, Plus, AlertCircle, Eye, Lock, User, Users } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Server, Database, GitBranch, Container, Shield, Code, Laptop, Boxes, Search, Plus, AlertCircle, Eye, Lock, User, Users, Trash2, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from '../components/ui/alert-dialog';
 import { AddTemplateDialog } from '../components/AddTemplateDialog';
 import { TemplateOwnerDetailDialog } from '../components/TemplateOwnerDetailDialog';
 import { ApprovalBadge } from '../components/ApprovalBadge';
-import { getTemplates, type TemplateDto } from '../api/templates';
+import { getTemplates, deleteTemplate, fetchTemplateIcon, type TemplateDto } from '../api/templates';
 import { deriveTemplateOverallStatus } from '../lib/template-status';
 import { useCurrentUser } from '../auth/useCurrentUser';
 import type { LucideIcon } from 'lucide-react';
@@ -91,6 +92,10 @@ export function AppStore({ onDeploy }: AppStoreProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDto | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [ownerDetailsOpen, setOwnerDetailsOpen] = useState(false);
+  const [deletingTemplate, setDeletingTemplate] = useState(false);
+  const [confirmDeleteTemplate, setConfirmDeleteTemplate] = useState(false);
+  // Cache für geladene Template-Icons (templateId -> blob URL)
+  const [iconBlobUrls, setIconBlobUrls] = useState<Record<string, string>>({});
 
   // Filter-Flags: visibility = öffentlich/privat, ownership = eigene/fremde.
   // 'all' bedeutet jeweils „kein Filter". Wir filtern client-seitig, weil das
@@ -99,22 +104,68 @@ export function AppStore({ onDeploy }: AppStoreProps) {
   const [visibilityFilter, setVisibilityFilter] = useState<'all' | 'public' | 'private'>('all');
   const [ownershipFilter, setOwnershipFilter] = useState<'all' | 'mine' | 'others'>('all');
 
-  const { userId, isAdmin } = useCurrentUser();
+  const { username, isAdmin } = useCurrentUser();
+
+  // Backend liefert `template.owner_id` als interne `users.id` (DB-PK),
+  // unser Keycloak-Token hat aber nur `sub` (= `users.external_id`).
+  // Wir leiten die interne ID aus der Liste ab: sobald ≥1 Template
+  // existiert, dessen `owner_username` zu unserem `preferred_username`
+  // passt, kennen wir unsere `users.id` und können sauber per ID
+  // vergleichen. Direkter Vergleich per Username scheidet aus, weil
+  // `owner_username` für Service-Accounts / Pre-Migration-User `null`
+  // sein kann (siehe Kommentar in src/api/templates.ts).
+  const myInternalUserId = useMemo(() => {
+    if (!username) return null;
+    return templates.find((t) => t.owner_username === username)?.owner_id ?? null;
+  }, [templates, username]);
+
+  // Lädt Icons für alle Templates mit icon_path
+  const loadTemplateIcons = async (templates: TemplateDto[]) => {
+    // Alte Blob-URLs freigeben
+    Object.values(iconBlobUrls).forEach((url) => URL.revokeObjectURL(url));
+    setIconBlobUrls({});
+
+    const newIconUrls: Record<string, string> = {};
+    
+    await Promise.all(
+      templates.map(async (template) => {
+        if (template.icon_path) {
+          try {
+            // Cache-Buster mit Date.now() für sofortiges Neu-Laden nach Upload
+            const blob = await fetchTemplateIcon(`${template.icon_path}?v=${Date.now()}`);
+            const blobUrl = URL.createObjectURL(blob);
+            newIconUrls[template.id] = blobUrl;
+          } catch (err) {
+            console.error(`Failed to load icon for template ${template.id}:`, err);
+          }
+        }
+      })
+    );
+    
+    setIconBlobUrls(newIconUrls);
+  };
 
   // Fetch templates from backend
   const fetchTemplates = async (): Promise<TemplateDto[]> => {
     try {
       setIsLoading(true);
       setError(null);
+      // Wir geben hier bewusst keinen Status-/Visibility-Filter mit — das
+      // Backend wendet die richtige Sichtbarkeitslogik bereits an:
+      //   • Admins   → alle Templates
+      //   • Owner    → alle eigenen (auch private, auch pending/rejected)
+      //   • andere   → public + mind. eine approved Version
+      // Würden wir hier z. B. `status: 'approved'` schicken, würden frisch
+      // importierte eigene Templates (Version pending oder private = null)
+      // aus der Liste fallen, sobald das Backend den Filter respektiert.
       const response = await getTemplates({
-        // Hinweis: das Backend ignoriert `status` derzeit als Filter — es
-        // liefert für Owner immer alle eigenen Templates aus und für andere
-        // nur public + mindestens eine approved Version. Genau das wollen wir
-        // hier (Owner muss seine Pending-Templates verwalten können).
-        status: 'approved',
-        page_size: 100, // Get all templates
+        page_size: 100,
       });
       setTemplates(response.data);
+      
+      // Lade Icons für Templates die eins haben
+      await loadTemplateIcons(response.data);
+      
       return response.data;
     } catch (err) {
       console.error('Failed to fetch templates:', err);
@@ -127,20 +178,55 @@ export function AppStore({ onDeploy }: AppStoreProps) {
 
   useEffect(() => {
     fetchTemplates();
+    
+    // Cleanup: Blob-URLs freigeben
+    return () => {
+      Object.values(iconBlobUrls).forEach((url) => URL.revokeObjectURL(url));
+    };
   }, []);
+
+  const handleDeleteTemplate = async () => {
+    if (!selectedTemplate) return;
+    try {
+      setDeletingTemplate(true);
+      await deleteTemplate(selectedTemplate.id);
+      setConfirmDeleteTemplate(false);
+      setDetailsModalOpen(false);
+      setSelectedTemplate(null);
+      await fetchTemplates();
+    } catch (err) {
+      console.error('Failed to delete template:', err);
+      alert(err instanceof Error ? err.message : 'Fehler beim Löschen');
+    } finally {
+      setDeletingTemplate(false);
+    }
+  };
 
   // Filter templates by search query + flags
   const filteredTemplates = templates.filter((template) => {
     if (!template.name.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false;
     }
-    if (visibilityFilter !== 'all' && template.visibility !== visibilityFilter) {
+    if (visibilityFilter !== 'all') {
+      // „Öffentlich" filtert auch eigene Templates ein, deren Marktplatz-
+      // Veröffentlichung noch auf Erst-Genehmigung wartet (publish_requested):
+      // sie tragen aktuell visibility=private, gehören aber konzeptuell in den
+      // „Öffentlich"-Tab — sonst verschwinden sie für den Owner aus dem Blick.
+      // „Privat" zeigt nur „echt-private" (kein laufender Marktplatz-Wunsch).
+      if (visibilityFilter === 'public') {
+        const isPublicLike =
+          template.visibility === 'public' || template.publish_requested === true;
+        if (!isPublicLike) return false;
+      } else if (visibilityFilter === 'private') {
+        if (template.visibility !== 'private' || template.publish_requested === true) {
+          return false;
+        }
+      }
+    }
+    if (ownershipFilter === 'mine' && template.owner_id !== myInternalUserId) {
       return false;
     }
-    if (ownershipFilter === 'mine' && template.owner_id !== userId) {
-      return false;
-    }
-    if (ownershipFilter === 'others' && template.owner_id === userId) {
+    if (ownershipFilter === 'others' && template.owner_id === myInternalUserId) {
       return false;
     }
     return true;
@@ -149,9 +235,9 @@ export function AppStore({ onDeploy }: AppStoreProps) {
   const displayTemplates = filteredTemplates;
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 md:p-8 space-y-8">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-2">App Store</h1>
           <p className="text-slate-600">Durchsuche und deploye Application-Templates</p>
@@ -277,11 +363,26 @@ export function AppStore({ onDeploy }: AppStoreProps) {
               return (
                 <Card key={template.id} className="border-slate-200 shadow-sm hover:shadow-md transition-all hover:border-teal-200 flex flex-col h-full">
                   <CardHeader className="flex-shrink-0">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${style.color} flex items-center justify-center text-white shadow-lg`}>
-                        <Icon className="w-6 h-6" />
-                      </div>
-                      <div className="flex gap-2">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      {/* Template-Icon: hochgeladenes Bild oder Fallback auf Lucide-Icon */}
+                      {iconBlobUrls[template.id] ? (
+                        <div className="flex-shrink-0 w-12 h-12 rounded-xl border-2 border-slate-200 flex items-center justify-center bg-white shadow-sm overflow-hidden">
+                          <img
+                            src={iconBlobUrls[template.id]}
+                            alt={`${template.name} Icon`}
+                            className="max-w-full max-h-full object-contain p-1.5"
+                          />
+                        </div>
+                      ) : (
+                        <div className={`flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br ${style.color} flex items-center justify-center text-white shadow-lg`}>
+                          <Icon className="w-6 h-6" />
+                        </div>
+                      )}
+                      {/* flex-wrap: in der schmalen Karten-Spalte (3-col-Grid)
+                          passen „einsatzbereit" + „Öffentlich (offen)" oft
+                          nicht nebeneinander — ohne wrap überlaufen die
+                          shrink-0/whitespace-nowrap-Badges die Karte. */}
+                      <div className="flex flex-wrap justify-end gap-2 min-w-0">
                         <ApprovalBadge
                           status={deriveTemplateOverallStatus(template)}
                           variant="overall"
@@ -292,11 +393,27 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                             Öffentlich
                           </Badge>
                         )}
+                        {/* Erst-Veröffentlichung-Hinweis: das Template ist
+                            noch PRIVATE in der DB, aber der Owner hat es
+                            für die Marketplace beantragt. Wir zeigen es
+                            visuell wie ein angefragtes „öffentlich" —
+                            blau-amber-Mix wäre verwirrend, deshalb
+                            durchgängig amber wie der overall-badge. */}
+                        {template.visibility === 'private'
+                          && template.publish_requested === true && (
+                            <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">
+                              Öffentlich (offen)
+                            </Badge>
+                        )}
                       </div>
                     </div>
-                    <CardTitle className="text-slate-900 line-clamp-2 min-h-[3.5rem]">{template.name}</CardTitle>
+                    {/* break-words: ohne diese Regel sprengt ein langer
+                        leerzeichenfreier Name/Beschreibung (z. B. "lorem"-
+                        Wiederholung) die Karte über die Grid-Spalte hinaus —
+                        line-clamp greift nur auf umgebrochene Zeilen. */}
+                    <CardTitle className="text-slate-900 line-clamp-2 min-h-[3.5rem] break-words">{template.name}</CardTitle>
                     <CardDescription className="text-slate-600 min-h-[4.5rem]">
-                      <p className="line-clamp-3 text-sm leading-relaxed">
+                      <p className="line-clamp-3 text-sm leading-relaxed break-words">
                         {template.description || 'Keine Beschreibung verfügbar'}
                       </p>
                     </CardDescription>
@@ -328,9 +445,9 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                         variant="outline"
                         onClick={() => {
                           setSelectedTemplate(template);
-                          // Owner → eigene Detailseite mit Versionsverwaltung;
+                          // Owner oder Admin → erweiterte Detailseite mit Versionsverwaltung;
                           // alle anderen → bestehender generischer Modal.
-                          if (userId && template.owner_id === userId) {
+                          if ((myInternalUserId && template.owner_id === myInternalUserId) || isAdmin) {
                             setOwnerDetailsOpen(true);
                           } else {
                             setDetailsModalOpen(true);
@@ -401,10 +518,21 @@ export function AppStore({ onDeploy }: AppStoreProps) {
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${getTemplateStyle(selectedTemplate.name).color} flex items-center justify-center text-white`}>
-                  {React.createElement(getTemplateStyle(selectedTemplate.name).icon, { className: "w-5 h-5" })}
-                </div>
-                <span>{selectedTemplate.name}</span>
+                {/* Template-Icon: hochgeladenes Bild oder Fallback */}
+                {iconBlobUrls[selectedTemplate.id] ? (
+                  <div className="w-10 h-10 rounded-lg border-2 border-slate-200 flex items-center justify-center bg-white overflow-hidden">
+                    <img
+                      src={iconBlobUrls[selectedTemplate.id]}
+                      alt={`${selectedTemplate.name} Icon`}
+                      className="max-w-full max-h-full object-contain p-1"
+                    />
+                  </div>
+                ) : (
+                  <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${getTemplateStyle(selectedTemplate.name).color} flex items-center justify-center text-white`}>
+                    {React.createElement(getTemplateStyle(selectedTemplate.name).icon, { className: "w-5 h-5" })}
+                  </div>
+                )}
+                <span className="break-words">{selectedTemplate.name}</span>
               </DialogTitle>
               <DialogDescription>
                 Template-Details und Informationen
@@ -421,12 +549,18 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                 {selectedTemplate.visibility === 'public' && (
                   <Badge className="bg-blue-100 text-blue-700">Öffentlich</Badge>
                 )}
+                {selectedTemplate.visibility === 'private'
+                  && selectedTemplate.publish_requested === true && (
+                    <Badge className="bg-amber-100 text-amber-700">
+                      Öffentlich (offen)
+                    </Badge>
+                )}
               </div>
 
               {/* Description */}
               <div>
                 <h3 className="text-sm font-semibold text-slate-900 mb-2">Beschreibung</h3>
-                <p className="text-sm text-slate-600 leading-relaxed">
+                <p className="text-sm text-slate-600 leading-relaxed break-words">
                   {selectedTemplate.description || 'Keine Beschreibung verfügbar'}
                 </p>
               </div>
@@ -460,6 +594,24 @@ export function AppStore({ onDeploy }: AppStoreProps) {
               {/* Meta Information */}
               <div className="space-y-2">
                 <h3 className="text-sm font-semibold text-slate-900 mb-2">Informationen</h3>
+                <div className="text-sm">
+                  <span className="text-slate-600">Hochgeladen von: </span>
+                  <span className="text-slate-700">
+                    {selectedTemplate.owner_name || selectedTemplate.owner_username || selectedTemplate.owner_id}
+                  </span>
+                </div>
+                <div className="text-sm">
+                  <span className="text-slate-600">Erstellt am: </span>
+                  <span className="text-slate-700">
+                    {new Date(selectedTemplate.created_at).toLocaleString('de-DE', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                </div>
                 {selectedTemplate.repo_url && (
                   <div className="text-sm">
                     <span className="text-slate-600">Repository: </span>
@@ -473,15 +625,9 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                     </a>
                   </div>
                 )}
-                {selectedTemplate.icon_url && (
-                  <div className="text-sm">
-                    <span className="text-slate-600">Icon: </span>
-                    <span className="text-slate-700">{selectedTemplate.icon_url}</span>
-                  </div>
-                )}
               </div>
 
-              {/* Action Button */}
+              {/* Action Buttons */}
               <div className="flex gap-3 pt-4">
                 <Button
                   onClick={() => {
@@ -493,6 +639,16 @@ export function AppStore({ onDeploy }: AppStoreProps) {
                 >
                   Jetzt deployen
                 </Button>
+                {isAdmin && (
+                  <Button
+                    onClick={() => setConfirmDeleteTemplate(true)}
+                    variant="outline"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Löschen
+                  </Button>
+                )}
                 <Button
                   onClick={() => setDetailsModalOpen(false)}
                   variant="outline"
@@ -503,6 +659,44 @@ export function AppStore({ onDeploy }: AppStoreProps) {
             </div>
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {selectedTemplate && (
+        <AlertDialog open={confirmDeleteTemplate} onOpenChange={(o: boolean) => !deletingTemplate && setConfirmDeleteTemplate(o)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+                Template löschen?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Möchten Sie das Template <strong>{selectedTemplate.name}</strong> wirklich löschen?
+                Diese Aktion kann nicht rückgängig gemacht werden. Alle Versionen und zugehörigen Dateien werden ebenfalls gelöscht.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deletingTemplate}>Abbrechen</AlertDialogCancel>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteTemplate}
+                disabled={deletingTemplate}
+              >
+                {deletingTemplate ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Wird gelöscht...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Löschen
+                  </>
+                )}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   );

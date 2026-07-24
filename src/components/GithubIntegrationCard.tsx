@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Github, CheckCircle2, AlertCircle, Loader2, Trash2, ExternalLink } from 'lucide-react';
+import { Github, CheckCircle2, AlertCircle, Loader2, Trash2, ExternalLink, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -23,12 +23,17 @@ import {
 
 /**
  * Settings-Card für die GitHub-App-Integration. Zeigt den aktuellen
- * Verbindungsstatus, listet sichtbare Repos und erlaubt Verbinden/Trennen.
+ * Verbindungsstatus, listet sichtbare Repos und erlaubt Verbinden/Erneuern/Trennen.
+ *
+ * „Verbindung erneuern" stößt denselben Install-Flow an wie die Erstverbindung
+ * — GitHub zeigt dort die „Update permissions / Repository access"-Seite und
+ * der Nutzer kann sein Repo-Set anpassen, ohne erst trennen zu müssen.
  *
  * Edge-Case: `connected = true` mit `repos: []` heißt, dass die DB-Zuordnung
  * existiert, das Backend aber die Repos nicht listen konnte (Token-Mint,
  * App-Konfig, Netz). Wir behandeln den User als verbunden und zeigen einen
- * Hinweis statt eines Fehlers.
+ * Hinweis statt eines Fehlers — der Reconnect-Button hilft, das selbst zu
+ * reparieren.
  */
 export function GithubIntegrationCard() {
   const [status, setStatus] = useState<GithubInstallationStatus | null>(null);
@@ -50,6 +55,25 @@ export function GithubIntegrationCard() {
 
   useEffect(() => {
     refresh();
+  }, []);
+
+  // Wenn der Nutzer per Browser-Back oder Tab-Wechsel zurückkommt (z.B. von
+  // der GitHub-Install-Page, ohne dass /github/connected unsere Komponente
+  // neu gemountet hat — etwa weil die Navigation gecancelt wurde oder per
+  // Back-Button), kann `busy` aus dem vorigen handleConnect()-Aufruf noch
+  // auf true stehen. Das macht den Connect-Button via disabled:opacity-50
+  // auf bg-slate-900 optisch fast unsichtbar (#149). Reset, sobald die Page
+  // wieder im Vordergrund ist bzw. aus dem bfcache wieder angezeigt wird.
+  useEffect(() => {
+    const reset = () => {
+      if (document.visibilityState === 'visible') setBusy(false);
+    };
+    document.addEventListener('visibilitychange', reset);
+    window.addEventListener('pageshow', reset);
+    return () => {
+      document.removeEventListener('visibilitychange', reset);
+      window.removeEventListener('pageshow', reset);
+    };
   }, []);
 
   const handleConnect = async () => {
@@ -91,7 +115,7 @@ export function GithubIntegrationCard() {
   return (
     <Card className="border-slate-200 shadow-sm">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle id="github-heading" className="flex items-center gap-2">
           <Github className="w-5 h-5" />
           GitHub-Integration
         </CardTitle>
@@ -136,7 +160,11 @@ export function GithubIntegrationCard() {
             <Button
               onClick={handleConnect}
               disabled={busy}
-              className="bg-slate-900 hover:bg-slate-800 text-white"
+              // bg-slate-900 wird in der vor-gebackenen index.css nicht
+              // generiert — text-white würde dadurch auf weißem Card-
+              // Hintergrund unsichtbar (#149). Inline-Style ist im Repo
+              // der etablierte Workaround (siehe Trennen-Button unten).
+              style={{ backgroundColor: '#0f172a', color: '#ffffff' }}
             >
               <Github className="w-4 h-4 mr-2" />
               GitHub verbinden
@@ -144,7 +172,21 @@ export function GithubIntegrationCard() {
           )}
 
           {!loading && connected && (
-            <AlertDialog>
+            <div className="flex items-center gap-2">
+              {/* Reconnect: gleicher Install-Flow wie Erstverbindung. GitHub
+                  zeigt dort die „Update permissions / Repository access"-Seite
+                  — das löst Drift zwischen DB-Eintrag und tatsächlich
+                  freigegebenen Repos, ohne dass der Nutzer erst trennen muss. */}
+              <Button
+                variant="outline"
+                onClick={handleConnect}
+                disabled={busy}
+                title="Repository-Zugriff bei GitHub aktualisieren"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Verbindung erneuern
+              </Button>
+              <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
                   <Trash2 className="w-4 h-4 mr-2" />
@@ -173,6 +215,7 @@ export function GithubIntegrationCard() {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+            </div>
           )}
         </div>
 
@@ -215,10 +258,23 @@ export function GithubIntegrationCard() {
           // Edge-Case aus dem Backend-Vertrag: connected, aber repos nicht abrufbar.
           <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-            <span>
-              Repository-Liste aktuell nicht abrufbar. Die Verbindung selbst
-              besteht — beim nächsten Aufruf klappt's vermutlich wieder.
-            </span>
+            <div className="flex-1 flex items-start justify-between gap-3">
+              <span>
+                Repository-Liste aktuell nicht abrufbar. Die Verbindung selbst
+                besteht — über „Verbindung erneuern" kannst du den Zugriff bei
+                GitHub auffrischen.
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleConnect}
+                disabled={busy}
+                className="shrink-0 bg-white"
+              >
+                <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                Erneuern
+              </Button>
+            </div>
           </div>
         )}
       </CardContent>

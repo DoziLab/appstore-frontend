@@ -66,12 +66,25 @@ export type AccessType =
   | "guacamole"
   | "rdp"
   | "vnc"
-  | "database";
+  | "database"
+  | "activation_link";
 
 export type CredentialAccess = {
+  /**
+   * DB id of the access entry. Used to address the dedicated SSH-key
+   * download endpoint (lecturer + student) — `/credentials/access/{id}/ssh-key`.
+   */
+  id: string;
   access_type: AccessType;
   username: string | null;
   password: string | null;
+  /**
+   * Decrypted SSH private key in OpenSSH PEM format. Present for SSH
+   * accesses where a keypair was generated. Lecturer view can embed it in
+   * the bundle download; student view always uses the dedicated PEM
+   * endpoint instead.
+   */
+  ssh_private_key: string | null;
   connection_url: string | null;
   port: number | null;
   /**
@@ -132,6 +145,13 @@ export type DeploymentCreateRequest = {
     groups: Array<{
       group_name: string;
       group_index: number;
+      // course_groups.id der zugehörigen Gruppe. Optional für Backwards-
+      // Compat (alte Wizards / Lecturer-Workflows ohne Course-Groups),
+      // aber funktional notwendig: ohne diese ID bleibt
+      // DeploymentInstanceAccess.group_id NULL und Studenten sehen das
+      // Deployment nie über /api/v1/student/*. Der Wizard löst die ID
+      // beim Submit via getCourseGroups/createCourseGroup auf.
+      course_group_id?: string | null;
       students: Array<{
         id: string;
         username: string;
@@ -293,6 +313,71 @@ export async function deleteDeployment(deploymentId: string, openstackProjectId:
     err.body = text;
     throw err;
   }
+}
+
+/**
+ * Lädt den SSH Private Key eines Access-Eintrags als `.pem`-Datei. Lecturer-
+ * Variante des Endpoints — Pendant zu `downloadStudentSshKey` in
+ * `api/student.ts`. Beide haben identische Response-Form
+ * (`application/x-pem-file` + `Content-Disposition: attachment; filename=...`),
+ * unterscheiden sich nur im Pfad und darin, dass dieser hier
+ * `openstack_project_id` als Query-Param mitschickt.
+ *
+ * Wirft `Error` mit numerischem `.status`, damit der Caller 400/401/403/404
+ * unterscheiden kann — der Backend-Detail-Text in `.body` ist im 404er für
+ * UX-Toasts brauchbar (Deployment vs. Access vs. „kein Key hinterlegt").
+ */
+export async function downloadSshKey(
+  deploymentId: string,
+  accessId: string,
+  openstackProjectId: string | null,
+  fallbackUsername?: string | null,
+): Promise<void> {
+  // Token vor dem Stream erneuern — das Backend liefert sonst ggf. eine
+  // 0-Byte-Datei nach erstem Read, weil Auth erst beim Streamstart greift.
+  await keycloak.updateToken(30).catch(() => {});
+  const res = await fetch(
+    `/api/v1/deployments/${deploymentId}/credentials/access/${accessId}/ssh-key${projectQuery(openstackProjectId)}`,
+    {
+      method: "GET",
+      headers: keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {},
+    },
+  );
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    const err = new Error(text || res.statusText) as Error & {
+      status: number;
+      body: string;
+    };
+    err.status = res.status;
+    err.body = text;
+    throw err;
+  }
+
+  // Dateiname bevorzugt aus Content-Disposition ziehen
+  // (`attachment; filename="id_ed25519_<user>"`). Fallback baut den Namen aus
+  // dem Username/Access-ID — verhindert das generische "download" im Browser.
+  const disposition = res.headers.get("content-disposition") || "";
+  let filename = "";
+  const match = disposition.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)["']?/i);
+  if (match?.[1]) {
+    filename = decodeURIComponent(match[1]);
+  }
+  if (!filename) {
+    const safeUser = (fallbackUsername || "").replace(/[^a-zA-Z0-9_.-]/g, "_");
+    filename = safeUser ? `id_ed25519_${safeUser}` : `id_ed25519_${accessId}`;
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 // List deployments (stacks) from OpenStack view

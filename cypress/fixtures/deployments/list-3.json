@@ -1,0 +1,99 @@
+{
+  "success": true,
+  "message": "ok",
+  "data": [
+    {
+      "id": "dep-alpha-0001",
+      "name": "test-deploy-alpha",
+      "template_version_id": "tv-alpha-1",
+      "course_id": "course-alpha",
+      "deployment_mode": "single",
+      "status": "running",
+      "openstack_stack_id": "stack-alpha",
+      "config_json": null,
+      "deployment_parameters": null,
+      "access_types_json": "[]",
+      "expires_at": "2027-01-01T00:00:00Z",
+      "expiry_warning_at": "2026-12-15T00:00:00Z",
+      "created_at": "2026-06-20T10:00:00Z",
+      "updated_at": "2026-06-26T10:00:00Z",
+      "template_version": {
+        "id": "tv-alpha-1",
+        "version": "1.0.0",
+        "template_id": "tpl-alpha",
+        "template_name": "Alpha Template"
+      },
+      "course": {
+        "id": "course-alpha",
+        "name": "Kurs Alpha",
+        "lecturer_id": "user-lec-1"
+      },
+      "instances": []
+    },
+    {
+      "id": "dep-beta-0002",
+      "name": "test-deploy-beta",
+      "template_version_id": "tv-beta-1",
+      "course_id": "course-beta",
+      "deployment_mode": "single",
+      "status": "deploying",
+      "openstack_stack_id": null,
+      "config_json": null,
+      "deployment_parameters": null,
+      "access_types_json": "[]",
+      "expires_at": "2027-01-01T00:00:00Z",
+      "expiry_warning_at": "2026-12-15T00:00:00Z",
+      "created_at": "2026-06-25T10:00:00Z",
+      "updated_at": "2026-06-25T12:00:00Z",
+      "template_version": {
+        "id": "tv-beta-1",
+        "version": "0.9.0",
+        "template_id": "tpl-beta",
+        "template_name": "Beta Template"
+      },
+      "course": {
+        "id": "course-beta",
+        "name": "Kurs Beta",
+        "lecturer_id": "user-lec-1"
+      },
+      "instances": []
+    },
+    {
+      "id": "dep-gamma-0003",
+      "name": "test-deploy-gamma",
+      "template_version_id": "tv-gamma-1",
+      "course_id": "course-gamma",
+      "deployment_mode": "single",
+      "status": "failed",
+      "openstack_stack_id": null,
+      "config_json": null,
+      "deployment_parameters": null,
+      "access_types_json": "[]",
+      "expires_at": "2027-01-01T00:00:00Z",
+      "expiry_warning_at": "2026-12-15T00:00:00Z",
+      "created_at": "2026-06-10T10:00:00Z",
+      "updated_at": "2026-06-11T10:00:00Z",
+      "template_version": {
+        "id": "tv-gamma-1",
+        "version": "0.1.0",
+        "template_id": "tpl-gamma",
+        "template_name": "Gamma Template"
+      },
+      "course": {
+        "id": "course-gamma",
+        "name": "Kurs Gamma",
+        "lecturer_id": "user-lec-1"
+      },
+      "instances": []
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "page_size": 20,
+    "total_items": 3,
+    "total_pages": 1
+  },
+  "errors": null,
+  "timestamp": "2026-06-27T00:00:00Z",
+  "request_id": "req-list-3-deployments"
+}

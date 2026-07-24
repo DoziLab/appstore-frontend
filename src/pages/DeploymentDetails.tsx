@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import React from "react";
 import {
   CheckCircle2,
@@ -6,9 +6,6 @@ import {
   AlertCircle,
   XCircle,
   ArrowLeft,
-  Eye,
-  EyeOff,
-  Copy,
   Download,
   Loader2,
   ChevronDown,
@@ -25,8 +22,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,12 +46,15 @@ import {
   DeploymentLogDto,
   getDeploymentCredentials,
   extendDeployment,
+  downloadSshKey,
   type RuntimeMonths,
 } from "../api/deployments";
 import { type LogPhase, type PhaseStatus } from "./DeploymentDetailsPage";
 import { getExpiryState } from "../utils/deployment";
 import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
 import { useCurrentUser } from "../auth/useCurrentUser";
+import { CredentialInstanceCard } from "../components/credentials/CredentialInstanceCard";
+import keycloak from "../auth/keycloak";
 
 interface DeploymentStep {
   id: string;
@@ -92,6 +90,16 @@ interface Deployment {
    */
   ownerId?: string | null;
   course: string;
+  templateName?: string;
+  templateVersion?: string;
+  deploymentMode?: string;
+  groupCount?: number;
+  stackCount?: number;
+  studentCount?: number;
+  credentialSetCount?: number;
+  runtimeMonths?: number;
+  groupNames?: string[];
+  deploymentParameters?: any;
   startedAt: string;
   completedAt?: string;
   estimatedTimeRemaining?: string;
@@ -155,6 +163,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
   const [retryInFlight, setRetryInFlight] = useState(false);
   const [deleteInFlight, setDeleteInFlight] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
 
   // ── Status-driven delete/cancel action ────────────────────────────────────
   //
@@ -273,6 +282,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
     rdp: "RDP",
     vnc: "VNC",
     database: "Database",
+    activation_link: "Aktivierungslink",
   };
 
   const handleCopy = useCallback(async (value: string | null, label: string) => {
@@ -296,6 +306,45 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
     if (!value) return "-";
     return "*".repeat(Math.max(8, value.length));
   };
+
+  // Username des eingeloggten Lecturers — Heuristik für „dies ist der
+  // Admin-Eintrag" laut Backend-Briefing. Wenn der `username` eines Access-
+  // Eintrags dem entspricht, badged die CredentialInstanceCard die Zeile als
+  // Admin-Zugang. Backend liefert (noch) kein explizites `is_admin`-Flag.
+  const currentUsername = useMemo<string | null>(() => {
+    const t = (keycloak?.tokenParsed ?? {}) as Record<string, any>;
+    const u = (t.preferred_username || "").toString().trim();
+    return u || null;
+  }, []);
+
+  const handleDownloadSshKey = useCallback(
+    async (accessId: string, username: string | null) => {
+      try {
+        await downloadSshKey(deployment.id, accessId, activeProjectId, username);
+        toast.success("SSH-Key heruntergeladen.");
+      } catch (err) {
+        const status = (err as { status?: number }).status;
+        if (status === 400) {
+          toast.error("openstack_project_id fehlt — bitte Projekt wählen.");
+        } else if (status === 401) {
+          toast.error("Session abgelaufen — bitte erneut anmelden.");
+        } else if (status === 403) {
+          toast.error("Keine Berechtigung für diesen SSH-Key.");
+        } else if (status === 404) {
+          // Backend unterscheidet im 404er-Body zwischen „Deployment nicht
+          // gefunden", „Access-Eintrag nicht gefunden" und „kein SSH-Key
+          // hinterlegt". Wir können das hier nicht sauber auseinanderhalten,
+          // also bleibt es bei einer allgemeinen Meldung. Der mit Abstand
+          // häufigste Fall (alte Deployments) ist „kein Key" — die Card
+          // sollte den Button gar nicht erst anzeigen, aber falls doch:
+          toast.error("Für diesen Zugang ist kein SSH-Key hinterlegt.");
+        } else {
+          toast.error("SSH-Key-Download fehlgeschlagen.");
+        }
+      }
+    },
+    [deployment.id, activeProjectId],
+  );
 
   const loadCredentials = useCallback(async () => {
     if (credentialsLoading) return;
@@ -336,14 +385,22 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
         const accessBlocks = instance.accesses
           .map((access) => {
             const title = accessTypeLabels[access.access_type] || access.access_type;
-            return [
+            const lines: string[] = [
               title,
               `Username: ${access.username ?? "-"}`,
               `Password: ${access.password ?? "-"}`,
               `Connection URL: ${access.connection_url ?? "-"}`,
               `Port: ${access.port ?? "-"}`,
-              "",
-            ].join("\n");
+            ];
+            // PEM nur einfügen, wenn vorhanden — sonst landen massenhaft
+            // „SSH Private Key: -"-Zeilen im Bundle und vermitteln, dass
+            // jeder Eintrag einen Key hätte, was vor dem Feature-Rollout
+            // nicht stimmt.
+            if (access.ssh_private_key) {
+              lines.push("SSH Private Key:", access.ssh_private_key);
+            }
+            lines.push("");
+            return lines.join("\n");
           })
           .join("\n");
         return `${header}${accessBlocks}`.trimEnd();
@@ -507,8 +564,21 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
 
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-slate-900 mb-2">{deployment.name}</h1>
-            <p className="text-slate-600">{deployment.course}</p>
+            <h1 className="text-slate-900 mb-2 break-words">{deployment.name}</h1>
+            <p className="text-slate-600 break-words">{deployment.course}</p>
+            {deployment.templateName && (
+              <p className="text-sm text-slate-500 mt-1">
+                Template: {deployment.templateName}{deployment.templateVersion ? ` (${deployment.templateVersion})` : ''}
+              </p>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4 text-xs"
+              onClick={() => setDetailsDialogOpen(true)}
+            >
+              Details anzeigen
+            </Button>
           </div>
           <div className="flex flex-col items-end gap-3">
             {getStatusBadge()}
@@ -517,21 +587,18 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
               Gestartet: {new Date(deployment.startedAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
             </p>
             {deployment.expires_at && (
-              <div className="flex items-center gap-3">
+              <div className="flex flex-col items-end gap-2">
+                <p className="text-sm text-slate-500">
+                  Ablaufdatum: {new Date(deployment.expires_at).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                </p>
                 <Button
-                  variant="outline"
                   size="sm"
-                  className="text-xs"
+                  className="w-full bg-teal-500 hover:bg-teal-600 text-white"
                   disabled={extendInFlight}
                   onClick={() => setExtendDialogOpen(true)}
                 >
                   Verlängern
                 </Button>
-                <div className="flex items-center gap-1.5">
-                  <p className="text-sm text-slate-500">
-                    Ablaufdatum: {new Date(deployment.expires_at).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}
-                  </p>
-                </div>
               </div>
             )}
 
@@ -581,6 +648,55 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
                 </AlertDialogContent>
               </AlertDialog>
             )}
+
+            {/* Details dialog */}
+            <AlertDialog open={detailsDialogOpen} onOpenChange={setDetailsDialogOpen}>
+              <AlertDialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+                <AlertDialogHeader className="flex-shrink-0">
+                  <AlertDialogTitle>Deployment-Details</AlertDialogTitle>
+                </AlertDialogHeader>
+                <div className="space-y-6 py-4 overflow-y-auto flex-1">
+                  {/* Stack-Zuweisungen */}
+                  {deployment.groupNames && deployment.groupNames.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold text-slate-900 mb-3">Stack-Zuweisungen</h3>
+                      <div className="space-y-3">
+                        {deployment.stackCount && Array.from({ length: deployment.stackCount }).map((_, idx) => (
+                          <div key={idx} className="bg-slate-50 p-3 rounded-md">
+                            <p className="font-medium text-slate-900 mb-1">Stack {idx + 1}</p>
+                            <p className="text-sm text-slate-600">
+                              {deployment.groupNames && deployment.groupNames.length > 0 ? 
+                                `${Math.ceil(deployment.groupNames.length / (deployment.stackCount || 1))} Gruppe(n)` : 
+                                'Keine Zuweisungen'}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Konfiguration */}
+                  {deployment.deploymentParameters && (
+                    <div>
+                      <h3 className="font-semibold text-slate-900 mb-3">Konfiguration</h3>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        {Object.entries(deployment.deploymentParameters.parameters || {}).map(([key, value]) => (
+                          <div key={key}>
+                            <span className="text-slate-500">{key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</span>
+                            <p className="text-slate-900 font-medium">
+                              {typeof value === 'boolean' ? (value ? 'Ja' : 'Nein') : String(value)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <AlertDialogFooter className="flex-shrink-0">
+                  <AlertDialogCancel>Schließen</AlertDialogCancel>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       </div>
@@ -863,11 +979,11 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
               <CardTitle>Aktionen</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {deployment.status === 'running' && (
+              {/*deployment.status === 'running' && (
                 <Button variant="outline" className="w-full opacity-50 cursor-not-allowed" disabled>
                   VM starten
                 </Button>
-              )}
+              )*/}
 
               {/* Retry-from-failed (separate flow from the delete/cleanup action) */}
               {deployment.status === 'failed' && (
@@ -1029,10 +1145,13 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
                     <CredentialInstanceCard
                       key={instance.instance_id}
                       instance={instance}
+                      mode="lecturer"
                       passwordVisibility={passwordVisibility}
                       togglePasswordVisibility={togglePasswordVisibility}
                       handleCopy={handleCopy}
                       getMaskedPassword={getMaskedPassword}
+                      onDownloadSshKey={handleDownloadSshKey}
+                      currentUsername={currentUsername}
                     />
                   ))}
                 </div>
@@ -1045,268 +1164,10 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
 }
 
 // ── Credentials helpers ───────────────────────────────────────────────────────
+// CredentialInstanceCard + AccessRow leben jetzt in
+// components/credentials/CredentialInstanceCard.tsx — geteilt mit dem
+// Student-View (mode="student"). Hier nur noch der mode="lecturer"-Caller.
 
-type AccessLike = {
-  access_type: string;
-  username: string | null;
-  password: string | null;
-  connection_url: string | null;
-  port: number | null;
-  /**
-   * course_groups.id this credential belongs to. NULL = lecturer/admin row
-   * (shown in Dozent tab). Non-NULL = student group row (Gruppen tab,
-   * accordion section per group_name).
-   */
-  group_id: string | null;
-  /** Human-readable group name from the JOIN on course_groups.name. */
-  group_name: string | null;
-};
-
-type CredentialInstanceLike = {
-  instance_id: string;
-  vm_name: string | null;
-  openstack_stack_id: string | null;
-  accesses: AccessLike[];
-};
-
-function CredentialInstanceCard({
-  instance,
-  passwordVisibility,
-  togglePasswordVisibility,
-  handleCopy,
-  getMaskedPassword,
-}: {
-  instance: CredentialInstanceLike;
-  passwordVisibility: Record<string, boolean>;
-  togglePasswordVisibility: (key: string) => void;
-  handleCopy: (value: string | null | undefined, label: string) => void;
-  getMaskedPassword: (pw: string | null | undefined) => string;
-}) {
-  // Split accesses by ownership: group_id IS NULL → lecturer/admin row →
-  // "Dozent" tab; group_id is a course_groups.id → student row → "Gruppen"
-  // tab, one accordion section per group_name.
-  const teacherAccesses = instance.accesses.filter((a) => a.group_id == null);
-  const groupAccesses = instance.accesses.filter((a) => a.group_id != null);
-
-  // Group the group-accesses by their group identity so each group becomes
-  // one collapsible accordion row. Prefer group_name for display; fall back
-  // to the bare group_id if the JOIN didn't yield a name (shouldn't happen
-  // in practice but keeps the UI safe).
-  const groupsByLabel = new Map<string, AccessLike[]>();
-  for (const a of groupAccesses) {
-    const key = a.group_name || a.group_id || "Gruppe";
-    const list = groupsByLabel.get(key) ?? [];
-    list.push(a);
-    groupsByLabel.set(key, list);
-  }
-
-  // Default tab: prefer "dozent" if there are teacher entries, else "gruppen".
-  // If neither exists the card has no tabs (and no instance content to show).
-  const defaultTab = teacherAccesses.length > 0 ? "dozent" : "gruppen";
-
-  return (
-    <Card className="border-slate-200">
-      <CardHeader>
-        <CardTitle className="text-base">{instance.vm_name || "VM"}</CardTitle>
-        <CardDescription>Stack ID: {instance.openstack_stack_id || "-"}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Tabs defaultValue={defaultTab} className="w-full">
-          <TabsList className="mb-4">
-            {teacherAccesses.length > 0 && (
-              <TabsTrigger value="dozent">
-                Dozent
-                <Badge variant="secondary" className="ml-2">{teacherAccesses.length}</Badge>
-              </TabsTrigger>
-            )}
-            {groupsByLabel.size > 0 && (
-              <TabsTrigger value="gruppen">
-                Gruppen
-                <Badge variant="secondary" className="ml-2">{groupsByLabel.size}</Badge>
-              </TabsTrigger>
-            )}
-          </TabsList>
-
-          {teacherAccesses.length > 0 && (
-            <TabsContent value="dozent" className="space-y-3">
-              {teacherAccesses.map((access, idx) => (
-                <AccessRow
-                  key={`teacher-${idx}`}
-                  accessKey={`${instance.instance_id}-teacher-${access.access_type}-${idx}`}
-                  access={access}
-                  passwordVisibility={passwordVisibility}
-                  togglePasswordVisibility={togglePasswordVisibility}
-                  handleCopy={handleCopy}
-                  getMaskedPassword={getMaskedPassword}
-                />
-              ))}
-            </TabsContent>
-          )}
-
-          {groupsByLabel.size > 0 && (
-            <TabsContent value="gruppen">
-              <Accordion
-                type="multiple"
-                defaultValue={Array.from(groupsByLabel.keys()).slice(0, 1)}
-                className="space-y-2"
-              >
-                {Array.from(groupsByLabel.entries()).map(([label, accesses]) => (
-                  <AccordionItem
-                    key={label}
-                    value={label}
-                    className="border border-slate-200 rounded-lg px-3"
-                  >
-                    <AccordionTrigger className="hover:no-underline">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-slate-900">{label}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {accesses.length} {accesses.length === 1 ? "Zugang" : "Zugänge"}
-                        </Badge>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="space-y-3 pt-2">
-                      {accesses.map((access, idx) => (
-                        <AccessRow
-                          key={`${label}-${idx}`}
-                          accessKey={`${instance.instance_id}-${label}-${access.access_type}-${idx}`}
-                          access={access}
-                          passwordVisibility={passwordVisibility}
-                          togglePasswordVisibility={togglePasswordVisibility}
-                          handleCopy={handleCopy}
-                          getMaskedPassword={getMaskedPassword}
-                        />
-                      ))}
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            </TabsContent>
-          )}
-        </Tabs>
-      </CardContent>
-    </Card>
-  );
-}
-
-function AccessRow({
-  accessKey,
-  access,
-  passwordVisibility,
-  togglePasswordVisibility,
-  handleCopy,
-  getMaskedPassword,
-}: {
-  accessKey: string;
-  access: AccessLike;
-  passwordVisibility: Record<string, boolean>;
-  togglePasswordVisibility: (key: string) => void;
-  handleCopy: (value: string | null | undefined, label: string) => void;
-  getMaskedPassword: (pw: string | null | undefined) => string;
-}) {
-  const accessTypeLabels: Record<string, string> = {
-    ssh: "SSH",
-    web_url: "Web URL",
-    guacamole: "Guacamole",
-    rdp: "RDP",
-    vnc: "VNC",
-    database: "Database",
-  };
-
-  const urlLabel =
-    access.access_type === "ssh" ? "SSH-Befehl" : access.access_type === "web_url" ? "URL" : "Connection URL";
-
-  const isVisible = passwordVisibility[accessKey] === true;
-
-  return (
-    <div className="rounded-lg border border-slate-200 p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h4 className="text-sm font-medium text-slate-900">
-          {accessTypeLabels[access.access_type] || access.access_type}
-        </h4>
-        <Badge variant="outline">{access.access_type}</Badge>
-      </div>
-
-      <div className="grid gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-slate-500">Username</span>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-900">{access.username ?? "-"}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleCopy(access.username, "Username")}
-              disabled={!access.username}
-            >
-              <Copy className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-slate-500">Password</span>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-900">
-              {isVisible ? access.password ?? "-" : getMaskedPassword(access.password)}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => togglePasswordVisibility(accessKey)}
-              disabled={!access.password}
-            >
-              {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleCopy(access.password, "Password")}
-              disabled={!access.password}
-            >
-              <Copy className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-slate-500">{urlLabel}</span>
-          <div className="flex items-center gap-2">
-            {access.connection_url ? (
-              access.access_type === "web_url" ? (
-                <a
-                  href={access.connection_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-blue-600 hover:underline break-all"
-                >
-                  {access.connection_url}
-                </a>
-              ) : (
-                <code className="text-sm bg-slate-100 px-2 py-0.5 rounded break-all font-mono">
-                  {access.connection_url}
-                </code>
-              )
-            ) : (
-              <span className="text-sm text-slate-400">-</span>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleCopy(access.connection_url, urlLabel)}
-              disabled={!access.connection_url}
-            >
-              <Copy className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-slate-500">Port</span>
-          <span className="text-sm text-slate-900">{access.port ?? "-"}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ── Phase helpers ─────────────────────────────────────────────────────────────
 

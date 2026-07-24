@@ -1,4 +1,4 @@
-import { Settings, RefreshCw, CheckCircle2, AlertCircle, Server, Eye, EyeOff, Trash2 } from 'lucide-react';
+import { Settings, RefreshCw, CheckCircle2, AlertCircle, Server, Eye, EyeOff, Trash2, Github, Plug } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -7,8 +7,10 @@ import { Badge } from '../components/ui/badge';
 import { Switch } from '../components/ui/switch';
 import { Textarea } from '../components/ui/textarea';
 import { Progress } from '../components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../components/ui/alert-dialog';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner@2.0.3';
 import {
   listOpenstackProjects,
   getOpenstackProject,
@@ -36,6 +38,17 @@ const formatMBasGB = (v?: number) => {
   return `${Math.round(v / 1024)} GB`;
 };
 
+// Settings-Navigation: ein Eintrag pro Tab, gerendert sowohl als
+// <TabsTrigger> als auch (über value) als <TabsContent>. Reihenfolge hier
+// = Reihenfolge im UI.
+type TabKey = 'connection' | 'github' | 'authentication' | 'quotas';
+const TAB_ITEMS: ReadonlyArray<{ key: TabKey; label: string; icon: typeof Plug }> = [
+  { key: 'connection', label: 'Verbindung', icon: Plug },
+  { key: 'github', label: 'GitHub', icon: Github },
+  { key: 'authentication', label: 'Authentifizierung', icon: Settings },
+  { key: 'quotas', label: 'Quotas', icon: Server },
+];
+
 export function OpenStackConfig() {
   const [showPassword, setShowPassword] = useState(false);
   const [yamlInput, setYamlInput] = useState("");
@@ -48,7 +61,6 @@ export function OpenStackConfig() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [formFeedback, setFormFeedback] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
   const [yamlFeedback, setYamlFeedback] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
-  const [deleteFeedback, setDeleteFeedback] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [form, setForm] = useState<OpenstackCredentialsCreate>({
@@ -104,12 +116,10 @@ export function OpenStackConfig() {
     if (!data.password.trim() && existingProject) {
       setFormFeedback({ type: 'error', message: 'Bitte geben Sie das Passwort ein, um die Zugangsdaten zu aktualisieren.' });
       setYamlFeedback(null);
-      setDeleteFeedback(null);
       return;
     }
     setFormFeedback(null);
     setYamlFeedback(null);
-    setDeleteFeedback(null);
     setSaveLoading(true);
     try {
       if (existingProject) {
@@ -119,7 +129,6 @@ export function OpenStackConfig() {
       }
       setFormFeedback({ type: 'success', message: 'Zugangsdaten erfolgreich gespeichert.' });
       setYamlFeedback(null);
-      setDeleteFeedback(null);
       setForm((prev) => ({ ...prev, password: '' }));
       // Refresh project list to get updated data
       const projects = await listOpenstackProjects();
@@ -196,14 +205,12 @@ export function OpenStackConfig() {
     if (syntaxErr) {
       setYamlFeedback({ type: 'error', message: syntaxErr });
       setFormFeedback(null);
-      setDeleteFeedback(null);
       return;
     }
     const result = parseCloudsYaml(yamlInput);
     if (typeof result === 'string') {
       setYamlFeedback({ type: 'error', message: result });
       setFormFeedback(null);
-      setDeleteFeedback(null);
       return;
     }
     const merged: OpenstackCredentialsCreate = {
@@ -222,12 +229,10 @@ export function OpenStackConfig() {
     if (!data.password.trim() && existingProject) {
       setYamlFeedback({ type: 'error', message: 'Bitte geben Sie das Passwort ein, um die Zugangsdaten zu aktualisieren.' });
       setFormFeedback(null);
-      setDeleteFeedback(null);
       return;
     }
     setYamlFeedback(null);
     setFormFeedback(null);
-    setDeleteFeedback(null);
     setYamlLoading(true);
     try {
       if (existingProject) {
@@ -237,7 +242,6 @@ export function OpenStackConfig() {
       }
       setYamlFeedback({ type: 'success', message: 'Zugangsdaten erfolgreich gespeichert.' });
       setFormFeedback(null);
-      setDeleteFeedback(null);
       setForm((prev) => ({ ...prev, password: '' }));
       const projects = await listOpenstackProjects();
       if (projects.length > 0) setExistingProject(projects[0]);
@@ -257,81 +261,46 @@ export function OpenStackConfig() {
       await deleteOpenstackProject(existingProject.id);
       setExistingProject(null);
       setForm({ auth_url: '', username: '', password: '', user_domain_name: 'Default', region_name: '', openstack_project_id: '', openstack_project_name: '' });
-      setDeleteFeedback({ type: 'success', message: 'Projekt erfolgreich entfernt.' });
+      toast.success('Projekt erfolgreich entfernt.');
       setFormFeedback(null);
       setYamlFeedback(null);
     } catch (err) {
-      setDeleteFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Fehler beim Löschen des Projekts' });
-      setFormFeedback(null);
-      setYamlFeedback(null);
+      toast.error(err instanceof Error ? err.message : 'Fehler beim Löschen des Projekts');
     } finally {
       setDeleteLoading(false);
     }
   };
 
-  // Refs for internal sections
-  const connectionRef = useRef<HTMLElement | null>(null);
-  const authRef = useRef<HTMLElement | null>(null);
-  const quotasRef = useRef<HTMLElement | null>(null);
-  const [hoveredSection, setHoveredSection] = useState<'connection' | 'authentication' | 'quotas' | null>(null);
-  const activeSection = hoveredSection; // only hover determines active section
-
-  const scrollToRef = useCallback((ref: typeof connectionRef) => {
-    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
-
-  // Hover-only behaviour: no scroll-based observer
+  // Tab-State für die neue, schlanke Settings-Navigation. Datengetrieben
+  // (TAB_ITEMS unten) statt 4x Copy-Paste-Buttons, mit shadcn-<Tabs/>-Primitive
+  // wie an anderen Stellen im Projekt (siehe AddTemplateDialog).
+  const [activeTab, setActiveTab] = useState<TabKey>('connection');
 
   return (
-    <div className="p-8 h-screen box-border flex flex-col">
-      <div className="mb-6 flex-none">
+    <div className="p-4 md:p-8">
+      <div className="mb-6">
         <h1 className="text-slate-900 mb-2">Einstellungen</h1>
         <p className="text-slate-600">Verwalten Sie Ihre OpenStack-Konfiguration und Systemeinstellungen</p>
       </div>
 
-      <div className="flex gap-8 flex-1 overflow-hidden">
-        {/* Left: internal nav (approx 20% width, visible from md up) */}
-        <aside className="md:block flex-shrink-0 w-1/7 min-w-[100px] max-w-[280px]">
-          <nav className="space-y-2">
-            <button
-              onClick={() => scrollToRef(connectionRef)}
-              className={`w-full text-left px-3 py-2 rounded-md transition ${activeSection === 'connection' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
-              title="Verbindungsstatus"
-            >
-              Verbindungsstatus
-            </button>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="w-full">
+        {/* TabsList: darf umbrechen wenn der Viewport zu schmal ist. Der
+            Basis-Style aus components/ui/tabs.tsx setzt h-9 + w-fit + no-wrap;
+            wir kippen das nur unter `md:` (< 768px). Ab `md:` verhält sich der
+            Header identisch zu vorher (h-9, w-fit, eine Zeile). */}
+        <TabsList className="mb-6 flex-wrap h-auto w-full md:w-fit md:h-9 gap-1 md:gap-0">
+          {TAB_ITEMS.map(({ key, label, icon: Icon }) => (
+            <TabsTrigger key={key} value={key} className="gap-2">
+              <Icon className="w-4 h-4" />
+              {label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-            <button
-              onClick={() => scrollToRef(authRef)}
-              className={`w-full text-left px-3 py-2 rounded-md transition ${activeSection === 'authentication' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
-              title="Authentifizierung"
-            >
-              Authentifizierung
-            </button>
-
-            <button
-              onClick={() => scrollToRef(quotasRef)}
-              className={`w-full text-left px-3 py-2 rounded-md transition ${activeSection === 'quotas' ? 'bg-teal-50 text-teal-600' : 'text-slate-600 hover:bg-slate-50'}`}
-              title="Quotas"
-            >
-              Quotas
-            </button>
-          </nav>
-        </aside>
-
-        {/* Right: content */}
-        <main className="flex-1 overflow-auto pr-4 space-y-6">
-          {/* Connection Status Card */}
-          <section
-            ref={connectionRef}
-            data-section="connection"
-            className="min-h-[120px]"
-            aria-labelledby="connection-heading"
-            onMouseEnter={() => setHoveredSection('connection')}
-            onMouseLeave={() => setHoveredSection(null)}
-          >
-            <Card className="border-slate-200 shadow-sm">
-              <CardContent className="p-6">
+        {/* Tab: Verbindung */}
+        <TabsContent value="connection">
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
@@ -370,25 +339,18 @@ export function OpenStackConfig() {
               </div>
             </CardContent>
           </Card>
-          </section>
+        </TabsContent>
 
-          {/* GitHub-Integration — eigenständige Karte zwischen Connection
-              und Authentifizierung. Bewusst keine eigene Scrollspy-Section,
-              weil sie nicht in der Sidebar-Navigation auftaucht und der
-              Inhalt klein ist. */}
+        {/* Tab: GitHub */}
+        <TabsContent value="github">
           <GithubIntegrationCard />
+        </TabsContent>
 
-          <section
-            ref={authRef}
-            data-section="authentication"
-            className="min-h-[320px]"
-            onMouseEnter={() => setHoveredSection('authentication')}
-            onMouseLeave={() => setHoveredSection(null)}
-          >
-            {/* Authentication Settings */}
+        {/* Tab: Authentifizierung */}
+        <TabsContent value="authentication">
             <Card className="border-slate-200 shadow-sm">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2" id="authentication-heading">
+                <CardTitle className="flex items-center gap-2">
                   <Settings className="w-5 h-5" />
                   Authentifizierung
                 </CardTitle>
@@ -491,18 +453,21 @@ export function OpenStackConfig() {
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
-                      <Button
-                        type="submit"
-                        className="w-full bg-teal-500 hover:bg-teal-600 text-white mt-4"
-                        disabled={saveLoading || credentialsLoading}
-                      >
-                        {saveLoading ? 'Wird gespeichert...' : 'Zugangsdaten speichern'}
-                      </Button>
-                      {formFeedback && (
-                        <div className={`mt-2 p-3 rounded-lg ${formFeedback.type === 'error' ? 'bg-red-50 border border-red-200 text-sm text-red-700' : 'bg-green-50 border border-green-200 text-sm text-green-700'}`}>
-                          {formFeedback.message}
-                        </div>
-                      )}
+                  </div>
+
+                  <div>
+                    <Button
+                      type="submit"
+                      className="w-full bg-teal-500 hover:bg-teal-600 text-white"
+                      disabled={saveLoading || credentialsLoading}
+                    >
+                      {saveLoading ? 'Wird gespeichert...' : 'Zugangsdaten speichern'}
+                    </Button>
+                    {formFeedback && (
+                      <div className={`mt-2 p-3 rounded-lg ${formFeedback.type === 'error' ? 'bg-red-50 border border-red-200 text-sm text-red-700' : 'bg-green-50 border border-green-200 text-sm text-green-700'}`}>
+                        {formFeedback.message}
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -562,11 +527,6 @@ export function OpenStackConfig() {
                           >
                             {deleteLoading ? 'Wird gelöscht...' : 'Entfernen'}
                           </Button>
-                          {deleteFeedback && (
-                            <div className={`w-full mt-3 p-3 rounded-lg ${deleteFeedback.type === 'error' ? 'bg-red-50 border border-red-200 text-sm text-red-700' : 'bg-green-50 border border-green-200 text-sm text-green-700'}`}>
-                              {deleteFeedback.message}
-                            </div>
-                          )}
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
@@ -574,18 +534,13 @@ export function OpenStackConfig() {
                 </form>
               </CardContent>
             </Card>
-          </section>
+        </TabsContent>
 
-          <section
-            ref={quotasRef}
-            data-section="quotas"
-            className="min-h-[240px]"
-            onMouseEnter={() => setHoveredSection('quotas')}
-            onMouseLeave={() => setHoveredSection(null)}
-          >
+        {/* Tab: Quotas */}
+        <TabsContent value="quotas">
             <Card className="border-slate-200 shadow-sm">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2" id="quotas-heading">
+                <CardTitle className="flex items-center gap-2">
                   <Server className="w-5 h-5" />
                   Ressourcen-Quotas
                 </CardTitle>
@@ -652,10 +607,8 @@ export function OpenStackConfig() {
                   })()}
                 </CardContent>
               </Card>
-            </section>
-
-        </main>
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

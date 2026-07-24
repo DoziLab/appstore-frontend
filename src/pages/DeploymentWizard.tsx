@@ -116,10 +116,10 @@ export function DeploymentWizard({
   const [groupStackAssignments, setGroupStackAssignments] = useState<
     GroupStackAssignment[]
   >(() => initialState?.groupStackAssignments ?? []);
-  const [numberOfStacks, setNumberOfStacks] = useState<number>(
+  const [numberOfStacks, setNumberOfStacks] = useState<string | number>(
     () => initialState?.groupStackAssignments?.length || 1,
   );
-  const [numberOfGroups, setNumberOfGroups] = useState<number>(
+  const [numberOfGroups, setNumberOfGroups] = useState<string | number>(
     () => initialState?.studentGroups?.length || 1,
   );
   const [templateVersions, setTemplateVersions] = useState<
@@ -318,7 +318,8 @@ export function DeploymentWizard({
     } else if (deploymentMode === "per_group" && keycloakMembers.length > 0) {
       // Manual mode - initialize empty groups if needed
       if (studentGroups.length === 0) {
-        const groups = Array.from({ length: numberOfGroups }).map((_, i) => ({
+        const groupCount = typeof numberOfGroups === "number" ? numberOfGroups : parseInt(numberOfGroups) || 1;
+        const groups = Array.from({ length: groupCount }).map((_, i) => ({
           groupId: `group-${i + 1}`,
           groupName: `Gruppe ${i + 1}`,
           students: [],
@@ -326,8 +327,9 @@ export function DeploymentWizard({
         setStudentGroups(groups);
       }
       // Initialize stacks if needed
-      if (groupStackAssignments.length === 0 && numberOfStacks > 0) {
-        const stacks = Array.from({ length: numberOfStacks }).map((_, i) => ({
+      const stackCount = typeof numberOfStacks === "number" ? numberOfStacks : parseInt(numberOfStacks) || 1;
+      if (groupStackAssignments.length === 0 && stackCount > 0) {
+        const stacks = Array.from({ length: stackCount }).map((_, i) => ({
           stackId: `stack-${i + 1}`,
           stackName: `Stack ${i + 1}`,
           assignedGroups: [],
@@ -336,7 +338,7 @@ export function DeploymentWizard({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deploymentMode, keycloakMembers, numberOfStacks, numberOfGroups]);
+  }, [deploymentMode, keycloakMembers]);
 
  // Helper function to validate and apply group count
   const validateAndApplyGroupCount = useCallback(() => {
@@ -434,6 +436,22 @@ export function DeploymentWizard({
     return { valid: true };
   };
 
+  // Helper function to check if a field has an error
+  const hasFieldError = useCallback((fieldName: 'version' | 'deploymentName' | 'group'): boolean => {
+    if (validationErrors.length === 0) return false;
+    
+    switch (fieldName) {
+      case 'version':
+        return !selectedVersionId;
+      case 'deploymentName':
+        return !validateDeploymentNamePattern(deploymentName).valid;
+      case 'group':
+        return !selectedKeycloakGroupId;
+      default:
+        return false;
+    }
+  }, [validationErrors, selectedVersionId, deploymentName, selectedKeycloakGroupId]);
+
   // Validation function for step 0
   const validateStep0 = useCallback((): boolean => {
     const errors: string[] = [];
@@ -452,25 +470,15 @@ export function DeploymentWizard({
       errors.push("Ein Kurs muss ausgewählt werden");
     }
 
-    // Check if we need to validate groups (only in per_group mode)
-    if (deploymentMode === "per_group" && selectedKeycloakGroupId && keycloakMembers.length > 0) {
-      // Check if there are any empty groups
-      const emptyGroups = studentGroups.filter((g) => g.students.length === 0);
-      if (emptyGroups.length > 0) {
-        errors.push("Es darf keine leeren Gruppen geben");
-      }
-
-      // Check if all students are assigned
-      const assignedStudentIds = new Set(studentGroups.flatMap((g) => g.students.map((s) => s.id)));
-      const unassignedStudents = keycloakMembers.filter((s) => !assignedStudentIds.has(s.id));
-      if (unassignedStudents.length > 0) {
-        errors.push(`${unassignedStudents.length} Student(en) müssen einer Gruppe zugeordnet werden`);
-      }
-    }
+    // Leere Gruppen sind erlaubt (z. B. Dozent legt Platzhalter an, oder eine
+    // Gruppe bekommt erst später Studenten). Ebenso müssen nicht zwingend alle
+    // Keycloak-Mitglieder einer Wizard-Gruppe zugeordnet sein — ein Student
+    // ohne Gruppe sieht im Student-Dashboard schlicht kein Deployment.
+    // → Keine per-Gruppe-Validierung hier.
 
     setValidationErrors(errors);
     return errors.length === 0;
-  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups]);
+  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId]);
 
   // Pure check for whether step 0 is sufficiently filled to allow navigation
   const isStep0ValidPure = useCallback((): boolean => {
@@ -482,18 +490,11 @@ export function DeploymentWizard({
     // validate name pattern
     if (!validateDeploymentNamePattern(deploymentName).valid) return false;
 
-    // additional checks for per_group mode
-    if (deploymentMode === "per_group" && selectedKeycloakGroupId && keycloakMembers.length > 0) {
-      const emptyGroups = studentGroups.filter((g) => g.students.length === 0);
-      if (emptyGroups.length > 0) return false;
-
-      const assignedStudentIds = new Set(studentGroups.flatMap((g) => g.students.map((s) => s.id)));
-      const unassignedStudents = keycloakMembers.filter((s) => !assignedStudentIds.has(s.id));
-      if (unassignedStudents.length > 0) return false;
-    }
+    // Pendant zur Validierung oben: leere Gruppen und nicht-zugeordnete
+    // Studenten sind kein Blocker mehr.
 
     return true;
-  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId, deploymentMode, keycloakMembers, studentGroups]);
+  }, [deploymentName, selectedVersionId, selectedKeycloakGroupId]);
 
   // Update validation errors whenever relevant data changes (on current step)
   useEffect(() => {
@@ -545,29 +546,39 @@ export function DeploymentWizard({
       studentGroups.length > 0 &&
       groupStackAssignments.length > 0
     ) {
-      // Filter groups that have students
-      const groupsWithStudents = studentGroups.filter(
-        (g) => g.students.length > 0,
-      );
-
-      if (groupsWithStudents.length === 0) return;
-
-      // Distribute groups evenly across stacks
-      const groupsPerStack = Math.ceil(
-        groupsWithStudents.length / groupStackAssignments.length,
-      );
-      const updatedStacks = groupStackAssignments.map((stack, index) => ({
+      // Distribute all groups evenly across stacks using round-robin
+      // This ensures all stacks get groups when there are more groups than stacks
+      const updatedStacks = groupStackAssignments.map((stack) => ({
         ...stack,
-        assignedGroups: groupsWithStudents.slice(
-          index * groupsPerStack,
-          (index + 1) * groupsPerStack,
-        ),
+        assignedGroups: [] as StudentGroup[],
       }));
 
-      setGroupStackAssignments(updatedStacks);
+      studentGroups.forEach((group, index) => {
+        const stackIndex = index % groupStackAssignments.length;
+        updatedStacks[stackIndex].assignedGroups.push(group);
+      });
+
+      // Check if the distribution or group contents changed
+      const hasChanges = updatedStacks.some((stack, idx) => {
+        const currentStack = groupStackAssignments[idx];
+        if (!currentStack) return true;
+        if (stack.assignedGroups.length !== currentStack.assignedGroups.length) return true;
+        return stack.assignedGroups.some((group, gIdx) => {
+          const currentGroup = currentStack.assignedGroups[gIdx];
+          if (!currentGroup || group.groupId !== currentGroup.groupId) return true;
+          // Also check if group contents changed (students, name, etc.)
+          if (group.groupName !== currentGroup.groupName) return true;
+          if (group.students.length !== currentGroup.students.length) return true;
+          return false;
+        });
+      });
+
+      if (hasChanges) {
+        setGroupStackAssignments(updatedStacks);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studentGroups, deploymentMode]);
+  }, [studentGroups, groupStackAssignments, deploymentMode]);
 
   // One-shot guard: keep the failed deployment's parameters when the template
   // version data first loads in the retry flow, otherwise the default-init
@@ -758,10 +769,8 @@ export function DeploymentWizard({
         setError("Bitte erstellen Sie mindestens eine Gruppe");
         return;
       }
-      if (studentGroups.every((g) => g.students.length === 0)) {
-        setError("Bitte weisen Sie mindestens einer Gruppe Studenten zu");
-        return;
-      }
+      // Leere Gruppen sind bewusst erlaubt — Dozent kann später Studenten
+      // nachziehen, oder das Deployment dient als Platzhalter/Testlauf.
       if (groupStackAssignments.length === 0) {
         setError("Bitte erstellen Sie mindestens einen Stack");
         return;
@@ -877,9 +886,6 @@ export function DeploymentWizard({
         template_version_id: selectedVersionId,
         course_id: selectedKeycloakGroupId,
         openstack_project_id: activeProjectId,
-        // Wizard runtime select holds a stringified value; backend expects an
-        // integer from ALLOWED_RUNTIME_MONTHS (1/3/4/6/12/24). Cast is safe
-        // because the <Select> options are constrained to those values.
         runtime_months: parseInt(runtime, 10) as DeploymentCreateRequest["runtime_months"],
         parameters: heatParameters,
         ...(Object.keys(userFilesPayload).length > 0 && { user_files: userFilesPayload }),
@@ -887,6 +893,17 @@ export function DeploymentWizard({
           groups: stack.assignedGroups.map((group) => ({
             group_name: group.groupName,
             group_index: group.groupId ? parseInt(group.groupId.replace(/\D/g, '')) || stackIndex + 1 : stackIndex + 1,
+            // Backend (DoziLab/appstore-backend#169) materialisiert die
+            // Mitgliedschaftskette synchron beim Deploy-POST:
+            // CourseMember/CourseGroup/GroupMember werden idempotent per
+            // (course_id, name) und (user_id, course_id) upgesertet, und die
+            // aufgelöste `course_group_id` wird in deployment_parameters
+            // zurückgeschrieben, bevor der Celery-Task Credentials persistiert.
+            // Daher sendet der Wizard hier explizit null — das Frontend hat
+            // keine zuverlässige Quelle für die persistierte CourseGroup-ID
+            // (Chicken-and-Egg auf dem ersten Deploy eines Courses), und der
+            // Read-Pfad /api/v1/student/deployments funktioniert trotzdem.
+            course_group_id: null,
             students: group.students.map((student) => ({
               id: student.id,
               username: student.username || "",
@@ -955,7 +972,7 @@ export function DeploymentWizard({
             </SelectTrigger>
             <SelectContent>
               {param.enum.map((option) => (
-                <SelectItem key={option} value={option}>
+                <SelectItem key={String(option)} value={String(option)}>
                   {option}
                 </SelectItem>
               ))}
@@ -1112,7 +1129,7 @@ export function DeploymentWizard({
               </div>
             </div>
             {selectedTemplate?.description && (
-              <p className="text-xs text-slate-600 mt-2">
+              <p className="text-xs text-slate-600 mt-2 break-words">
                 {selectedTemplate.description}
               </p>
             )}
@@ -1132,7 +1149,11 @@ export function DeploymentWizard({
               onValueChange={setSelectedVersionId}
               disabled={loading.version || templateVersions.length === 0}
             >
-              <SelectTrigger className="mt-2">
+              <SelectTrigger className={`mt-2 ${
+                hasFieldError('version')
+                  ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                  : ""
+              }`}>
                 <SelectValue
                   placeholder={
                     loading.version
@@ -1168,7 +1189,7 @@ export function DeploymentWizard({
             <Label htmlFor="deployment-name">Deployment-Name</Label>
             {(() => {
               const nameValidation = validateDeploymentNamePattern(deploymentName);
-              const showError = !!deploymentName && !nameValidation.valid;
+              const showError = hasFieldError('deploymentName');
               return (
                 <>
                   <Input
@@ -1233,7 +1254,11 @@ export function DeploymentWizard({
                   onValueChange={setSelectedKeycloakGroupId}
                   disabled={loading.groups}
                 >
-                  <SelectTrigger className="mt-2">
+                  <SelectTrigger className={`mt-2 ${
+                    validationErrors.length > 0 && !selectedKeycloakGroupId
+                      ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                      : ""
+                  }`}>
                     <SelectValue placeholder="z.B. WWI23SEB" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1244,28 +1269,39 @@ export function DeploymentWizard({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-slate-500 mt-2">
-                  Wählen Sie eine Keycloak-Gruppe (Kurs) aus
-                </p>
+                {validationErrors.length > 0 && !selectedKeycloakGroupId ? (
+                  <p className="text-xs text-red-600 mt-1 flex items-start gap-2">
+                    <span className="text-red-500 mt-0.5">•</span>
+                    <span>Ein Kurs muss ausgewählt werden</span>
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500 mt-2">
+                    Wählen Sie eine Keycloak-Gruppe (Kurs) aus
+                  </p>
+                )}
               </div>
 
               <div>
                 <Label>Anzahl der Gruppen</Label>
                 <Input
-                  type="number"
-                  min="1"
-                  max="50"
+                  type="text"
+                  inputMode="numeric"
                   className="mt-2"
                   value={numberOfGroups}
                   onChange={(e) => {
-                    // Allow empty input while typing
                     const inputValue = e.target.value;
+                    // Allow empty input
                     if (inputValue === "") {
-                      setNumberOfGroups(0); // Temporarily allow 0 for empty state
+                      setNumberOfGroups("");
                       return;
                     }
-                    const parsed = parseInt(inputValue);
-                    if (!isNaN(parsed)) {
+                    // Only allow digits
+                    if (!/^\d+$/.test(inputValue)) {
+                      return;
+                    }
+                    // Remove leading zeros and update
+                    const parsed = parseInt(inputValue, 10);
+                    if (!isNaN(parsed) && parsed >= 0 && parsed <= 50) {
                       setNumberOfGroups(parsed);
                     }
                   }}
@@ -1367,20 +1403,24 @@ export function DeploymentWizard({
               <div>
                 <Label>Anzahl der Server</Label>
                 <Input
-                  type="number"
-                  min="1"
-                  max="50"
+                  type="text"
+                  inputMode="numeric"
                   className="mt-2"
                   value={numberOfStacks}
                   onChange={(e) => {
-                    // Allow empty input while typing
                     const inputValue = e.target.value;
+                    // Allow empty input
                     if (inputValue === "") {
-                      setNumberOfStacks(0); // Temporarily allow 0 for empty state
+                      setNumberOfStacks("");
                       return;
                     }
-                    const parsed = parseInt(inputValue);
-                    if (!isNaN(parsed)) {
+                    // Only allow digits
+                    if (!/^\d+$/.test(inputValue)) {
+                      return;
+                    }
+                    // Remove leading zeros and update
+                    const parsed = parseInt(inputValue, 10);
+                    if (!isNaN(parsed) && parsed >= 0 && parsed <= 50) {
                       setNumberOfStacks(parsed);
                     }
                   }}
@@ -1496,7 +1536,7 @@ export function DeploymentWizard({
           <div className="p-6 bg-gradient-to-br from-teal-50 to-blue-50 border border-teal-200 rounded-lg">
             <h3 className="text-slate-900 mb-4">Deployment-Zusammenfassung</h3>
             <div className="space-y-3">
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Template:</span>
                 <span className="text-sm text-slate-900">
                   {selectedTemplate?.name || "-"}{" "}
@@ -1505,19 +1545,19 @@ export function DeploymentWizard({
                     : ""}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Deployment-Name:</span>
                 <span className="text-sm text-slate-900">
                   {deploymentName || "-"}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Gruppe:</span>
                 <span className="text-sm text-slate-900">
                   {selectedGroup?.name || "-"}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">
                   Deployment-Modus:
                 </span>
@@ -1529,25 +1569,25 @@ export function DeploymentWizard({
                       : "Pro Kurs"}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Anzahl Stacks:</span>
                 <span className="text-sm text-slate-900">
                   {groupStackAssignments.length}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Anzahl Gruppen:</span>
                 <span className="text-sm text-slate-900">
                   {studentGroups.length}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Studenten:</span>
                 <span className="text-sm text-slate-900">
                   {keycloakMembers.length}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Credentials:</span>
                 <span className="text-sm text-slate-900">
                   {deploymentMode === "per_student"
@@ -1557,7 +1597,7 @@ export function DeploymentWizard({
                       : `${studentGroups.filter((g) => g.students.length > 0).length} Gruppen-Sets`}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-4">
                 <span className="text-sm text-slate-600">Laufzeit:</span>
                 <span className="text-sm text-slate-900">
                   {runtimeLabels[runtime] || runtime}
@@ -1614,7 +1654,7 @@ export function DeploymentWizard({
                     (p: TemplateParameter) => p.name === key,
                   );
                   return (
-                    <div key={key} className="flex justify-between py-1">
+                    <div key={key} className="flex flex-wrap justify-between gap-x-4 py-1">
                       <span className="text-sm text-slate-600">
                         {param?.label || key}:
                       </span>

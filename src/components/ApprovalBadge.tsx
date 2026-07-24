@@ -26,6 +26,9 @@ interface Props {
   variant?: Variant;
   showIcon?: boolean;
   className?: string;
+  /** Optionaler Hover-Text. Praktisch für Reject-Badges, an denen wir den
+   *  `rejection_reason` zeigen wollen, ohne die Versionszeile umzubauen. */
+  tooltip?: string | null;
 }
 
 function pickIcon(status: Props["status"]) {
@@ -34,6 +37,10 @@ function pickIcon(status: Props["status"]) {
     case "active":
       return ShieldCheck;
     case "pending":
+    case "awaiting_publish":
+      // Erst-Veröffentlichung-Wartezustand bekommt dasselbe „offen mit
+      // Fragezeichen"-Icon wie reguläres pending — sie sind aus User-Sicht
+      // beide „wartet auf Admin".
       return ShieldQuestion;
     case "rejected":
       return X;
@@ -51,6 +58,7 @@ export function ApprovalBadge({
   variant = "version",
   showIcon = true,
   className,
+  tooltip,
 }: Props) {
   // Variant-Erkennung: die beiden Wertesätze überschneiden sich nicht außer bei
   // "approved", aber Aufrufer übergeben explizit, was sie meinen — wir nehmen
@@ -62,7 +70,10 @@ export function ApprovalBadge({
     label = s.text;
     cls = s.cls;
   } else {
+    // Private-Template-Versionen haben approval_status === null und brauchen
+    // gar kein Badge — wir rendern nichts statt einen Platzhalter.
     const s = badgeStyle(status as TemplateVersionApprovalStatus);
+    if (s === null) return null;
     label = s.text;
     cls = s.cls;
   }
@@ -70,7 +81,10 @@ export function ApprovalBadge({
   const Icon = pickIcon(status);
 
   return (
-    <Badge className={`${cls} hover:${cls} ${className ?? ""}`.trim()}>
+    <Badge
+      className={`${cls} hover:${cls} ${className ?? ""}`.trim()}
+      title={tooltip ?? undefined}
+    >
       {showIcon && <Icon className="w-3 h-3 mr-1" />}
       {label}
     </Badge>

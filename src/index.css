@@ -1826,6 +1826,14 @@
     line-height: var(--tw-leading, var(--text-xs--line-height));
   }
 
+  /* Kleinere Schrift für die Wizard-Step-Labels auf schmalen Viewports
+     (Issue #217): "Konfiguration"/"Netzwerk" kollidierten sonst. Ab md:
+     kippt es via .md\:text-xs zurück auf die Original-Größe. */
+  .text-\[10px\] {
+    font-size: 10px;
+    line-height: 1.2;
+  }
+
   .leading-none {
     --tw-leading: 1;
     line-height: 1;
@@ -3712,6 +3720,10 @@ html {
     }
     .md\:flex-nowrap {
       flex-wrap: nowrap;
+    }
+    .md\:text-xs {
+      font-size: var(--text-xs);
+      line-height: var(--tw-leading, var(--text-xs--line-height));
     }
   }
 

@@ -97,14 +97,14 @@ export function GroupToStackAssigner({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <Label className="text-base font-medium">Stack-Zuweisung</Label>
           <p className="text-xs text-slate-500 mt-1">
             Verteilen Sie {groups.length} Gruppe{groups.length !== 1 ? 'n' : ''} auf {stacks.length} Stack{stacks.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {stacks.length > 0 && groups.length > 0 && (
             <Button
               type="button"

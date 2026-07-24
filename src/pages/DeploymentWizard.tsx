@@ -1769,7 +1769,7 @@ export function DeploymentWizard({
                     )}
                   </div>
                   <p
-                    className={`text-xs mt-2 text-center ${
+                    className={`text-[10px] md:text-xs mt-2 text-center ${
                       isActive
                         ? "text-teal-600 font-medium"
                         : isCompleted
@@ -1816,7 +1816,7 @@ export function DeploymentWizard({
       )}
 
       {/* Navigation Buttons */}
-      <div className="flex justify-between">
+      <div className="flex flex-wrap justify-between gap-2">
         <Button
           variant="outline"
           onClick={currentStep === 0 ? onCancel : handlePrevious}
@@ -1826,7 +1826,7 @@ export function DeploymentWizard({
           {currentStep === 0 ? "Abbrechen" : "Zurück"}
         </Button>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 justify-end">
           {/* Detaillierte Konfiguration (only on first step) — outline styling */}
           {currentStep === 0 && steps.length > 1 && (
             <Button

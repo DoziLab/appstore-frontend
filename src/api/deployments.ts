@@ -12,6 +12,14 @@ export type DeploymentDto = {
   config_json?: string | null;
   deployment_parameters?: string | null;
   access_types_json: string;
+  /**
+   * Keycloak UUID of the lecturer who created this deployment. Backend pulls
+   * it out of `deployment_parameters.teacher.id`. Used by the UI to gate
+   * destructive actions (cancel/delete/cleanup/retry) — only the owner
+   * (matching `token.sub`) and admins may run them. Nullable for legacy rows
+   * from before the teacher-info migration.
+   */
+  owner_id?: string | null;
   // Lifecycle (B6). Both nullable for legacy rows from before the
   // expires_at migration. UI: see src/utils/deployment.ts.
   expires_at?: string | null;

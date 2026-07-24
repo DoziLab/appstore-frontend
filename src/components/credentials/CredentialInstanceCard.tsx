@@ -249,7 +249,7 @@ function GroupAccordion({
               </Badge>
             </div>
           </AccordionTrigger>
-          <AccordionContent className="space-y-3 pt-2">
+          <AccordionContent className="space-y-3 pt-2 min-w-0">
             {accesses.map((access, idx) => (
               <AccessRow
                 key={`${label}-${idx}`}
@@ -352,10 +352,10 @@ function AccessRow({
   };
 
   return (
-    <div className="rounded-lg border border-slate-200 p-4 space-y-3">
-      <div className="flex items-center justify-between gap-2">
+    <div className="rounded-lg border border-slate-200 p-4 space-y-3 min-w-0">
+      <div className="flex items-center justify-between gap-2 min-w-0">
         <div className="flex items-center gap-2 min-w-0">
-          <h4 className="text-sm font-medium text-slate-900">
+          <h4 className="text-sm font-medium text-slate-900 truncate min-w-0">
             {displayLabel}
           </h4>
           {isAdminAccess && (
@@ -369,17 +369,18 @@ function AccessRow({
             </Badge>
           )}
         </div>
-        <Badge variant="outline">{displayType}</Badge>
+        <Badge variant="outline" className="shrink-0">{displayLabel}</Badge>
       </div>
 
-      <div className="grid gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-slate-500">Username</span>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-900">{access.username ?? "-"}</span>
+      <div className="grid gap-3 min-w-0">
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <span className="text-xs text-slate-500 shrink-0">Username</span>
+          <div className="flex flex-1 items-center justify-end gap-2 min-w-0">
+            <span className="text-sm text-slate-900 truncate min-w-0">{access.username ?? "-"}</span>
             <Button
               variant="outline"
               size="sm"
+              className="shrink-0"
               onClick={() => handleCopy(access.username, "Username")}
               disabled={!access.username}
             >
@@ -389,10 +390,10 @@ function AccessRow({
         </div>
 
         {access.access_type !== "activation_link" && (
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs text-slate-500">Password</span>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-900">
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <span className="text-xs text-slate-500 shrink-0">Password</span>
+            <div className="flex flex-1 items-center justify-end gap-2 min-w-0">
+              <span className="text-sm text-slate-900 truncate min-w-0">
                 {isVisible
                   ? (access.password ?? "-")
                   : getMaskedPassword(access.password)}
@@ -400,6 +401,7 @@ function AccessRow({
               <Button
                 variant="outline"
                 size="sm"
+                className="shrink-0"
                 onClick={() => togglePasswordVisibility(accessKey)}
                 disabled={!access.password}
               >
@@ -412,6 +414,7 @@ function AccessRow({
               <Button
                 variant="outline"
                 size="sm"
+                className="shrink-0"
                 onClick={() => handleCopy(access.password, "Password")}
                 disabled={!access.password}
               >
@@ -421,21 +424,21 @@ function AccessRow({
           </div>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-slate-500">{urlLabel}</span>
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <span className="text-xs text-slate-500 shrink-0">{urlLabel}</span>
+          <div className="flex flex-1 items-center justify-end gap-2 min-w-0">
             {access.connection_url ? (
               access.access_type === "web_url" || access.access_type === "activation_link" ? (
                 <a
                   href={access.connection_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-blue-600 hover:underline break-all"
+                  className="text-sm text-blue-600 hover:underline break-all min-w-0 flex-1 text-right"
                 >
                   {access.connection_url}
                 </a>
               ) : (
-                <code className="text-sm bg-slate-100 px-2 py-0.5 rounded break-all font-mono">
+                <code className="text-sm bg-slate-100 px-2 py-0.5 rounded break-all font-mono min-w-0 flex-1">
                   {access.connection_url}
                 </code>
               )
@@ -445,6 +448,7 @@ function AccessRow({
             <Button
               variant="outline"
               size="sm"
+              className="shrink-0"
               onClick={() => handleCopy(access.connection_url, urlLabel)}
               disabled={!access.connection_url}
             >

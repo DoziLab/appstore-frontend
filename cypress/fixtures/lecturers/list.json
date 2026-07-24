@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "message": "ok",
+  "data": [
+    { "id": "lec-1", "external_id": "kc-1", "display_name": "Eve Stark", "email": "eve@dhbw.de", "username": "lecturer", "last_login_at": "2026-07-01T09:00:00Z", "template_count": 2, "deployment_count": 1, "openstack_project_count": 1 },
+    { "id": "lec-2", "external_id": "kc-2", "display_name": "Jan Mueller", "email": "jan.mueller@dhbw.de", "username": "janmueller", "last_login_at": "2026-06-20T09:00:00Z", "template_count": 1, "deployment_count": 3, "openstack_project_count": 1 },
+    { "id": "lec-3", "external_id": "kc-3", "display_name": "Ramona Korten", "email": "ramona.korten@dhbw.de", "username": "ramonakorten", "last_login_at": "2026-07-08T09:00:00Z", "template_count": 4, "deployment_count": 1, "openstack_project_count": 2 },
+    { "id": "3eda06bf-f252-44c1-9219-bc369c3fb17a", "external_id": "kc-4", "display_name": null, "email": null, "username": null, "last_login_at": null, "template_count": 0, "deployment_count": 1, "openstack_project_count": 0 }
+  ],
+  "pagination": { "page": 1, "page_size": 50, "total_items": 4, "total_pages": 1 },
+  "errors": null,
+  "timestamp": "2026-07-10T00:00:00Z",
+  "request_id": "req-lec-list"
+}

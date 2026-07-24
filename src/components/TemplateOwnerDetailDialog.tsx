@@ -531,7 +531,7 @@ export function TemplateOwnerDetailDialog({
                 <h3 className="text-sm font-semibold text-slate-900">
                   Aktive Version
                 </h3>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Button
                     size="sm"
                     variant="outline"

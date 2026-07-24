@@ -297,14 +297,14 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
   }, [deployment.id, activeProjectId, selectedExtendMonths, extendInFlight]);
 
   const getAvailableExtendMonths = useCallback(() => {
-    if (!deployment.expires_at) return [1, 3, 4, 6, 12, 24];
+    if (!deployment.expires_at) return [1, 3, 4, 6, 12, 24, 36];
     const today = new Date();
     const expiresDate = new Date(deployment.expires_at);
     const monthsDiff =
       (expiresDate.getFullYear() - today.getFullYear()) * 12 +
       (expiresDate.getMonth() - today.getMonth());
-    const maxExtension = 24 - Math.max(0, monthsDiff);
-    return [1, 3, 4, 6, 12, 24].filter(m => m <= maxExtension);
+    const maxExtension = 36 - Math.max(0, monthsDiff);
+    return [1, 3, 4, 6, 12, 24, 36].filter(m => m <= maxExtension);
   }, [deployment.expires_at]);
 
   const accessTypeLabels: Record<AccessType, string> = {
@@ -641,11 +641,11 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
                   <AlertDialogHeader>
                     <AlertDialogTitle>Deployment verlängern</AlertDialogTitle>
                     <AlertDialogDescription>
-                      Wählen Sie aus, um wie viele Monate Sie das Deployment verlängern möchten. Maximal 24 Monate ab heute.
+                      Wählen Sie aus, um wie viele Monate Sie das Deployment verlängern möchten. Maximal 36 Monate ab heute.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <div className="grid grid-cols-2 gap-2 py-4">
-                    {[1, 3, 4, 6, 12, 24].map((months) => {
+                    {[1, 3, 4, 6, 12, 24, 36].map((months) => {
                       const availableMonths = getAvailableExtendMonths();
                       const isAvailable = availableMonths.includes(months);
                       return (

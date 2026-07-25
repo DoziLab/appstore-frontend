@@ -1243,6 +1243,7 @@ export function DeploymentWizard({
                     <SelectItem value="6">6 Monate</SelectItem>
                     <SelectItem value="12">1 Jahr</SelectItem>
                     <SelectItem value="24">2 Jahre</SelectItem>
+                    <SelectItem value="36">3 Jahre</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
@@ -1519,6 +1520,7 @@ export function DeploymentWizard({
         "6": "6 Monate",
         "12": "1 Jahr",
         "24": "2 Jahre",
+        "36": "3 Jahre",
       };
 
       return (

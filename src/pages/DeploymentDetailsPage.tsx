@@ -307,7 +307,7 @@ export function DeploymentDetailsPage() {
       // doesn't store the original choice on the row, only the resulting
       // expires_at. We round to the nearest allowed value so the wizard's
       // <Select> can show it without the user reseating the field.
-      const ALLOWED: Array<1 | 3 | 4 | 6 | 12 | 24> = [1, 3, 4, 6, 12, 24];
+      const ALLOWED: Array<1 | 3 | 4 | 6 | 12 | 24 | 36> = [1, 3, 4, 6, 12, 24, 36];
       let runtimeMonths: number | undefined;
       if (raw.expires_at && raw.created_at) {
         const createdMs = new Date(raw.created_at).getTime();

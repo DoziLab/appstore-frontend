@@ -125,7 +125,7 @@ export type DeploymentLogDto = {
 
 // Allowed deployment runtimes in months. Must mirror the backend's
 // ALLOWED_RUNTIME_MONTHS — wizard <Select> options must stay in sync.
-export type RuntimeMonths = 1 | 3 | 4 | 6 | 12 | 24;
+export type RuntimeMonths = 1 | 3 | 4 | 6 | 12 | 24 | 36;
 
 export type DeploymentCreateRequest = {
   name?: string;

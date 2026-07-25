@@ -101,11 +101,11 @@ interface Deployment {
    * Keycloak UUID of the deployment owner (lecturer who created it). Populated
    * by DeploymentDetailsPage from `DeploymentDto.owner_id`. Compared against
    * `useCurrentUser().userId` (== Keycloak `sub`) to gate the Aktionen card
-   * buttons — non-owners (including lecturers with read access via course
-   * membership and viewing admins who explicitly want to act as a regular
-   * user) see the buttons disabled with an explanatory tooltip. Admins
-   * always bypass the check. Null on legacy rows that pre-date the
-   * teacher-info migration — treated as non-owner.
+   * buttons — any non-owner (including lecturers with read access via course
+   * membership AND admins browsing a deployment they don't own) sees the
+   * buttons disabled with an explanatory tooltip but keeps full read access.
+   * Null on legacy rows that pre-date the teacher-info migration — treated as
+   * non-owner.
    */
   ownerId?: string | null;
   course: string;
@@ -177,11 +177,12 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
   // via `authorize_deployment_access` (403 for non-owner non-admins), so this
   // is a pure UX layer — it just prevents a guaranteed-403 click.
   //
-  // Admins keep their full toolbox; legacy rows without `ownerId` fall back
-  // to non-owner for everyone except admins (safe default).
+  // Ownership is the ONLY criterion: admins get their toolbox on deployments
+  // they own, but see disabled actions (with tooltip) on any deployment they
+  // don't own — while keeping full read access. Legacy rows without `ownerId`
+  // fall back to non-owner for everyone (safe default).
   const canManageDeployment =
-    currentUser.isAdmin ||
-    (deployment.ownerId != null && deployment.ownerId === currentUser.userId);
+    deployment.ownerId != null && deployment.ownerId === currentUser.userId;
   const ownerTooltip =
     "Diese Aktion kann nur vom Besitzer des Deployments ausgeführt werden.";
   const [credentialsVisible, setCredentialsVisible] = useState(false);

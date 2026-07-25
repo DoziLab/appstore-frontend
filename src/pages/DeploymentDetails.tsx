@@ -64,9 +64,12 @@ import {
 } from "../components/ui/select";
 import {
   getCourseGroups,
+  getCourseMembers,
   getGroupMembers,
+  addGroupMembers,
   moveGroupMember,
   type CourseGroupDto,
+  type CourseMemberDto,
   type GroupMemberDto,
 } from "../api/courses";
 import {
@@ -1397,6 +1400,14 @@ function CourseGroupsCard({
   );
   // groupMemberId currently being moved → disables its select + shows spinner.
   const [movingMemberId, setMovingMemberId] = useState<string | null>(null);
+  // All active course members (needed to detect who is in NO group).
+  const [courseMembers, setCourseMembers] = useState<CourseMemberDto[]>([]);
+  // ungrouped course_member_id → target group chosen in its <Select>.
+  const [ungroupedTarget, setUngroupedTarget] = useState<
+    Record<string, string>
+  >({});
+  // course_member_id currently being added → disables its row + shows spinner.
+  const [addingMemberId, setAddingMemberId] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -1406,14 +1417,20 @@ function CourseGroupsCard({
       const groupsResp = await getCourseGroups(courseId);
       const groupList = groupsResp.data ?? [];
 
-      // 2. Members per group — parallel
-      const memberLists = await Promise.all(
-        groupList.map((g) =>
-          getGroupMembers(courseId, g.id)
-            .then((r) => r.data ?? [])
-            .catch(() => [] as GroupMemberDto[]),
+      // 2. Members per group — parallel. Also fetch all active course
+      //    members so we can detect who is in NO group (issue #207).
+      const [memberLists, courseMembersResp] = await Promise.all([
+        Promise.all(
+          groupList.map((g) =>
+            getGroupMembers(courseId, g.id)
+              .then((r) => r.data ?? [])
+              .catch(() => [] as GroupMemberDto[]),
+          ),
         ),
-      );
+        getCourseMembers(courseId)
+          .then((r) => r.data ?? [])
+          .catch(() => [] as CourseMemberDto[]),
+      ]);
 
       // 3. Keycloak user lookup (best-effort — if it fails we render user_ids)
       let index = new Map<string, KeycloakUser>();
@@ -1441,6 +1458,7 @@ function CourseGroupsCard({
 
       setGroups(groupList);
       setMembersByGroup(byGroup);
+      setCourseMembers(courseMembersResp);
       setUserIndex(index);
     } catch (err) {
       const e = err as Error & { status?: number };
@@ -1514,6 +1532,71 @@ function CourseGroupsCard({
     0,
   );
 
+  // Course members who are in NO group at all (issue #207). A student added
+  // to the course after a deployment already exists lands here: the backend
+  // grants deployment visibility only via a group's DeploymentInstanceAccess,
+  // so an ungrouped member sees nothing until added to a group. De-dup by
+  // course_member_id, which is the id `addGroupMembers` expects.
+  const groupedMemberIds = useMemo(() => {
+    const ids = new Set<string>();
+    Object.values(membersByGroup).forEach((arr) =>
+      arr.forEach((m) => ids.add(m.course_member_id)),
+    );
+    return ids;
+  }, [membersByGroup]);
+
+  const ungroupedMembers = useMemo(
+    () => courseMembers.filter((cm) => !groupedMemberIds.has(cm.id)),
+    [courseMembers, groupedMemberIds],
+  );
+
+  const handleAddToGroup = useCallback(
+    async (member: CourseMemberDto, toGroupId: string) => {
+      if (addingMemberId) return;
+      if (!toGroupId) return;
+      setAddingMemberId(member.id);
+      try {
+        const resp = await addGroupMembers(courseId, toGroupId, [member.id]);
+        // Optimistically move the member into the chosen group bucket so the
+        // "Ohne Gruppe" list shrinks and the member shows up under the group.
+        const created = resp.data?.[0];
+        setMembersByGroup((cur) => {
+          const next = { ...cur };
+          next[toGroupId] = [
+            ...(next[toGroupId] ?? []),
+            {
+              id: created?.id ?? `${toGroupId}:${member.id}`,
+              group_id: toGroupId,
+              course_member_id: member.id,
+              user_id: member.user_id,
+              joined_at: created?.joined_at ?? new Date().toISOString(),
+              user: userIndex.get(member.user_id),
+            },
+          ];
+          return next;
+        });
+        setUngroupedTarget((cur) => {
+          const next = { ...cur };
+          delete next[member.id];
+          return next;
+        });
+        toast.success("Mitglied zur Gruppe hinzugefügt.");
+      } catch (err) {
+        const e = err as Error & { status?: number };
+        if (e.status === 403) {
+          toast.error("Keine Berechtigung, Mitglieder hinzuzufügen.");
+        } else if (e.status === 404) {
+          toast.error("Gruppe oder Mitglied nicht gefunden.");
+        } else {
+          toast.error(e.message || "Hinzufügen fehlgeschlagen.");
+        }
+      } finally {
+        setAddingMemberId(null);
+      }
+    },
+    [courseId, addingMemberId, userIndex],
+  );
+
   return (
     <Card className="border-slate-200 shadow-sm">
       <CardHeader>
@@ -1523,8 +1606,8 @@ function CourseGroupsCard({
             <div>
               <CardTitle>Gruppen & Mitglieder</CardTitle>
               <CardDescription>
-                Gruppen dieses Kurses anzeigen und Mitglieder zwischen Gruppen
-                verschieben.
+                Gruppen dieses Kurses anzeigen, Mitglieder zwischen Gruppen
+                verschieben und gruppenlose Mitglieder einer Gruppe zuweisen.
               </CardDescription>
             </div>
           </div>
@@ -1649,6 +1732,85 @@ function CourseGroupsCard({
               </div>
             </>
           )}
+
+          {/* Issue #207: course members in NO group. They have no deployment
+              visibility until added to a group that carries this deployment's
+              DeploymentInstanceAccess. The target dropdown is scoped to the
+              groups already listed above (i.e. this deployment's groups). */}
+          {!loading && !error && ungroupedMembers.length > 0 && (
+            <div className="border border-amber-200 rounded-lg p-3 bg-amber-50">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <span className="text-sm text-amber-900">Ohne Gruppe</span>
+                <Badge variant="outline" className="text-xs">
+                  {ungroupedMembers.length}{" "}
+                  {ungroupedMembers.length === 1 ? "Mitglied" : "Mitglieder"}
+                </Badge>
+              </div>
+              <p className="text-xs text-amber-700 mb-2">
+                Der Student erhält erst Zugriff, wenn er einer zugewiesenen
+                Gruppe hinzugefügt wird.
+              </p>
+              {groups.length === 0 ? (
+                <p className="text-xs text-slate-500">
+                  Für diesen Kurs sind keine Gruppen angelegt, denen Mitglieder
+                  zugewiesen werden könnten.
+                </p>
+              ) : (
+                <ul className="space-y-1">
+                  {ungroupedMembers.map((cm) => {
+                    const target = ungroupedTarget[cm.id] ?? "";
+                    const busy = addingMemberId === cm.id;
+                    return (
+                      <li
+                        key={cm.id}
+                        className="flex items-center justify-between gap-3 px-2 py-1 rounded hover:bg-slate-100"
+                      >
+                        <span className="text-sm text-slate-700 truncate">
+                          {courseMemberDisplayName(cm, userIndex)}
+                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {busy && (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
+                          )}
+                          <Select
+                            value={target}
+                            disabled={addingMemberId !== null}
+                            onValueChange={(gid) =>
+                              setUngroupedTarget((cur) => ({
+                                ...cur,
+                                [cm.id]: gid,
+                              }))
+                            }
+                          >
+                            <SelectTrigger className="h-7 text-xs w-[160px]">
+                              <SelectValue placeholder="Gruppe wählen…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {groups.map((g) => (
+                                <SelectItem key={g.id} value={g.id}>
+                                  {g.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            disabled={!target || addingMemberId !== null}
+                            onClick={() => void handleAddToGroup(cm, target)}
+                          >
+                            Hinzufügen
+                          </Button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
         </CardContent>
       )}
     </Card>
@@ -1660,6 +1822,17 @@ function memberDisplayName(
   userIndex: Map<string, KeycloakUser>,
 ): string {
   const u = m.user ?? userIndex.get(m.user_id);
+  if (!u) return m.user_id;
+  const full = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
+  if (full && u.username) return `${full} (${u.username})`;
+  return full || u.username || m.user_id;
+}
+
+function courseMemberDisplayName(
+  m: CourseMemberDto,
+  userIndex: Map<string, KeycloakUser>,
+): string {
+  const u = userIndex.get(m.user_id);
   if (!u) return m.user_id;
   const full = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
   if (full && u.username) return `${full} (${u.username})`;

@@ -26,7 +26,13 @@
 //     1. /dashboard renders normally for the admin (URL + Dashboard heading).
 //     2. listOpenstackProjects() is NEVER called for the admin — proof that
 //        the non-lecturer branch of the effect actually ran.
-//     3. /admin is reachable and AdminMonitoring renders.
+//     3. An admin route is reachable and its page renders.
+//
+//   NOTE (staging update): the old single /admin route was split into
+//   /admin/projects, /admin/templates and /admin/lecturers (each wrapped in
+//   <ProtectedRoute requireAdmin>). Plain /admin no longer resolves to a page,
+//   so we now assert against /admin/projects (AdminProjectOverview, the admin
+//   landing page, <h1>Projektübersicht</h1>).
 
 describe("Auth · admin bypasses the OpenStack setup gate", () => {
   beforeEach(() => {
@@ -42,7 +48,7 @@ describe("Auth · admin bypasses the OpenStack setup gate", () => {
     }).as("getProjectsEmpty");
   });
 
-  it("renders /dashboard without calling listOpenstackProjects and lets /admin load", () => {
+  it("renders /dashboard without calling listOpenstackProjects and lets an admin route load", () => {
     cy.loginAs("admin", "/dashboard");
 
     // Final URL must be /dashboard — no redirect to /setup. The admin is past
@@ -65,18 +71,19 @@ describe("Auth · admin bypasses the OpenStack setup gate", () => {
     // length assertion would flip from 0 to 1.
     cy.get("@getProjectsEmpty.all").should("have.length", 0);
 
-    // Now verify /admin is reachable. We re-issue cy.loginAs so the Keycloak
-    // stub is re-installed via onBeforeLoad before the bundle re-evaluates on
-    // the fresh page load — a bare cy.visit would let the real keycloak-js
-    // module run and stall on its network init.
-    cy.loginAs("admin", "/admin");
-    cy.url().should("include", "/admin");
-    cy.location("pathname").should("eq", "/admin");
+    // Now verify an admin route is reachable. We re-issue cy.loginAs so the
+    // Keycloak stub is re-installed via onBeforeLoad before the bundle
+    // re-evaluates on the fresh page load — a bare cy.visit would let the real
+    // keycloak-js module run and stall on its network init.
+    cy.loginAs("admin", "/admin/projects");
+    cy.url().should("include", "/admin/projects");
+    cy.location("pathname").should("eq", "/admin/projects");
 
-    // AdminMonitoring.tsx renders <h1>Administration</h1> at the top of the
-    // page (line 395) — unconditional, present before any fetched data
-    // resolves. Good stable anchor.
-    cy.contains("h1", "Administration").should("be.visible");
+    // AdminProjectOverview.tsx renders <h1>Projektübersicht</h1> at the top of
+    // the page — unconditional, present before any fetched data resolves. Good
+    // stable anchor. (Also proves ProtectedRoute requireAdmin lets the admin
+    // through rather than bouncing to /dashboard.)
+    cy.contains("h1", "Projektübersicht").should("be.visible");
 
     // Still no project fetch — admin remains short-circuited across both
     // route visits.

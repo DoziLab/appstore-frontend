@@ -15,7 +15,7 @@
 //    allen rows). SSH-Key-Download geht über onDownloadSshKey-Prop, die
 //    den dedizierten /access/{id}/ssh-key-Endpoint anstößt.
 import { useState } from "react";
-import { Copy, Download, Eye, EyeOff, Key, Loader2, ShieldCheck } from "lucide-react";
+import { Copy, Download, Eye, EyeOff, Key, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -85,6 +85,13 @@ export interface CredentialInstanceCardProps {
    * wir case-insensitive gegen `access.username`. Im Student-Mode irrelevant.
    */
   currentUsername?: string | null;
+  /**
+   * Optional (nur Lecturer-Mode sinnvoll). Wenn gesetzt, erscheint im
+   * Karten-Header ein „Neu deployen"-Button für genau diese VM. Ruft die
+   * Funktion mit (instanceId, vmName) auf — der Caller öffnet damit den
+   * RedeployDialog im Instanz-Modus (Issue #192).
+   */
+  onRedeployInstance?: (instanceId: string, vmName: string) => void;
 }
 
 export function CredentialInstanceCard({
@@ -96,6 +103,7 @@ export function CredentialInstanceCard({
   getMaskedPassword,
   onDownloadSshKey,
   currentUsername,
+  onRedeployInstance,
 }: CredentialInstanceCardProps) {
   // Lecturer-View: Dozent-Zeilen (group_id IS NULL) vs. Gruppen-Zeilen.
   // Student-View: alle Zeilen sind Gruppen-Zeilen (Backend filtert NULL aus),
@@ -123,10 +131,27 @@ export function CredentialInstanceCard({
   return (
     <Card className="border-slate-200">
       <CardHeader>
-        <CardTitle className="text-base">{instance.vm_name || "VM"}</CardTitle>
-        <CardDescription>
-          Stack ID: {instance.openstack_stack_id || "-"}
-        </CardDescription>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <CardTitle className="text-base">{instance.vm_name || "VM"}</CardTitle>
+            <CardDescription>
+              Stack ID: {instance.openstack_stack_id || "-"}
+            </CardDescription>
+          </div>
+          {onRedeployInstance && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-shrink-0"
+              onClick={() =>
+                onRedeployInstance(instance.instance_id, instance.vm_name || "VM")
+              }
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Neu deployen
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {/*

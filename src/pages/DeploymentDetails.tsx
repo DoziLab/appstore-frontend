@@ -17,6 +17,7 @@ import {
   AlertOctagon,
   Calendar,
   Users,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -55,6 +56,7 @@ import { getExpiryState } from "../utils/deployment";
 import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
 import { useCurrentUser } from "../auth/useCurrentUser";
 import { CredentialInstanceCard } from "../components/credentials/CredentialInstanceCard";
+import { RedeployDialog, type RedeployTarget } from "../components/deployments/RedeployDialog";
 import {
   Select,
   SelectContent,
@@ -164,9 +166,15 @@ interface DeploymentDetailsProps {
    * step pre-filled with the same configuration.
    */
   onRetry?: (deploymentId: string) => Promise<void> | void;
+  /**
+   * Wird nach einem erfolgreich angestoßenen Redeploy (Deployment oder VM)
+   * aufgerufen, damit die Detailseite neu lädt und den Statuswechsel
+   * (running → per-VM REDEPLOYING) zeigt. Redeploy ist async (202).
+   */
+  onRefresh?: () => void;
 }
 
-export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: DeploymentDetailsProps) {
+export function DeploymentDetails({ deployment, onBack, onDelete, onRetry, onRefresh }: DeploymentDetailsProps) {
   const { activeProjectId } = useActiveOpenstackProject();
   const currentUser = useCurrentUser();
   // ── Owner-only gate for the Aktionen card ────────────────────────────────
@@ -200,6 +208,10 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
   const [deleteInFlight, setDeleteInFlight] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+
+  // Redeploy-Dialog (Issue #192). `redeployTarget` bestimmt, ob das ganze
+  // Deployment oder eine einzelne VM neu deployt wird; null = Dialog zu.
+  const [redeployTarget, setRedeployTarget] = useState<RedeployTarget | null>(null);
 
   // ── Status-driven delete/cancel action ────────────────────────────────────
   //
@@ -1027,11 +1039,23 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
               <CardTitle>Aktionen</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {/*deployment.status === 'running' && (
-                <Button variant="outline" className="w-full opacity-50 cursor-not-allowed" disabled>
-                  VM starten
-                </Button>
-              )*/}
+              {/* Redeploy des gesamten Deployments (Issue #192) — nur für
+                  laufende Deployments. Öffnet den RedeployDialog im
+                  Deployment-Modus (Config-Override + preserve_credentials). */}
+              {deployment.status === 'running' && (
+                withOwnerTooltip(
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    disabled={!canManageDeployment || isDeleting || deleteInFlight}
+                    onClick={() => setRedeployTarget({ kind: "deployment" })}
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Neu deployen
+                  </Button>,
+                  !canManageDeployment,
+                )
+              )}
 
               {/* Retry-from-failed (separate flow from the delete/cleanup action) */}
               {deployment.status === 'failed' && (
@@ -1200,6 +1224,12 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
                       getMaskedPassword={getMaskedPassword}
                       onDownloadSshKey={handleDownloadSshKey}
                       currentUsername={currentUsername}
+                      onRedeployInstance={
+                        canManageDeployment && deployment.status === 'running'
+                          ? (instanceId, vmName) =>
+                              setRedeployTarget({ kind: "instance", instanceId, vmName })
+                          : undefined
+                      }
                     />
                   ))}
                 </div>
@@ -1217,6 +1247,20 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
             keycloakCourseId={deployment.keycloakCourseId}
           />
         )}
+
+        {/* Redeploy-Dialog (Issue #192) — gemeinsam für Deployment- und
+            per-VM-Redeploy. `redeployTarget` steuert den Modus. */}
+        <RedeployDialog
+          open={redeployTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setRedeployTarget(null);
+          }}
+          deploymentId={deployment.id}
+          target={redeployTarget ?? { kind: "deployment" }}
+          currentParameters={deployment.deploymentParameters?.parameters}
+          openstackProjectId={activeProjectId}
+          onRedeployed={() => onRefresh?.()}
+        />
     </div>
   );
 }

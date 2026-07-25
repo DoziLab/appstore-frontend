@@ -8,13 +8,17 @@
 
 **Severity**: High (privilege escalation, defence-in-depth)
 **Discovered while writing**: `cypress/e2e/auth/auth-non-admin-cannot-access-admin-route.cy.ts`
-**State**: Test is `describe.skip(...)` until the fix lands.
+**State**: ✅ **RESOLVED on `staging`** (admin-area rework). The test is now un-skipped and active — it passes against the fixed code and guards against regression.
 
-### Finding
+### Resolution
 
-`AdminMonitoring.tsx` has no role gate. `App.tsx` line 159 wires `<AdminMonitoring />` at `/admin` for any authenticated user. The Sidebar nav link IS gated (`Sidebar.tsx` line 121 checks `isAdmin`), but that is only a UI affordance, not a security boundary.
+The admin-area rework replaced the single ungated `/admin` route with three routes — `/admin/projects`, `/admin/templates`, `/admin/lecturers` — each wrapped in `<ProtectedRoute requireAdmin>` (`src/components/ProtectedRoute.tsx`). For a non-admin, `requireAdmin && !isAdmin` returns `<Navigate to="/dashboard" replace>`, so `AdminTemplateApprovals` / `AdminProjectOverview` never mount and their data effects never run. `AdminMonitoring.tsx` (the old ungated page) is now dead code. The regression test asserts: lecturer → `/admin/templates` redirects to `/dashboard`, the "Template-Freigaben" H1 is absent, and the approval-queue fetch never fires.
 
-A user authenticated with `roles=["lecturer"]` (no admin role) who navigates directly to `/admin` sees:
+### Original finding (for the record)
+
+`AdminMonitoring.tsx` had no role gate. `App.tsx` wired `<AdminMonitoring />` at `/admin` for any authenticated user. The Sidebar nav link IS gated (`Sidebar.tsx` checks `isAdmin`), but that is only a UI affordance, not a security boundary.
+
+A user authenticated with `roles=["lecturer"]` (no admin role) who navigated directly to `/admin` saw:
 
 - the full `Administration` heading and tabbed UI;
 - `getAllDeployments(null)` is fired — returns the **global** deployment list (every lecturer's work), not just their own;

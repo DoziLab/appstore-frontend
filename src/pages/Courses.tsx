@@ -1,12 +1,22 @@
-import { useEffect, useMemo, useState, ChangeEvent } from "react";
+import { useEffect, useMemo, useState, ChangeEvent, KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { BookOpen, ChevronRight, Server } from "lucide-react";
+import { BookOpen, Server, Plus, X, Pencil, Check } from "lucide-react";
+import { toast } from "sonner@2.0.3";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { getMyCourses, CourseDto } from "../api/courses";
 import { getKeycloakGroups, KeycloakGroup } from "../api/keycloak";
+import {
+  listCourseFilters,
+  createCourseFilter,
+  updateCourseFilter,
+  deleteCourseFilter,
+  CourseFilter,
+} from "../api/courseFilters";
+import { ApiError } from "../api/http";
+import { useCurrentUser } from "../auth/useCurrentUser";
 import { useActiveOpenstackProject } from "../contexts/OpenstackProjectContext";
 
 type CourseUi = {
@@ -17,14 +27,42 @@ type CourseUi = {
   applications: Array<{ id: string; name: string; status: string; created_at?: string }>;
 };
 
+// Map an ApiError from the course-filters endpoints to a user-facing message.
+// The backend answers 409 on a duplicate name (message already reads
+// "Course filter with name 'X' already exists") and 422 on empty/invalid or
+// unknown-key payloads — see appstore-backend src/schemas/course_filter.py.
+function filterErrorMessage(e: unknown, fallback: string): string {
+  if (e instanceof ApiError) {
+    if (e.status === 409) return e.message || "Filter existiert bereits.";
+    if (e.status === 422) return "Ungültiger Filter-Name (1–255 Zeichen, nicht leer).";
+    if (e.status === 403) return "Nur Admins dürfen Filter verwalten.";
+    if (e.status === 404) return "Filter nicht gefunden (evtl. bereits gelöscht).";
+    return e.message || fallback;
+  }
+  return e instanceof Error ? e.message : fallback;
+}
+
 export function Courses() {
   const navigate = useNavigate();
+  const { isAdmin } = useCurrentUser();
   const { activeProjectId } = useActiveOpenstackProject();
   const [items, setItems] = useState<CourseDto[]>([]);
   const [keycloakGroups, setKeycloakGroups] = useState<KeycloakGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [prefixQuery, setPrefixQuery] = useState<string>("");
+
+  // Admin-managed filter chips (fetched from the backend). The set of active
+  // chip *names* drives client-side filtering with OR semantics.
+  const [filters, setFilters] = useState<CourseFilter[]>([]);
+  const [filtersLoading, setFiltersLoading] = useState(true);
+  const [filtersError, setFiltersError] = useState<string | null>(null);
+  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
+
+  // Admin management UI state.
+  const [newFilterName, setNewFilterName] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -41,8 +79,8 @@ export function Courses() {
         // contract introduced in PR #137 for /api/v1/deployments.
         //
         // Backend caps page_size at 100 (src/core/dependencies.py); request the
-        // max so the client-side prefix filter operates over the full course
-        // set rather than only the first page.
+        // max so the client-side filter operates over the full course set
+        // rather than only the first page.
         const [coursesRes, groupsRes] = await Promise.all([
           getMyCourses({ page: 1, page_size: 100, openstack_project_id: activeProjectId }),
           getKeycloakGroups(),
@@ -66,11 +104,56 @@ export function Courses() {
     };
   }, [activeProjectId]);
 
+  // Load the admin-managed filter chips once on mount. GET is open to any
+  // logged-in user, so both lecturers and admins see the same chips.
+  const loadFilters = async () => {
+    try {
+      setFiltersLoading(true);
+      setFiltersError(null);
+      const list = await listCourseFilters();
+      setFilters(list);
+      // Drop any active selections that no longer exist after a refetch.
+      setActiveFilters((prev) => {
+        const names = new Set(list.map((f) => f.name));
+        const next = new Set<string>();
+        prev.forEach((n) => {
+          if (names.has(n)) next.add(n);
+        });
+        return next;
+      });
+    } catch (e) {
+      setFiltersError(e instanceof Error ? e.message : "Filter konnten nicht geladen werden");
+    } finally {
+      setFiltersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setFiltersLoading(true);
+        setFiltersError(null);
+        const list = await listCourseFilters();
+        if (!alive) return;
+        setFilters(list);
+      } catch (e) {
+        if (!alive) return;
+        setFiltersError(e instanceof Error ? e.message : "Filter konnten nicht geladen werden");
+      } finally {
+        if (alive) setFiltersLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const courses: CourseUi[] = useMemo(() => {
     return items.map((c) => {
       // Find the Keycloak group name by ID
       const keycloakGroup = keycloakGroups.find((g) => g.id === c.keycloak_course_id);
-      
+
       return {
         id: c.id,
         code: c.keycloak_course_id,
@@ -86,20 +169,88 @@ export function Courses() {
     });
   }, [items, keycloakGroups]);
 
-  // Derive available prefix suggestions — restrict to canonical prefixes
-  const prefixSuggestions = useMemo(() => {
-    // Only show these canonical prefixes (order matters)
-    return ["WWI", "WI", "INF", "WIN"];
-  }, [items, keycloakGroups]);
-
   const filteredCourses = useMemo(() => {
     // Filter out courses without deployments
     const coursesWithDeployments = courses.filter((c) => c.applications.length > 0);
-    
-    if (!prefixQuery) return coursesWithDeployments;
-    const q = prefixQuery.toUpperCase();
-    return coursesWithDeployments.filter((c) => (c.keycloakGroupName || c.name || "").toUpperCase().startsWith(q));
-  }, [courses, prefixQuery]);
+
+    if (activeFilters.size === 0) return coursesWithDeployments;
+
+    // OR semantics across active chips: a course matches if ANY active chip
+    // term is a case-INSENSITIVE substring of its keycloak group name or its
+    // course name. (Was previously a case-SENSITIVE `startsWith` against a
+    // hardcoded prefix list.)
+    const terms = Array.from(activeFilters).map((t) => t.toLowerCase());
+    return coursesWithDeployments.filter((c) => {
+      const haystacks = [c.keycloakGroupName || "", c.name || ""].map((s) => s.toLowerCase());
+      return terms.some((t) => haystacks.some((h) => h.includes(t)));
+    });
+  }, [courses, activeFilters]);
+
+  const toggleFilter = (name: string) => {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const handleAddFilter = async () => {
+    const name = newFilterName.trim();
+    if (!name || adding) return;
+    try {
+      setAdding(true);
+      await createCourseFilter(name);
+      setNewFilterName("");
+      toast.success(`Filter „${name}" hinzugefügt.`);
+      await loadFilters();
+    } catch (e) {
+      toast.error(filterErrorMessage(e, "Filter konnte nicht angelegt werden."));
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleDeleteFilter = async (f: CourseFilter) => {
+    try {
+      await deleteCourseFilter(f.id);
+      toast.success(`Filter „${f.name}" gelöscht.`);
+      await loadFilters();
+    } catch (e) {
+      toast.error(filterErrorMessage(e, "Filter konnte nicht gelöscht werden."));
+    }
+  };
+
+  const startEdit = (f: CourseFilter) => {
+    setEditingId(f.id);
+    setEditingName(f.name);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingName("");
+  };
+
+  const handleSaveEdit = async (f: CourseFilter) => {
+    const name = editingName.trim();
+    if (!name) {
+      toast.error("Filter-Name darf nicht leer sein.");
+      return;
+    }
+    if (name === f.name) {
+      cancelEdit();
+      return;
+    }
+    try {
+      await updateCourseFilter(f.id, name);
+      toast.success(`Filter in „${name}" umbenannt.`);
+      cancelEdit();
+      await loadFilters();
+    } catch (e) {
+      toast.error(filterErrorMessage(e, "Filter konnte nicht umbenannt werden."));
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "running":
@@ -124,37 +275,131 @@ export function Courses() {
         </div>
       </div>
 
-      {/* Prefix filter input + suggestions */}
+      {/* Admin-managed filter chip-bar. Chips toggle a client-side substring
+          filter (OR across active chips). Admins additionally get inline
+          add / rename / delete controls; non-admins see read-only chips. */}
       <div className="space-y-2">
         <div className="flex items-center gap-3">
-          <Input
-            type="text"
-            placeholder="Präfix suchen (z.B. WWI, INF, WIN)"
-            className="flex-1 min-w-0 pl-3"
-            value={prefixQuery}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setPrefixQuery(e.target.value.toUpperCase())}
-          />
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setPrefixQuery("")}>Alle</Button>
-          </div>
+          <div className="text-xs text-slate-500">Kurs-Filter:</div>
+          {activeFilters.size > 0 && (
+            <Button variant="outline" onClick={() => setActiveFilters(new Set())}>
+              Alle anzeigen
+            </Button>
+          )}
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="text-xs text-slate-500">Schnellfilter:</div>
-          <div className="flex gap-2 flex-wrap">
-            {prefixSuggestions.map((p) => (
-              <button
-                key={p}
-                type="button"
-                aria-pressed={prefixQuery === p}
-                onClick={() => setPrefixQuery(p)}
-                className={`text-xs px-2 py-1 rounded ${prefixQuery === p ? 'bg-teal-500 text-white' : 'bg-white border border-slate-200'}`}
-              >
-                {p}
-              </button>
-            ))}
+        {filtersLoading && <div className="text-xs text-slate-500">Filter werden geladen…</div>}
+        {filtersError && <div className="text-xs text-red-600">{filtersError}</div>}
+
+        {!filtersLoading && !filtersError && filters.length === 0 && (
+          <div className="text-xs text-slate-400">
+            {isAdmin ? "Noch keine Filter angelegt." : "Es sind keine Kurs-Filter definiert."}
           </div>
+        )}
+
+        <div className="flex gap-2 flex-wrap items-center">
+          {filters.map((f) => {
+            const isActive = activeFilters.has(f.name);
+            if (editingId === f.id) {
+              return (
+                <span
+                  key={f.id}
+                  className="inline-flex items-center gap-1 rounded-full border border-teal-500 px-2 py-1"
+                >
+                  <Input
+                    type="text"
+                    value={editingName}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setEditingName(e.target.value)}
+                    onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                      if (e.key === "Enter") handleSaveEdit(f);
+                      if (e.key === "Escape") cancelEdit();
+                    }}
+                    className="h-8 w-auto text-sm"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    aria-label="Umbenennen speichern"
+                    onClick={() => handleSaveEdit(f)}
+                    className="p-1 rounded text-teal-600 hover:bg-teal-100"
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Abbrechen"
+                    onClick={cancelEdit}
+                    className="p-1 rounded text-slate-500 hover:bg-slate-100"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </span>
+              );
+            }
+            return (
+              <span
+                key={f.id}
+                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm ${
+                  isActive ? "bg-teal-500 text-white" : "bg-white border border-slate-200 text-slate-700"
+                }`}
+              >
+                <button
+                  type="button"
+                  aria-pressed={isActive}
+                  onClick={() => toggleFilter(f.name)}
+                  onDoubleClick={() => isAdmin && startEdit(f)}
+                  className="cursor-pointer"
+                >
+                  {f.name}
+                </button>
+                {isAdmin && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label={`Filter ${f.name} umbenennen`}
+                      onClick={() => startEdit(f)}
+                      className={`p-1 rounded ${isActive ? "hover:bg-teal-600" : "hover:bg-slate-100"}`}
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Filter ${f.name} löschen`}
+                      onClick={() => handleDeleteFilter(f)}
+                      className={`p-1 rounded ${isActive ? "hover:bg-teal-600" : "text-red-600 hover:bg-red-100"}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </>
+                )}
+              </span>
+            );
+          })}
         </div>
+
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            <Input
+              type="text"
+              placeholder="Neuer Filter (z.B. SQL)"
+              className="w-64 max-w-md pl-3"
+              value={newFilterName}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setNewFilterName(e.target.value)}
+              onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                if (e.key === "Enter") handleAddFilter();
+              }}
+            />
+            <Button
+              variant="outline"
+              onClick={handleAddFilter}
+              disabled={adding || !newFilterName.trim()}
+              aria-label="Filter hinzufügen"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Hinzufügen
+            </Button>
+          </div>
+        )}
       </div>
 
       {loading && (
@@ -198,11 +443,6 @@ export function Courses() {
                       <span className="text-slate-900">{course.keycloakGroupName}</span>
                     </CardTitle>
                   </div>
-                  {/* Students unbekannt -> Badge optional oder Placeholder */}
-                  {/* <Badge variant="outline" className="border-slate-300">
-                    <Users className="w-3 h-3 mr-1" />
-                    UNKNOWN
-                  </Badge> */}
                 </div>
               </CardHeader>
 

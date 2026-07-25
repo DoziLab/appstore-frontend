@@ -1038,7 +1038,7 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry, onRef
             <CardHeader>
               <CardTitle>Aktionen</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-3">
               {/* Redeploy des gesamten Deployments (Issue #192) — nur für
                   laufende Deployments. Öffnet den RedeployDialog im
                   Deployment-Modus (Config-Override + preserve_credentials). */}

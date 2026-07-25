@@ -6,6 +6,7 @@ import { OpenStackConfig } from "./pages/OpenStackConfig";
 import { AdminProjectOverview } from "./pages/AdminProjectOverview";
 import { AdminTemplateApprovals } from "./pages/AdminTemplateApprovals";
 import { LecturerManagement } from "./pages/LecturerManagement";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Sidebar } from "./layouts/Sidebar";
 import { MobileTopBar } from "./layouts/MobileTopBar";
 import { Login } from "./pages/Login";
@@ -200,9 +201,30 @@ export default function App() {
               <Route path="/deploy/:templateId" element={<DeploymentWizardPage />} />
               <Route path="/deployment/:deploymentId" element={<DeploymentDetailsPage />} />
               <Route path="/config" element={<OpenStackConfig />} />
-              <Route path="/admin/projects" element={<AdminProjectOverview />} />
-              <Route path="/admin/templates" element={<AdminTemplateApprovals />} />
-              <Route path="/admin/lecturers" element={<LecturerManagement />} />
+              <Route
+                path="/admin/projects"
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <AdminProjectOverview />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/templates"
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <AdminTemplateApprovals />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/lecturers"
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <LecturerManagement />
+                  </ProtectedRoute>
+                }
+              />
               {/* Lecturer/Admin auf /student/* → zurück aufs Dashboard. */}
               <Route path="/student/*" element={<Navigate to="/dashboard" replace />} />
             </Routes>

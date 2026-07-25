@@ -442,3 +442,121 @@ export async function extendDeployment(
   );
   return resp.data;
 }
+
+// ── Redeploy: destroy + recreate ─────────────────────────────────────────────
+//
+// POST /api/v1/deployments/{id}/redeploy               — alle VMs
+// POST /api/v1/deployments/{id}/instances/{iid}/redeploy — genau eine VM
+//
+// Anders als "restart" (nur Heat update_stack) baut ein Redeploy jede VM neu auf:
+// Heat-Stack gelöscht → neu erstellt → Ansible neu → Credentials neu generiert
+// (außer preserve_credentials=true). So werden geänderte Config-/Template-
+// Parameter tatsächlich wirksam. Beide Endpoints antworten mit 202 Accepted; der
+// eigentliche Redeploy läuft asynchron (Celery), die betroffene VM geht auf
+// Status REDEPLOYING, das Parent-Deployment bleibt RUNNING.
+//
+// Body-Keys müssen exakt stimmen — das Backend-Schema ist `extra="forbid"`, ein
+// Tippfehler führt zu 422 statt stillem Verwerfen.
+
+export type RedeployRequest = {
+  /**
+   * Parameter, die ON TOP der gespeicherten deployment_parameters gemergt
+   * werden — für JEDE neu deployte VM. Leeres Objekt = Config unverändert
+   * übernehmen. Beim per-Instanz-Endpoint ist dies der volle Override für
+   * genau diese eine VM.
+   */
+  deployment_parameter_overrides?: Record<string, any> | null;
+  /**
+   * Per-VM-Overrides gekeyt auf DeploymentInstance.id, gemergt ON TOP der
+   * deployment-weiten Overrides. Wird vom per-Instanz-Endpoint ignoriert —
+   * dort die VM-Config direkt in deployment_parameter_overrides schicken.
+   */
+  instance_parameter_overrides?: Record<string, Record<string, any>> | null;
+  /**
+   * true = bestehende Credentials (Passwörter/SSH-Keys/Aktivierungslinks) an
+   * die neu erstellte Instanz re-binden, statt sie neu zu generieren. Verhindert,
+   * dass Studenten-Logins bei einem Config-Redeploy brechen.
+   */
+  preserve_credentials?: boolean;
+};
+
+export type RedeployDeploymentResponse = {
+  deployment_id: string;
+  instance_count: number;
+  status: string;
+  preserve_credentials: boolean;
+};
+
+export type RedeployInstanceResponse = {
+  deployment_id: string;
+  instance_id: string;
+  status: string;
+  preserve_credentials: boolean;
+};
+
+/**
+ * Redeploy every VM in a deployment. Wirft `Error & { status; body }` auf
+ * non-2xx, damit der Caller 400 ("redeploy already in progress") / 403 / 404
+ * unterscheiden und einen verständlichen Toast zeigen kann.
+ */
+export async function redeployDeployment(
+  deploymentId: string,
+  body: RedeployRequest,
+  openstackProjectId: string | null,
+): Promise<RedeployDeploymentResponse> {
+  await keycloak.updateToken(30).catch(() => {});
+  const res = await fetch(
+    `/api/v1/deployments/${deploymentId}/redeploy${projectQuery(openstackProjectId)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    const err = new Error(text || res.statusText) as Error & { status: number; body: string };
+    err.status = res.status;
+    err.body = text;
+    throw err;
+  }
+  const json = await res.json();
+  return json.data as RedeployDeploymentResponse;
+}
+
+/**
+ * Redeploy exactly one VM (DeploymentInstance) inside a deployment. Die VM-Config
+ * geht in `deployment_parameter_overrides` (der Endpoint ignoriert
+ * `instance_parameter_overrides`, da nur eine VM im Scope ist).
+ */
+export async function redeployInstance(
+  deploymentId: string,
+  instanceId: string,
+  body: RedeployRequest,
+  openstackProjectId: string | null,
+): Promise<RedeployInstanceResponse> {
+  await keycloak.updateToken(30).catch(() => {});
+  const res = await fetch(
+    `/api/v1/deployments/${deploymentId}/instances/${instanceId}/redeploy${projectQuery(openstackProjectId)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    const err = new Error(text || res.statusText) as Error & { status: number; body: string };
+    err.status = res.status;
+    err.body = text;
+    throw err;
+  }
+  const json = await res.json();
+  return json.data as RedeployInstanceResponse;
+}

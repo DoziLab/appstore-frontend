@@ -737,11 +737,20 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
         </div>
       </div>
 
-      {/* Expiry banner */}
-      {expiryState !== "ok" && deployment.expires_at && (
+      {/* Expiry banner (#180): red theme once expiry is imminent (≤6 weeks,
+          "critical") or past ("expired"), amber while merely approaching
+          (≤3 months, "warning"). */}
+      {expiryState !== "ok" && deployment.expires_at && (() => {
+        const isRed = expiryState === "critical" || expiryState === "expired";
+        const expiryDateLabel = new Date(deployment.expires_at).toLocaleDateString("de-DE", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        });
+        return (
         <Card
           className={
-            expiryState === "expired"
+            isRed
               ? "border-red-200 shadow-sm bg-gradient-to-br from-red-50 to-white"
               : "border-amber-200 shadow-sm bg-gradient-to-br from-amber-50 to-white"
           }
@@ -750,29 +759,31 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
             <div className="flex items-start gap-4">
               <div
                 className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  expiryState === "expired" ? "bg-red-100" : "bg-amber-100"
+                  isRed ? "bg-red-100" : "bg-amber-100"
                 }`}
               >
                 {expiryState === "expired" ? (
                   <AlertOctagon className="w-6 h-6 text-red-600" />
                 ) : (
-                  <AlertTriangle className="w-6 h-6 text-amber-600" />
+                  <AlertTriangle className={isRed ? "w-6 h-6 text-red-600" : "w-6 h-6 text-amber-600"} />
                 )}
               </div>
               <div className="flex-1">
-                <h3 className={expiryState === "expired" ? "text-red-900 mb-2" : "text-amber-900 mb-2"}>
+                <h3 className={isRed ? "text-red-900 mb-2" : "text-amber-900 mb-2"}>
                   {expiryState === "expired"
                     ? "Dieses Deployment ist abgelaufen und wird in Kürze gelöscht."
-                    : `Läuft am ${new Date(deployment.expires_at).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })} ab`}
+                    : expiryState === "critical"
+                      ? `Läuft bald ab — am ${expiryDateLabel}`
+                      : `Läuft am ${expiryDateLabel} ab`}
                 </h3>
-                <p className={expiryState === "expired" ? "text-sm text-red-700 mb-3" : "text-sm text-amber-700 mb-3"}>
+                <p className={isRed ? "text-sm text-red-700 mb-3" : "text-sm text-amber-700 mb-3"}>
                   {expiryState === "expired"
                     ? "Verlängern Sie es jetzt, falls die nächtliche Bereinigung noch nicht gelaufen ist."
                     : "Verlängern Sie es, bevor der Cleanup-Job es entfernt."}
                 </p>
                 <Button
                   size="sm"
-                  variant={expiryState === "expired" ? "destructive" : "default"}
+                  variant={isRed ? "destructive" : "default"}
                   disabled={extendInFlight}
                   onClick={() => setExtendDialogOpen(true)}
                 >
@@ -789,7 +800,8 @@ export function DeploymentDetails({ deployment, onBack, onDelete, onRetry }: Dep
             </div>
           </CardContent>
         </Card>
-      )}
+        );
+      })()}
 
       {/* Progress for active deployments */}
       {deployment.status === 'deploying' && (

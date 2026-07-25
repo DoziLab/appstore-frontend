@@ -178,7 +178,7 @@ export function DeleteLecturerConfirmDialog({
               void handleDelete();
             }}
             disabled={!canDelete}
-            className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            className="bg-destructive text-white hover:bg-destructive/90"
           >
             <Trash2 className="w-4 h-4 mr-2" />
             {busy ? "Wird gelöscht…" : "Endgültig löschen"}

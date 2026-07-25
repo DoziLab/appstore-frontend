@@ -2,9 +2,9 @@
 
 // admin-approve-template-version
 // ──────────────────────────────
-// P0 success-path test: an admin on /admin sees the Template-Freigaben card
-// populated with pending public template-versions (loaded via GET
-// /api/v1/template-versions/queue). Clicking "Schnell genehmigen" on a row
+// P0 success-path test: an admin on /admin/templates sees the Template-
+// Freigaben card populated with pending public template-versions (loaded via
+// GET /api/v1/template-versions/queue). Clicking "Schnell genehmigen" on a row
 // must fire POST /api/v1/template-versions/<id>/approve and the row must
 // disappear from the queue UI on success.
 //
@@ -15,11 +15,13 @@
 //   versions pile up indefinitely and the AppStore stops growing — both real
 //   user-visible regressions.
 //
-//   AdminMonitoring.tsx renders one card per pending TemplateVersionQueueItem
-//   (template name + version pill + "Schnell genehmigen" / "Details prüfen"
-//   buttons). handleApprove() calls approveTemplateVersion() from
-//   src/api/github.ts and then removes the version from local state. The
-//   per-row removal is the user-visible signal that the action succeeded.
+//   AdminTemplateApprovals.tsx (route /admin/templates, split out of the old
+//   AdminMonitoring.tsx during the admin rework) renders one card per pending
+//   TemplateVersionQueueItem (template name + version pill + "Schnell
+//   genehmigen" / "Ablehnen" buttons). handleApprove() calls
+//   approveTemplateVersion() from src/api/github.ts and then removes the
+//   version from local state. The per-row removal is the user-visible signal
+//   that the action succeeded.
 //
 // Fixture
 //   queue-pending.json mirrors the QueueResponse shape from
@@ -53,7 +55,7 @@ describe("Admin · approves a pending template-version from the queue", () => {
   });
 
   it("clicks 'Schnell genehmigen' on the first pending version and the row disappears", () => {
-    cy.loginAs("admin", "/admin");
+    cy.loginAs("admin", "/admin/templates");
 
     // The queue load is the load-bearing fetch for the Template-Freigaben
     // card. Waiting on it proves the GET fired AND that the response landed
@@ -77,7 +79,7 @@ describe("Admin · approves a pending template-version from the queue", () => {
     }).as("getQueueEmpty");
 
     // Click the "Schnell genehmigen" button scoped to the WordPress row.
-    // The button text is exact (AdminMonitoring.tsx line ~900). We scope to
+    // The button text is exact (AdminTemplateApprovals.tsx:350). We scope to
     // the row by locating the template-name <h3> and walking up to the
     // surrounding Card (`data-slot="card"`) — both pending rows render the
     // same button text, so unscoped cy.contains would race between them.

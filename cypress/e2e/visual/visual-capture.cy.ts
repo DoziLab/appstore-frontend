@@ -1,4 +1,4 @@
-/// <reference path="../support/index.d.ts" />
+/// <reference path="../../support/index.d.ts" />
 
 // Visual-regression capture spec
 // ──────────────────────────────
@@ -11,7 +11,7 @@ type PageSpec = {
   url: string;
   role: "lecturer" | "admin" | "student";
   ready: string;
-  overrides?: Record<string, { fixture?: string; body?: any; statusCode?: number }>;
+  overrides?: Record<string, { fixture: string }>;
 };
 
 const PAGES: PageSpec[] = [
@@ -76,7 +76,10 @@ describe("visual capture", () => {
           cy.mockApi(page.overrides ?? {});
           mockStudentApis();
           cy.loginAs(page.role, page.url);
-          cy.contains(page.ready, { timeout: 15000 }).should("be.visible");
+          // Scope to the page <h1>: the ready strings (e.g. "Dashboard",
+          // "Kurse") also appear as sidebar nav links, which are hidden on
+          // mobile — matching them would fail the visibility assertion.
+          cy.contains("h1", page.ready, { timeout: 15000 }).should("be.visible");
           cy.wait(400);
           cy.screenshot(`${vp.folder}/${page.slug}`, {
             capture: "viewport",
@@ -90,9 +93,12 @@ describe("visual capture", () => {
           cy.mockApi();
           mockStudentApis();
           cy.loginAs("lecturer", "/dashboard");
-          cy.contains("Dashboard").should("be.visible");
+          cy.contains("h1", "Dashboard").should("be.visible");
           cy.get('[aria-label="Menü öffnen"]').click();
-          cy.contains("Kurse").should("be.visible");
+          // Two sidebars live in the DOM: the desktop one (hidden md:flex) and
+          // the drawer's. Scope to the open Sheet dialog so we match the
+          // drawer's visible "Kurse" link, not the hidden desktop nav.
+          cy.get('[role="dialog"]').contains("Kurse").should("be.visible");
           cy.wait(500);
           cy.screenshot("mobile/09-drawer-open", {
             capture: "viewport",

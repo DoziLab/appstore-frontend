@@ -1,0 +1,14 @@
+[
+  {
+    "id": "grp-sql",
+    "name": "WWI21 SQL",
+    "path": "/WWI21 SQL",
+    "subGroups": []
+  },
+  {
+    "id": "grp-web",
+    "name": "INF22 Web",
+    "path": "/INF22 Web",
+    "subGroups": []
+  }
+]

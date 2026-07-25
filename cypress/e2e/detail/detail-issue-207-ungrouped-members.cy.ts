@@ -83,9 +83,10 @@ describe("DeploymentDetails · issue #207 ungrouped course members", () => {
     cy.wait(["@getDeployment", "@getLogs"]);
     cy.contains("h1", "test-deploy-alpha").should("be.visible");
 
-    // Expand the card.
-    cy.contains("Gruppen & Mitglieder").should("be.visible");
-    cy.contains("button", "Anzeigen").click();
+    // Expand the card. The card sits far down the page inside a scroll
+    // container, so bring its title into view before asserting visibility.
+    cy.contains("Gruppen & Mitglieder").scrollIntoView().should("be.visible");
+    cy.contains("button", "Anzeigen").scrollIntoView().click();
     cy.wait(["@getCourseGroups", "@getCourseMembers"]);
 
     // The ungrouped section must appear with the new member.

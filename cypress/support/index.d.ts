@@ -8,6 +8,7 @@ export {};
 type Role =
   | "lecturer"
   | "admin"
+  | "student"
   | "unauthenticated"
   | "expiring"
   | "init-error";

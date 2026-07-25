@@ -1,0 +1,49 @@
+{
+  "success": true,
+  "message": "ok",
+  "data": [
+    {
+      "id": "course-sql-1",
+      "name": "WWI21 SQL",
+      "keycloak_course_id": "grp-sql",
+      "deployments": [
+        {
+          "id": "dep-sql-1",
+          "name": "SQL Lab",
+          "template_version_id": "tv-sql-1",
+          "deployment_mode": "single",
+          "status": "running",
+          "created_at": "2026-06-20T10:00:00Z"
+        }
+      ],
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-20T00:00:00Z"
+    },
+    {
+      "id": "course-web-1",
+      "name": "INF22 Web",
+      "keycloak_course_id": "grp-web",
+      "deployments": [
+        {
+          "id": "dep-web-1",
+          "name": "Web Lab",
+          "template_version_id": "tv-web-1",
+          "deployment_mode": "single",
+          "status": "running",
+          "created_at": "2026-06-21T10:00:00Z"
+        }
+      ],
+      "created_at": "2026-06-01T00:00:00Z",
+      "updated_at": "2026-06-21T00:00:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "page_size": 100,
+    "total_items": 2,
+    "total_pages": 1
+  },
+  "errors": null,
+  "timestamp": "2026-06-27T00:00:00Z",
+  "request_id": "req-courses-with-deployments"
+}

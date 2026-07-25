@@ -11,7 +11,7 @@
     "status": "RUNNING",
     "openstack_stack_id": "stack-alpha",
     "config_json": null,
-    "deployment_parameters": null,
+    "deployment_parameters": "{\"parameters\":{\"hostname\":\"old-host\",\"replicas\":2}}",
     "access_types_json": "[]",
     "expires_at": "2027-01-01T00:00:00Z",
     "expiry_warning_at": "2026-12-15T00:00:00Z",
@@ -32,5 +32,5 @@
   },
   "errors": null,
   "timestamp": "2026-06-27T00:00:00Z",
-  "request_id": "req-detail-running"
+  "request_id": "req-detail-running-params"
 }

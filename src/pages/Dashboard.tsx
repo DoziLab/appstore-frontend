@@ -221,12 +221,18 @@
                         <div className="flex items-center gap-3 mb-1">
                           <p className="text-slate-900 truncate">{deployment.name}</p>
                           {getStatusBadge(deployment.status)}
-                          {/* B6 expiry icon — only when warning/expired. Tooltip via
-                              native title attribute keeps the dependency footprint
-                              tiny on a hot list. */}
+                          {/* B6/#180 expiry icon — only when approaching expiry.
+                              Yellow ≤3 months out, red ≤6 weeks out, red octagon
+                              once expired. Tooltip via native title attribute keeps
+                              the dependency footprint tiny on a hot list. */}
                           {expiryState === 'warning' && (
                             <span title={`Läuft am ${expiryDateLabel} ab`}>
                               <AlertTriangle className="w-4 h-4 text-amber-500" />
+                            </span>
+                          )}
+                          {expiryState === 'critical' && (
+                            <span title={`Läuft bald ab — am ${expiryDateLabel}`}>
+                              <AlertTriangle className="w-4 h-4 text-red-500" />
                             </span>
                           )}
                           {expiryState === 'expired' && (

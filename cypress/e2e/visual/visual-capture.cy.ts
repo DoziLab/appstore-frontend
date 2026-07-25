@@ -11,7 +11,7 @@ type PageSpec = {
   url: string;
   role: "lecturer" | "admin" | "student";
   ready: string;
-  overrides?: Record<string, { fixture?: string; body?: any; statusCode?: number }>;
+  overrides?: Record<string, { fixture: string }>;
 };
 
 const PAGES: PageSpec[] = [

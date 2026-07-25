@@ -177,6 +177,9 @@ export function DeploymentDetailsPage() {
   const { activeProjectId } = useActiveOpenstackProject();
   const [deploymentData, setDeploymentData] = useState<any>(null);
   const [loadingDeployment, setLoadingDeployment] = useState(false);
+  // Bump to force a full re-fetch of the deployment (used after a redeploy is
+  // queued — Issue #192 — so the async 202 status change surfaces).
+  const [reloadKey, setReloadKey] = useState(0);
   const isDeletingRef = useRef(false);
 
   // Stable reference data fetched once
@@ -629,7 +632,7 @@ export function DeploymentDetailsPage() {
     }).catch(() => setLoadingDeployment(false));
 
     return () => { stopStreamRef.current?.(); stopStreamRef.current = null; };
-  }, [deploymentId, activeProjectId, buildDeploymentData]);
+  }, [deploymentId, activeProjectId, buildDeploymentData, reloadKey]);
 
   if (!deploymentId) return <Navigate to="/dashboard" replace />;
   if (loadingDeployment) return <div className="p-6">Lade Deployment...</div>;
@@ -641,6 +644,7 @@ export function DeploymentDetailsPage() {
       onBack={handleBackToDashboard}
       onDelete={handleDeleteDeployment}
       onRetry={handleRetryDeployment}
+      onRefresh={() => setReloadKey((k) => k + 1)}
     />
   );
 }

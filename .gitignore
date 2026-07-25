@@ -59,3 +59,6 @@ cypress/screenshots/
 cypress/videos/
 cypress/downloads/
 cypress/shots/
+
+# Other
+*.mp4

@@ -1328,7 +1328,7 @@ export function DeploymentWizard({
                 <div>
                   {deploymentMode === "per_student" ? (
                     <Card className="border-teal-200 bg-teal-50">
-                      <CardContent className="pt-2">
+                      <CardContent className="pt-6">
                         <div className="flex items-center gap-3 text-teal-900">
                           <CheckCircle2 className="w-5 h-5" />
                           <div>

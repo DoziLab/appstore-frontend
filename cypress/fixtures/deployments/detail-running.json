@@ -3,6 +3,7 @@
   "message": "ok",
   "data": {
     "id": "dep-alpha-0001",
+    "owner_id": "user-lec-1",
     "name": "test-deploy-alpha",
     "template_version_id": "tv-alpha-1",
     "course_id": "course-alpha",

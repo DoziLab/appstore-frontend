@@ -5,9 +5,8 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Alert, AlertDescription } from './ui/alert';
-import { AlertCircle, CheckCircle2, Github, FileText, Loader2, Plug, Lock, Globe, Image, Upload, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Github, Loader2, Plug, Lock, Globe, Image, Upload, X } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import {
   getGithubInstallationStatus,
@@ -91,8 +90,9 @@ interface AddTemplateDialogProps {
  * blockieren den Submit-Button frühzeitig, statt den Nutzer in einen
  * Backend-Fehler laufen zu lassen.
  *
- * Der zweite Tab ("Copy & Paste") existiert vorerst nur als Platzhalter —
- * das Backend unterstützt aktuell ausschließlich GitHub-Import.
+ * Templates werden ausschließlich über die GitHub-Verbindung importiert —
+ * einen manuellen Upload gibt es nicht (das Backend liest die app.yaml direkt
+ * aus dem verbundenen Repo).
  */
 export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplateDialogProps) {
   const navigate = useNavigate();
@@ -111,12 +111,6 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
   const [iconPreviewUrl, setIconPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Manual-Tab (UI-only, kein Backend-Support)
-  const [heatTemplate, setHeatTemplate] = useState('');
-  const [cloudInit, setCloudInit] = useState('');
-  const [appYaml, setAppYaml] = useState('');
-
-  const [activeTab, setActiveTab] = useState('github');
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -146,11 +140,7 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
       setIconPreviewUrl(null);
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
-    setHeatTemplate('');
-    setCloudInit('');
-    setAppYaml('');
     setErrorMessage(null);
-    setActiveTab('github');
   };
 
   const handleConnectGithub = async () => {
@@ -299,9 +289,6 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
   // dann Pflichtfelder, dann URL-Format. `null` = ready to import.
   const disabledReason: string | null = (() => {
     if (ghStatusLoading) return 'GitHub-Verbindungsstatus wird geprüft…';
-    if (activeTab !== 'github') {
-      return 'Manueller Upload ist nicht angebunden — bitte den GitHub-Tab nutzen.';
-    }
     if (!connected) {
       return 'GitHub-Account verbinden, um zu importieren.';
     }
@@ -329,21 +316,10 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="github" className="gap-2">
-              <Github className="w-4 h-4" />
-              GitHub-Repository
-            </TabsTrigger>
-            <TabsTrigger value="manual" className="gap-2">
-              <FileText className="w-4 h-4" />
-              Copy & Paste
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Tab 1: GitHub-Import */}
-          <TabsContent value="github" className="space-y-4 mt-4">
-            {/* Connection-Status */}
+        {/* GitHub-Import — der einzige unterstützte Weg, ein Template
+            anzulegen. Voraussetzung ist eine verbundene GitHub-Verbindung. */}
+        <div className="space-y-4">
+          {/* Connection-Status */}
             {ghStatusLoading && (
               <div className="flex items-center gap-2 text-sm text-slate-500">
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -612,45 +588,7 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
                 </button>
               </div>
             </div>
-          </TabsContent>
-
-          {/* Tab 2: Manual (Platzhalter — nicht im Backend-Support) */}
-          <TabsContent value="manual" className="space-y-4 mt-4">
-            <Alert className="border-amber-200 bg-amber-50">
-              <AlertCircle className="h-4 w-4 text-amber-600" />
-              <AlertDescription className="text-amber-800 text-sm">
-                Der manuelle Upload ist aktuell nicht angebunden. Bitte nutze
-                den GitHub-Tab — auch private Repos funktionieren, sobald der
-                Account verbunden ist.
-              </AlertDescription>
-            </Alert>
-
-            <div className="space-y-2 opacity-50 pointer-events-none">
-              <Label className="text-slate-700">Heat-Template (YAML)</Label>
-              <Textarea
-                value={heatTemplate}
-                onChange={(e) => setHeatTemplate(e.target.value)}
-                className="font-mono text-sm min-h-[120px]"
-                placeholder="heat_template_version: 2021-04-16…"
-                disabled
-              />
-              <Label className="text-slate-700">cloud-init (optional)</Label>
-              <Textarea
-                value={cloudInit}
-                onChange={(e) => setCloudInit(e.target.value)}
-                className="font-mono text-sm min-h-[80px]"
-                disabled
-              />
-              <Label className="text-slate-700">app.yaml (optional)</Label>
-              <Textarea
-                value={appYaml}
-                onChange={(e) => setAppYaml(e.target.value)}
-                className="font-mono text-sm min-h-[80px]"
-                disabled
-              />
-            </div>
-          </TabsContent>
-        </Tabs>
+        </div>
 
         {errorMessage && (
           <Alert className="border-red-200 bg-red-50">
@@ -663,8 +601,8 @@ export function AddTemplateDialog({ open, onOpenChange, onImported }: AddTemplat
 
         <div className="flex flex-col gap-2 pt-4 border-t">
           {/* Lokaler Hinweis direkt am Button: wenn disabled, sagen wir warum.
-              Die globalen Banner (GitHub nicht verbunden, Manual-Tab) bleiben
-              — der Helper hier ist die zusätzliche Erklärung am Aktionsort. */}
+              Das globale Banner (GitHub nicht verbunden) bleibt — der Helper
+              hier ist die zusätzliche Erklärung am Aktionsort. */}
           {disabledReason && !submitting && (
             <p className="text-xs text-slate-500 flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
